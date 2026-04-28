@@ -1,0 +1,76 @@
+{
+  "name": "inverter-dashboard-go",
+  "version": "1.0.0",
+  "description": "Remote web dashboard for Victron inverter control, built with Go",
+  "main": "main.go",
+  "scripts": {
+    "install": "go mod download && go mod tidy",
+    "postinstall": "echo '✓ Go dependencies installed'",
+    "build": "go build -o inverter-dashboard .",
+    "build:release": "make release",
+    "start": "./inverter-dashboard",
+    "dev": "air",
+    "test": "go test -v ./...",
+    "test:watch": "go test -v ./...",
+    "test:coverage": "go test -cover -coverprofile=coverage.out ./... && go tool cover -html=coverage.out -o coverage.html",
+    "clean": "rm -f inverter-dashboard && rm -rf dist/ && rm -f coverage.out coverage.html",
+    "lint": "golangci-lint run ./...",
+    "lint:fix": "golangci-lint run --fix ./...",
+    "fmt": "go fmt ./...",
+    "fmt:check": "test -z $(gofmt -l .)",
+    "docker:build": "docker build -t inverter-dashboard .",
+    "docker:run": "docker run -d -p 8080:8080 -v $(pwd)/config:/app/config --name inverter-dashboard inverter-dashboard",
+    "docker:stop": "docker stop inverter-dashboard || true && docker rm inverter-dashboard || true",
+    "docker:clean": "npm run docker:stop && docker rmi inverter-dashboard || true",
+    "run": "go run main.go",
+    "prestart": "test -f config/config.yaml || echo '⚠️  Config file not found. Copy config/config.yaml.sample to config/config.yaml and edit with your settings'",
+    "setup": "test -f config/config.yaml || cp config/config.yaml.sample config/config.yaml && echo '✓ Created config/config.yaml from sample. Please edit with your settings.'",
+    "version": "cat VERSION",
+    "preversion": "npm test",
+    "help": "echo 'Available npm scripts:' && node -e 'const s=require(\"./package.json\").scripts; Object.keys(s).forEach(k=>console.log(\"  npm run \"+k))'"
+  },
+  "keywords": [
+    "victron",
+    "inverter",
+    "solar",
+    "mqtt",
+    "home-assistant",
+    "websocket",
+    "dashboard",
+    "go",
+    "golang"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/victron-venus/inverter-dashboard-go.git"
+  },
+  "bugs": {
+    "url": "https://github.com/victron-venus/inverter-dashboard-go/issues"
+  },
+  "homepage": "https://github.com/victron-venus/inverter-dashboard-go#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "devDependencies": {},
+  "dependencies": {},
+  "gypfile": false,
+  "scriptsComments": {
+    "install": "Installs Go dependencies",
+    "build": "Builds the Go binary",
+    "start": "Runs the compiled binary",
+    "dev": "Runs with live reload using Air tool",
+    "test": "Runs Go tests",
+    "clean": "Removes build artifacts",
+    "lint": "Runs Go linter",
+    "fmt": "Formats Go code",
+    "docker:*": "Docker build and run commands",
+    "setup": "Initial setup - copies config sample",
+    "help": "Displays available npm scripts"
+  }
+}

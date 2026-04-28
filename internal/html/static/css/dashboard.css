@@ -1,0 +1,51 @@
+<style>
+:root {
+  --bg-dark: #0a0a0a; --bg-card: #151515; --border: #2a2a2a;
+  --text: #e0e0e0; --text-dim: #666; --text-value: #ccc; --accent: #00d4aa;
+  --solar: #f5a623; --grid: #4a90d9; --battery: #7ed321; --consumption: #e74c3c;
+  --subsection-bg: rgba(0,0,0,0.2);
+}
+body { background: var(--bg-dark); color: var(--text); font-family: 'Segoe UI', sans-serif; }
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; }
+.card-header { background: transparent; border-bottom: 1px solid var(--border); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; color: var(--text-dim); padding: 6px 12px; }
+.card-body { padding: 8px 12px; }
+.stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; }
+.stat-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+.toggle-btn { cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 0.45rem; font-weight: 600; border: 1px solid var(--border); transition: all 0.15s; display: inline-block; margin: 1px; }
+.toggle-btn.on { background: #2e7d32; border-color: #4caf50; color: #fff; }
+.toggle-btn.off { background: #1a1a1a; color: #555; }
+.toggle-btn.update { background: #1565c0; border-color: #1976d2; color: #fff; }
+.toggle-btn:hover { transform: scale(1.02); filter: brightness(1.1); }
+.text-solar { color: var(--solar); } .text-grid { color: var(--grid); } .text-battery { color: var(--battery); } .text-consumption { color: var(--consumption); } .text-accent { color: var(--accent); }
+.daily-stats { font-size: 0.75rem; color: var(--text-dim); padding: 8px 12px; background: #0d0d0d; border-radius: 6px; font-family: monospace; }
+.daily-stats .highlight { color: var(--solar); }
+.daily-stats .money { color: #4caf50; }
+.daily-stats .dim { color: #555; }
+.daily-stats .detail { color: #888; font-size: 0.7rem; }
+.chart-wrap { height: 200px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.status-dot.online { background: #4caf50; } .status-dot.offline { background: #f44336; }
+.ws-status { position: fixed; top: 10px; right: 10px; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
+.ws-status.connected { background: #2e7d32; color: #fff; }
+.ws-status.disconnected { background: #c62828; color: #fff; }
+#console { font-family: 'JetBrains Mono', monospace; font-size: 0.45rem; background: #000; color: #0f0; padding: 6px; height: 180px; overflow-y: auto; border-radius: 6px; }
+#loads { color: #888; font-size: 0.65rem; }
+#loads .loads-table { display: table; width: 100%; }
+#loads .loads-row { display: table-row; }
+#loads .loads-name { display: table-cell; text-align: left; padding-right: 8px; }
+#loads .loads-value { display: table-cell; text-align: right; font-family: monospace; min-width: 45px; font-weight: bold; }
+.subsection { border: 1px solid var(--border); border-radius: 6px; padding: 6px; background: var(--subsection-bg); }
+.subsection-value { color: var(--text-value); }
+/* Light theme */
+body.light {
+  --bg-dark: #f5f5f5; --bg-card: #ffffff; --border: #ddd;
+  --text: #222; --text-dim: #555; --text-value: #333;
+  --subsection-bg: #ffffff;
+}
+body.light .card { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+body.light #console { background: #f0f0f0; color: #000; }
+body.light .daily-stats { background: #e8e8e8; }
+body.light .toggle-btn.off { background: #ddd; color: #666; }
+body.light .subsection { border-color: #ccc; }
+</style>

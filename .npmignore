@@ -1,0 +1,36 @@
+# Go build artifacts
+inverter-dashboard
+dist/
+*.out
+coverage.html
+
+# Config files (user-specific)
+config/config.yaml
+
+# Go modules
+go.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Binary files
+inverter-dashboard-*
+main
+
+# Coverage
+coverage.out
+coverage.html

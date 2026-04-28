@@ -1,0 +1,61 @@
+# Inverter Dashboard Configuration
+# Copy this file to config.yaml and update with your values
+# DO NOT commit config.yaml to version control (it's excluded by .gitignore)
+
+# MQTT Configuration - Connection to your Victron Cerbo GX or MQTT broker
+mqtt:
+  host: "192.168.160.150"  # Your MQTT broker IP address
+  port: 1883               # MQTT port (usually 1883)
+
+# Web Server Configuration
+web:
+  port: 8080               # Web dashboard port
+  host: "0.0.0.0"          # Bind address (0.0.0.0 for all interfaces)
+
+# Logging Configuration
+logging:
+  level: "info"            # Log level: debug, info, warn, error
+  format: "json"           # Format: json or text
+
+# Home Assistant Configuration (Optional)
+# Configure to enable direct Home Assistant integration
+homeassistant:
+  url: "http://192.168.151.21:8123"  # Your HA URL
+  token: "your-long-lived-ha-token"
+  poll_interval_seconds: 12  # How often to poll HA for state
+
+  # Boolean entities (on/off switches from HA)
+  boolean_entities:
+    only_charging: "input_boolean.only_charging"
+    no_feed: "input_boolean.no_feed"
+    house_support: "input_boolean.house_support"
+    charge_battery: "input_boolean.charge_battery"
+    do_not_supply_charger: "input_boolean.do_not_supply_charger"
+    set_limit_to_ev_charger: "input_boolean.set_limit_to_ev_charger"
+    minimize_charging: "input_boolean.minimize_charging"
+
+  # Switch entities for home automation buttons
+  # Format: key: [entity_id, "Display Label"]
+  switch_entities:
+    home_recliner: ["switch.recliner_recliner", "Recliner"]
+    home_garage: ["switch.garage_opener_l", "Garage"]
+    laundry_outlet: ["switch.laundry_zigbee_switch", "Laundry"]
+    garage_light: ["light.garage", "Garage light"]
+    heater: ["switch.heater_l", "Heater"]
+
+  # Water valve and pump entities
+  water_valve_entity: "switch.shutoff_valve"
+  pump_switch_entity: "switch.pump_switch"
+
+  # Appliance entities for timers and power monitoring
+  # These are polled from HA instead of MQTT when configured
+  appliance_entities:
+    dishwasher_running: "binary_sensor.dishwasher_running"
+    dishwasher_duration: "sensor.dishwasher_duration"
+    washer_time: "sensor.washer_remaining_time"
+    dryer_time: "sensor.dryer_remaining_time"
+
+# Optional: Add custom UI configuration
+ui:
+  theme: "light"  # dark or light
+  refresh_rate: 0.33  # WebSocket update rate in seconds

@@ -1,0 +1,87 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+inverter-dashboard
+# ad-hoc `go build -o ...` at repo root
+/main
+/inverter-dashboard-go
+# Local cross-build / platform-suffixed binaries (avoid `inverter-dashboard-*` — it would match `inverter-dashboard-go`)
+inverter-dashboard-macos-*
+inverter-dashboard-linux-*
+inverter-dashboard-raspberry-*
+inverter-dashboard-darwin-*
+inverter-dashboard-windows-*
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Configuration files with sensitive data
+config/config.yaml
+config/ha_token.txt
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Local AI / editor
+.claude/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local build artifacts
+bin/
+build/
+output/
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+.certs/
+
+# Python cache (in case any Python scripts remain)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Editor / merge debris
+*.backup
+*.bak
+
+# Local release / commit helpers (sensitive or machine-specific; not for git)
+commit.sh
+commit.txt
+release.txt
+
+# Node modules (if frontend gets added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
