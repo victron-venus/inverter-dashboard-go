@@ -85,13 +85,13 @@ docker run -d \
   inverter-dashboard
 ```
 
-Docker Compose:
+Docker Compose (see `docker-compose.yml` in the repo; CI pushes `alvit/inverter-dashboard-go` to Docker Hub on `main` and version tags):
 
 ```yaml
 version: '3.8'
 services:
   inverter-dashboard:
-    image: ghcr.io/victron-venus/inverter-dashboard-go:latest
+    image: alvit/inverter-dashboard-go:latest
     container_name: inverter-dashboard
     ports:
       - "8080:8080"
