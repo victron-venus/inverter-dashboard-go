@@ -27,7 +27,6 @@ go.work
 
 # Configuration files with sensitive data
 config.yaml
-config/ha_token.txt
 
 # Environment files
 .env
@@ -78,6 +77,7 @@ __pycache__/
 # Local release / commit helpers (sensitive or machine-specific; not for git)
 commit.sh
 commit.txt
+release.sh
 release.txt
 
 # Node modules (if frontend gets added)

@@ -74,12 +74,12 @@ fi
 
 echo "Planned release: $NEW_TAG (semver digits: $NEW_VER)"
 
-read -p "Proceed with release $NEW_TAG? [y/N] " -n 1 -r
-echo
-if [[ ! ${REPLY:-} =~ ^[Yy]$ ]]; then
-    echo "Cancelled"
-    exit 0
-fi
+#read -p "Proceed with release $NEW_TAG? [y/N] " -n 1 -r
+#echo
+#if [[ ! ${REPLY:-} =~ ^[Yy]$ ]]; then
+#    echo "Cancelled"
+#    exit 0
+#fi
 
 if [ -n "$VERSION_FILE" ]; then
     OLD=$(tr -d '\r\n' < "$VERSION_FILE")
