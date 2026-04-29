@@ -1,6 +1,7 @@
 # Inverter Dashboard (Go)
 
 [![Docker Hub](https://img.shields.io/docker/v/alvit/inverter-dashboard-go?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
+[![Docker Pulls](https://img.shields.io/docker/pulls/alvit/inverter-dashboard-go?label=Docker%20Pulls&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
 [![GitHub](https://img.shields.io/github/license/victron-venus/inverter-dashboard-go)](LICENSE)
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
