@@ -10,6 +10,7 @@ on:
 
 jobs:
   python-security:
+    if: hashFiles('**/*.py') != ''
     name: Python Security
     runs-on: ubuntu-latest
     permissions:

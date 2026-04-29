@@ -186,6 +186,8 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 		}
 		if overlay.HADirectConnected {
 			haClient.ReplaceOverlay(overlay)
+			// Broadcast updated state to all clients after toggle
+			BroadcastState(mqttClient, haClient, overlay)
 		}
 		return nil
 	}

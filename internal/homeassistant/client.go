@@ -352,34 +352,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	// Helper to fetch a single entity state
+	// Helper to fetch a single entity state - now uses the new method below
 	fetchEntityState := func(entityID string) (string, error) {
-		if c.httpClient == nil {
-			return "", fmt.Errorf("http client not initialized")
-		}
-		req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("HTTP %d", resp.StatusCode)
-		}
-
-		var entity EntityState
-		if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
-			return "", err
-		}
-
-		return entity.State, nil
+		return c.getEntityState(ctx, entityID)
 	}
 
 	// Fetch boolean entities
@@ -609,25 +584,63 @@ func getStateForDomain(domain string) bool {
 	return false
 }
 
+// getEntityState fetches the current state of a single entity
+func (c *Client) getEntityState(ctx context.Context, entityID string) (string, error) {
+	if c.httpClient == nil {
+		return "", fmt.Errorf("http client not initialized")
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var entity EntityState
+	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
+		return "", err
+	}
+
+	return entity.State, nil
+}
+
 func (c *Client) ToggleEntity(entityID string) error {
 	if !c.configured {
 		return fmt.Errorf("HA not configured")
 	}
 
 	domain := strings.Split(entityID, ".")[0]
-	var service string
-	switch domain {
-	case "input_boolean":
-		service = "input_boolean/toggle"
-	case "switch":
-		service = "switch/toggle"
-	case "light":
-		service = "light/toggle"
-	default:
+	if domain != "input_boolean" && domain != "switch" && domain != "light" {
 		return fmt.Errorf("unsupported domain for toggle: %s", domain)
 	}
 
-	return c.callService(domain, service, entityID)
+	// Get current state
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	currentState, err := fetchEntityState(ctx, c, entityID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch current state: %w", err)
+	}
+
+	// Determine if entity is currently on
+	isOn := isOn(currentState)
+
+	// Call turn_on if off, turn_off if on
+	if isOn {
+		return c.TurnEntity(entityID, false)
+	}
+	return c.TurnEntity(entityID, true)
 }
 
 func (c *Client) TurnEntity(entityID string, turnOn bool) error {
