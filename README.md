@@ -1,6 +1,11 @@
 # Inverter Dashboard (Go)
 
+[![Docker Hub](https://img.shields.io/docker/v/alvit/inverter-dashboard-go?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
+[![GitHub](https://img.shields.io/github/license/victron-venus/inverter-dashboard-go)](LICENSE)
+
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
+
+The original **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** stack is Python/FastAPI (`alvit/inverter-dashboard` on Docker Hub). This repository ships the same front-end assets as a **single binary** and publishes **`alvit/inverter-dashboard-go`**.
 
 ## Features
 
@@ -13,12 +18,6 @@ Remote web dashboard for Victron inverter control, rewritten in Go for better pe
 - **Dark/light theme** support with local preference storage
 - **Cross-platform** binaries for easy deployment
 - **Chart visualization** with uPlot for power flow history
-
-## Related projects
-
-- **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** — original Python/FastAPI dashboard (same UI conventions).
-- **[inverter-control](https://github.com/victron-venus/inverter-control)** — control plane / automation that pairs with the dashboard.
-- **inverter-dashboard-go** (this repo) — Go single-binary build and the same front-end assets; releases and Docker images are published from GitHub Actions.
 
 ## Quick Start
 
@@ -341,16 +340,33 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 4. Push to the branch: `git push origin feature-name`
 5. Create a Pull Request
 
+## Related projects
+
+This project is part of the same Victron Venus OS integration suite as the Python dashboard:
+
+| Project | Description |
+|---------|-------------|
+| [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) | Original Python/FastAPI dashboard (`alvit/inverter-dashboard` on Docker Hub) |
+| **inverter-dashboard-go** (this repository) | Go implementation: single binary, same web UI, `alvit/inverter-dashboard-go` on Docker Hub |
+| [inverter-control](https://github.com/victron-venus/inverter-control) | ESS external control with optional web UI |
+| [dbus-mqtt-battery](https://github.com/victron-venus/dbus-mqtt-battery) | MQTT to D-Bus bridge for BMS integration |
+| [dbus-tasmota-pv](https://github.com/victron-venus/dbus-tasmota-pv) | Tasmota smart plug as PV inverter on D-Bus |
+| [esphome-jbd-bms-mqtt](https://github.com/victron-venus/esphome-jbd-bms-mqtt) | ESP32 Bluetooth monitor for JBD BMS |
+| [inverter-monitoring](https://github.com/victron-venus/inverter-monitoring) | Telegraf + InfluxDB + Grafana monitoring stack |
+
+## Author
+
+Created by [@4alvit](https://github.com/4alvit)
+
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
 - Original Python project: [victron-venus/inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)
-- Victron Energy for the excellent Cerbo GX system
-- Vue.js team for the reactive frontend framework
-- Home Assistant community
+- Victron Energy for the Cerbo GX platform
+- Vue.js and Home Assistant communities
 
 ## Support
 
@@ -358,4 +374,4 @@ For issues and feature requests, please use the GitHub issue tracker.
 
 ---
 
-**Note**: This is a community project and is not affiliated with Victron Energy.
+**Note:** This is a community project and is not affiliated with Victron Energy.
