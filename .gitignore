@@ -26,7 +26,7 @@ dist/
 go.work
 
 # Configuration files with sensitive data
-config/config.yaml
+config.yaml
 config/ha_token.txt
 
 # Environment files

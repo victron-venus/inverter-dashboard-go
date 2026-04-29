@@ -197,9 +197,9 @@ func Load(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
-// loadConfigYAML loads HomeAssistant configuration from config/config.yaml
+// loadConfigYAML loads HomeAssistant configuration from config.yaml
 func loadConfigYAML(cfg *Config) error {
-	const yamlFile = "config/config.yaml"
+	const yamlFile = "config.yaml"
 	data, err := os.ReadFile(yamlFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", yamlFile, err)
