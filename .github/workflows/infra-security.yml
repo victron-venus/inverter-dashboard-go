@@ -1,0 +1,90 @@
+name: Infrastructure Security
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 6 * * 3'  # Weekly
+
+jobs:
+  terraform-security:
+    name: Terraform Security
+    runs-on: ubuntu-latest
+    if: hashFiles('**/*.tf') != ''
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run TFLint
+      uses: terraform-linters/tflint@v0
+
+    - name: Run Checkov (Terraform/IaC)
+      uses: bridgecrewio/checkov-action@v12
+      with:
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: checkov-results.sarif
+        category: terraform-checkov
+
+  docker-security:
+    name: Dockerfile Security
+    runs-on: ubuntu-latest
+    if: hashFiles('**/Dockerfile') != ''
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run Hadolint
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        format: sarif
+        output-file: hadolint-results.sarif
+
+    - name: Upload Hadolint results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: hadolint-results.sarif
+        category: docker-hadolint
+
+  shell-security:
+    name: Shell Script Security
+    runs-on: ubuntu-latest
+    if: hashFiles('**/*.sh') != ''
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run ShellCheck
+      uses: ludeeus/action-shellcheck@master
+      with:
+        format: sarif
+        output: shellcheck-results.sarif
+      continue-on-error: true
+
+    - name: Run TruffleHog for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --results=verified,unknown
