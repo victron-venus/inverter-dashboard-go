@@ -88,6 +88,8 @@ jobs:
     name: Attach binaries to release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
@@ -98,13 +100,12 @@ jobs:
       - name: Create checksums
         run: find dist -type f -exec sha256sum {} \; | sort -k2 > checksums.txt
 
-      # Do not set `body` / `generate_release_notes` here so a release created by
-      # `release.sh` + `gh release create --notes-file release.txt` keeps your notes;
-      # this job only uploads binaries and checksums to the same tag.
+      # Create release with generated notes and upload all binary assets
       - name: Release assets
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
-            dist/*/*
-            checksums.txt
+          generate_release_notes: true
+          files: dist/**/*
