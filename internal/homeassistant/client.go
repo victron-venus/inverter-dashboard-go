@@ -628,7 +628,7 @@ func (c *Client) ToggleEntity(entityID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	currentState, err := fetchEntityState(ctx, c, entityID)
+	currentState, err := c.getEntityState(ctx, entityID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch current state: %w", err)
 	}
