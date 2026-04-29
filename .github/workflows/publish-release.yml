@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: writ
+  contents: write
 
 jobs:
   publish:
