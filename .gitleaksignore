@@ -1,0 +1,2 @@
+# False positive - placeholder token in documentation
+README.md:curl-auth-header:Bearer <TOKEN>

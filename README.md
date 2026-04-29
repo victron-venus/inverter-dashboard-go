@@ -315,7 +315,7 @@ Open browser DevTools console to see WebSocket connection status. Check that:
 Test HA API manually:
 
 ```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" \
+curl -H "Authorization: Bearer <TOKEN>" \
      http://192.168.151.21:8123/api/states/input_boolean.only_charging
 ```
 
