@@ -2,7 +2,13 @@
 
 [![Docker Hub](https://img.shields.io/docker/v/alvit/inverter-dashboard-go?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
 [![Docker Pulls](https://img.shields.io/docker/pulls/alvit/inverter-dashboard-go?label=Docker%20Pulls&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
-[![GitHub](https://img.shields.io/github/license/victron-venus/inverter-dashboard-go)](LICENSE)
+[![CI](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml/badge.svg)](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/network/members)
+[![GitHub last commit](https://img.shields.io/github/last-commit/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/commits/main)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
+[![Go 1.22+](https://img.shields.io/badge/Go-1.22+-blue.svg)](https://go.dev/)
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
 
