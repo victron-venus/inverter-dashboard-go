@@ -102,7 +102,7 @@ jobs:
 
       # Create release with generated notes and upload all binary assets
       - name: Release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
