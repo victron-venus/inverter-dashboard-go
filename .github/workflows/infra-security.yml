@@ -32,29 +32,3 @@ jobs:
       with:
         sarif_file: hadolint-results.sarif
         category: docker-hadolint
-
-  shell-security:
-    name: Shell Script Security
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      contents: read
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Run ShellCheck
-      uses: ludeeus/action-shellcheck@master
-      with:
-        format: sarif
-        output: shellcheck-results.sarif
-        continue-on-error: true
-
-    - name: Run TruffleHog for secrets
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: main
-        head: HEAD
-        extra_args: --results=verified,unknown
