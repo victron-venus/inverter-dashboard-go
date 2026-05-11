@@ -12,7 +12,6 @@ jobs:
   terraform-security:
     name: Terraform Security
     runs-on: ubuntu-latest
-    if: hashFiles('**/*.tf') != ''
     permissions:
       security-events: write
       contents: read
@@ -40,7 +39,6 @@ jobs:
   docker-security:
     name: Dockerfile Security
     runs-on: ubuntu-latest
-    if: hashFiles('**/Dockerfile') != ''
     permissions:
       security-events: write
       contents: read
@@ -65,7 +63,6 @@ jobs:
   shell-security:
     name: Shell Script Security
     runs-on: ubuntu-latest
-    if: hashFiles('**/*.sh') != ''
     permissions:
       security-events: write
       contents: read
