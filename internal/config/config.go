@@ -206,10 +206,21 @@ func loadConfigYAML(cfg *Config) error {
 	}
 
 	// Define a nested struct to match the YAML structure
+	type yamlMQTT struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	}
+	type yamlWeb struct {
+		Host string `yaml:"host"`
+		Port int    `yaml:"port"`
+	}
 	type yamlTop struct {
+		MQTT          *yamlMQTT `yaml:"mqtt"`
+		Web           *yamlWeb  `yaml:"web"`
 		HomeAssistant *struct {
 			URL               string                          `yaml:"url"`
 			Token             string                          `yaml:"token"`
+			DirectControls    *bool                           `yaml:"direct_controls"`
 			PollIntervalSeconds float64                       `yaml:"poll_interval_seconds"`
 			BooleanEntities   map[string]interface{}               `yaml:"boolean_entities"`
 			SwitchEntities map[string]interface{} `yaml:"switch_entities"`
@@ -229,10 +240,35 @@ func loadConfigYAML(cfg *Config) error {
 		return fmt.Errorf("failed to parse %s: %w", yamlFile, err)
 	}
 
+	// Apply MQTT config from YAML if present
+	if top.MQTT != nil {
+		if top.MQTT.Host != "" {
+			cfg.MQTT.Host = top.MQTT.Host
+		}
+		if top.MQTT.Port > 0 {
+			cfg.MQTT.Port = top.MQTT.Port
+		}
+	}
+
+	if top.Web != nil {
+		if top.Web.Host != "" {
+			cfg.Web.Host = top.Web.Host
+		}
+		if top.Web.Port > 0 {
+			cfg.Web.Port = top.Web.Port
+		}
+	}
+
 	if top.HomeAssistant != nil {
+		// Default DirectControls to true (Python behavior), unless explicitly set to false
+		directControls := true
+		if top.HomeAssistant.DirectControls != nil {
+			directControls = *top.HomeAssistant.DirectControls
+		}
 		ha := &HomeAssistantConfig{
 			URL:               top.HomeAssistant.URL,
 			Token:             top.HomeAssistant.Token,
+			DirectControls:    directControls,
 			PollInterval:      top.HomeAssistant.PollIntervalSeconds,
 			BooleanEntities:   convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
 			SwitchEntities:    convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),

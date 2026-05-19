@@ -115,16 +115,24 @@ func sendInitialState(conn *websocket.Conn, mqttClient *mqtt.Client, haClient *h
 		uiConfig["boolean_buttons"] = haClient.GetBooleanButtons()
 	}
 
-	// Merge MQTT state with HA overlay
-	mergedState := mergeStates(state, overlay)
-
-	payload := map[string]interface{}{
-		"state": mergedState,
-		"console": console,
-		"dashboard_version": version.GetCurrent(),
-		"latest_version": getLatestVersion(),
-		"ui_config": uiConfig,
+	// Get HA-managed keys for fallback when disconnected
+	var managedKeys []string
+	if haClient != nil {
+		managedKeys = haClient.GetManagedKeys()
 	}
+
+	// Merge MQTT state with HA overlay
+	mergedState := mergeStates(state, overlay, managedKeys)
+
+	// Flatten merged state into payload (like Python)
+	payload := make(map[string]interface{}, len(mergedState)+5)
+	for k, v := range mergedState {
+		payload[k] = v
+	}
+	payload["console"] = console
+	payload["dashboard_version"] = version.GetCurrent()
+	payload["latest_version"] = getLatestVersion()
+	payload["ui_config"] = uiConfig
 
 	// Limit console to last 20 lines
 	if len(console) > 20 {
@@ -288,38 +296,33 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 		log.Printf("[BROADCAST DEBUG] HA Direct Connected: false - HA values not available")
 	}
 
+	// Get HA-managed keys for fallback when disconnected
+	var managedKeys []string
+	if haClient != nil {
+		managedKeys = haClient.GetManagedKeys()
+	}
+
 	// Merge MQTT state with HA overlay
-	mergedState := mergeStates(state, overlay)
+	mergedState := mergeStates(state, overlay, managedKeys)
 	log.Printf("[BROADCAST DEBUG] Merged state keys: %+v", getKeys(mergedState))
 	log.Printf("[BROADCAST DEBUG] Merged state water_level: %v", mergedState["water_level"])
 	log.Printf("[BROADCAST DEBUG] Merged state car_soc: %v", mergedState["car_soc"])
 	log.Printf("[BROADCAST DEBUG] Merged state ev_charging_kw: %v", mergedState["ev_charging_kw"])
 
-	// Prepare payload
-	payload := map[string]interface{}{
-		"state": mergedState,
-		"console": console,
-		"dashboard_version": version.GetCurrent(),
-		"latest_version": getLatestVersion(),
-		"ui_config": uiConfig,
-		"ha_direct_connected": haDirectConnected,
+	// Flatten merged state into payload (like Python's flat format)
+	payload := make(map[string]interface{}, len(mergedState)+6)
+	for k, v := range mergedState {
+		payload[k] = v
 	}
+	payload["console"] = console
+	payload["dashboard_version"] = version.GetCurrent()
+	payload["latest_version"] = getLatestVersion()
+	payload["ui_config"] = uiConfig
+	payload["ha_direct_connected"] = haDirectConnected
 
 	// Limit console to last 20 lines
 	if len(console) > 20 {
 		payload["console"] = console[len(console)-20:]
-	}
-
-	// Add overlay booleans if HA is configured
-	if overlay.Booleans != nil {
-		payload["booleans"] = overlay.Booleans
-	}
-
-	// Add other overlay fields
-	log.Printf("[BROADCAST DEBUG] Adding AdditionalFields to payload:")
-	for k, v := range overlay.AdditionalFields {
-		log.Printf("[BROADCAST DEBUG]   - %s: %v (type: %T)", k, v, v)
-		payload[k] = v
 	}
 
 	// Log full payload keys
@@ -366,7 +369,7 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 }
 
 // mergeStates merges MQTT state with HA overlay
-func mergeStates(mqttState *state.State, overlay homeassistant.Overlay) map[string]interface{} {
+func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedKeys []string) map[string]interface{} {
 	// Start with MQTT state as map
 	merged := stateToMap(mqttState)
 
@@ -398,11 +401,14 @@ func mergeStates(mqttState *state.State, overlay homeassistant.Overlay) map[stri
 			}
 		}
 	} else {
-		// Reset HA-specific fields when not connected
+		// Reset HA-managed fields to fallback when not connected (matches Python behavior)
 		if booleans, ok := merged["booleans"].(map[string]interface{}); ok {
 			for key := range booleans {
 				booleans[key] = false
 			}
+		}
+		for _, key := range managedKeys {
+			merged[key] = false
 		}
 	}
 

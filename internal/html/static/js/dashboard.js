@@ -9,6 +9,7 @@ createApp({
       booleans: {},
       features: {},
       ui_config: {},
+      limits: {min: -2300, max: 2250},
       daily_stats: {},
       mppt_individual: [],
       tasmota_individual: [],
@@ -85,31 +86,25 @@ createApp({
       ws.onmessage = (e) => {
         lastMessageTime = Date.now();
         const data = JSON.parse(e.data);
-        // Merge state to avoid full replacement and prevent flashing
-        const stateData = data.state || data;
-        Object.assign(state, stateData);
-        if (data.ui_config !== undefined) {
-          state.ui_config = data.ui_config;
-          mqttConnected.value = true;
+        // Full state replacement (like Python's state.value = data)
+        Object.assign(state, data);
+        mqttConnected.value = true;
+
+        const now = Date.now() / 1000;
+        historyData.timestamps.push(now);
+        historyData.grid.push(data.gt || 0);
+        historyData.solar.push(data.solar_total || 0);
+        historyData.battery.push(data.battery_power || 0);
+        historyData.setpoint.push(data.setpoint || 0);
+
+        if (historyData.timestamps.length > 1800) {
+          historyData.timestamps.shift();
+          historyData.grid.shift();
+          historyData.solar.shift();
+          historyData.battery.shift();
+          historyData.setpoint.shift();
         }
-
-          const now = Date.now() / 1000;
-          historyData.timestamps.push(now);
-          historyData.grid.push(stateData.gt || 0);
-          historyData.solar.push(stateData.solar_total || 0);
-          console.log('DEBUG: Pushing battery value:', stateData.battery_power);
-      historyData.battery.push(stateData.battery_power || 0);
-          console.log('DEBUG: Pushing setpoint value:', stateData.setpoint);
-      historyData.setpoint.push(stateData.setpoint || 0);
-
-          if (historyData.timestamps.length > 1800) {
-            historyData.timestamps.shift();
-            historyData.grid.shift();
-            historyData.solar.shift();
-            historyData.battery.shift();
-            historyData.setpoint.shift();
-          }
-          updateChart();
+        updateChart();
       };
     }
 
@@ -154,12 +149,22 @@ createApp({
     }
 
     function formatDuration(s) {
-      if (!s || s <= 0) return '0s';
+      if (!s || s <= 0) return '0:00';
       const h = Math.floor(s / 3600);
       const m = Math.floor((s % 3600) / 60);
-      if (h > 0) return h + 'h ' + m + 'm';
-      return m + 'm';
+      const sec = Math.floor(s % 60);
+      if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+      return m + ':' + String(sec).padStart(2, '0');
     }
+
+    function formatUptime(s) {
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s/60) + 'm';
+      const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+      return h + 'h ' + m + 'm';
+    }
+
+    function formatKey(k) { return k.replace(/_/g, ' ').toUpperCase(); }
 
     function formatSemverLabel(ver) {
       if (!ver || ver === '?' || ver === '') return '?';
@@ -225,7 +230,18 @@ function getHomeButtonState(index) {
 
     const headerToggles = computed(() => {
       const uiConfig = state.ui_config || {};
-      return (uiConfig.boolean_buttons || []).slice(0, MAX_HEADER_SLOTS);
+      return (uiConfig.boolean_buttons && uiConfig.boolean_buttons.length > 0
+        ? uiConfig.boolean_buttons
+        : [
+            {id: 'only_charging', label: 'ONLY CHARGING', entity: 'input_boolean.only_charging', state_key: 'only_charging'},
+            {id: 'no_feed', label: 'NO FEED', entity: 'input_boolean.no_feed', state_key: 'no_feed'},
+            {id: 'house_support', label: 'HOUSE SUPPORT', entity: 'input_boolean.house_support', state_key: 'house_support'},
+            {id: 'charge_battery', label: 'CHARGE BATTERY', entity: 'input_boolean.charge_battery', state_key: 'charge_battery'},
+            {id: 'do_not_supply_charger', label: 'DO NOT SUPPLY EV', entity: 'input_boolean.do_not_supply_charger', state_key: 'do_not_supply_charger'},
+            {id: 'set_limit_to_ev_charger', label: 'LIMIT TO EV', entity: 'input_boolean.set_limit_to_ev_charger', state_key: 'set_limit_to_ev_charger'},
+            {id: 'minimize_charging', label: 'MINIMIZE CHARGING', entity: 'input_boolean.minimize_charging', state_key: 'minimize_charging'}
+          ]
+      ).slice(0, MAX_HEADER_SLOTS);
     });
 
     function getHeaderToggle(index) {
@@ -308,7 +324,9 @@ function getHomeButtonState(index) {
     });
 
     const updateBtnText = computed(() => {
-      return hasUpdate.value ? 'Update' : 'Check';
+      if (updating.value) return 'UPDATING...';
+      if (hasUpdate.value) return 'v' + state.latest_version;
+      return 'v' + (state.dashboard_version || '?');
     });
 
     const updateTitle = computed(() => {
@@ -367,7 +385,7 @@ function getHomeButtonState(index) {
       state, wsConnected, mqttConnected, chartEl, isDark, updating,
       essClass, essText, mpptTotal, tasmotaTotal, evCharging, evPower, sortedLoads, dailyStatsHtml,
       batteries, solarSources, home_buttons, headerToggles,
-      hasUpdate, updateBtnText, updateTitle, formatPower, formatDuration, formatSemverLabel, toggleTheme, checkOrUpdate, send, getButtonState, getHomeButton, getHomeButtonState, getHeaderToggle, MAX_HOME_SLOTS, MAX_HEADER_SLOTS
+      hasUpdate, updateBtnText, updateTitle, formatPower, formatDuration, formatSemverLabel, formatUptime, formatKey, toggleTheme, checkOrUpdate, send, getButtonState, getHomeButton, getHomeButtonState, getHeaderToggle, MAX_HOME_SLOTS, MAX_HEADER_SLOTS
     };
   }
 }).mount('#app');

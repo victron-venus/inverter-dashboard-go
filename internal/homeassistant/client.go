@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-"sort"
+	"sort"
 	"strings"
 	"net/url"
 	"sync"
@@ -182,10 +182,7 @@ func (c *Client) validateConfig() bool {
 }
 
 func (c *Client) IsDirectMode() bool {
-	log.Printf("[HA CLIENT DEBUG] IsDirectMode() called: configured=%v, directMode=%v, returning=%v (configured decides)",
-		c.configured, c.directMode, c.configured)
-	// If HA is configured, always use direct mode, ignoring the config flag
-	return c.configured
+	return c.configured && c.directMode
 }
 
 func (c *Client) GetUIConfig() map[string]interface{} {
@@ -620,27 +617,59 @@ func (c *Client) ToggleEntity(entityID string) error {
 	}
 
 	domain := strings.Split(entityID, ".")[0]
-	if domain != "input_boolean" && domain != "switch" && domain != "light" {
+	var service string
+	switch domain {
+	case "input_boolean":
+		service = "input_boolean/toggle"
+	case "switch":
+		service = "switch/toggle"
+	case "light":
+		service = "light/toggle"
+	default:
 		return fmt.Errorf("unsupported domain for toggle: %s", domain)
 	}
 
-	// Get current state
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	return c.callServiceDomain(service, entityID)
+}
+
+func (c *Client) callServiceDomain(service, entityID string) error {
+	if c.httpClient == nil {
+		return fmt.Errorf("http client not initialized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	currentState, err := c.getEntityState(ctx, entityID)
+	body := map[string]interface{}{
+		"entity_id": entityID,
+	}
+
+	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("failed to fetch current state: %w", err)
+		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	// Determine if entity is currently on
-	isOn := isOn(currentState)
-
-	// Call turn_on if off, turn_off if on
-	if isOn {
-		return c.TurnEntity(entityID, false)
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		fmt.Sprintf("%s/api/services/%s", c.httpURL, service),
+		bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
 	}
-	return c.TurnEntity(entityID, true)
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("service call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("service call returned HTTP %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 func (c *Client) TurnEntity(entityID string, turnOn bool) error {
@@ -788,4 +817,37 @@ func (c *Client) GetBooleanButtons() []Button {
 	})
 
 	return buttons
+}
+
+// GetManagedKeys returns all HA-managed state keys for fallback reset when HA is disconnected
+func (c *Client) GetManagedKeys() []string {
+	keys := make([]string, 0)
+	for k := range c.booleanEntities {
+		keys = append(keys, k)
+	}
+	for _, btn := range c.switchEntities {
+		keys = append(keys, btn.StateKey)
+	}
+	if c.waterValve != "" {
+		keys = append(keys, "water_valve")
+	}
+	if c.waterPump != "" {
+		keys = append(keys, "pump_switch")
+	}
+	if c.waterLevel != "" {
+		keys = append(keys, "water_level")
+	}
+	if c.carSOC != "" {
+		keys = append(keys, "car_soc")
+	}
+	if c.evChargingKW != "" {
+		keys = append(keys, "ev_charging_kw")
+	}
+	if c.evPower != "" {
+		keys = append(keys, "ev_power")
+	}
+	for k := range c.applianceEntities {
+		keys = append(keys, k)
+	}
+	return keys
 }

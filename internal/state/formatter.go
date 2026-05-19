@@ -24,34 +24,10 @@ func FormatHeaderToggles() []map[string]string {
 		{"id": "no_feed", "label": "NO FEED", "entity": "input_boolean.no_feed"},
 		{"id": "house_support", "label": "HOUSE SUPPORT", "entity": "input_boolean.house_support"},
 		{"id": "charge_battery", "label": "CHARGE BATTERY", "entity": "input_boolean.charge_battery"},
-		{"id": "do_not_supply_ev", "label": "DO NOT SUPPLY EV", "entity": "input_boolean.do_not_supply_ev"},
-		{"id": "limit_to_ev", "label": "LIMIT TO EV", "entity": "input_boolean.limit_to_ev"},
+		{"id": "do_not_supply_charger", "label": "DO NOT SUPPLY EV", "entity": "input_boolean.do_not_supply_charger"},
+		{"id": "set_limit_to_ev_charger", "label": "LIMIT TO EV", "entity": "input_boolean.set_limit_to_ev_charger"},
 		{"id": "minimize_charging", "label": "MINIMIZE CHARGING", "entity": "input_boolean.minimize_charging"},
 	}
-}
-
-// FormatLoads returns sorted loads from state
-func (s *State) FormatLoads() [][2]interface{} {
-	var loads [][2]interface{}
-	// Extract loads from state if available
-	// This is a placeholder - actual implementation would parse state.loads
-	return loads
-}
-
-// FormatSolarSources returns individual solar sources
-func (s *State) FormatSolarSources() []SolarSource {
-	var sources []SolarSource
-	// Parse mppt_individual or other solar fields
-	// Placeholder implementation
-	return sources
-}
-
-// FormatBatteries returns individual battery data
-func (s *State) FormatBatteries() []Battery {
-	var bats []Battery
-	// Parse individual battery data from state
-	// Placeholder implementation
-	return bats
 }
 
 // FormatDailyStats computes daily stats with money
