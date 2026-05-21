@@ -151,6 +151,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 			HADirectConnected: true,
 		},
 	}
+	client.waterValve = cfg.WaterValveEntity
 	client.waterLevel = cfg.WaterLevelEntity
 	client.waterPump = cfg.PumpSwitchEntity
 	client.carSOC = cfg.CarSOCEntity
