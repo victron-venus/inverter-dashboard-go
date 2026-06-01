@@ -219,7 +219,7 @@
         <div class="card-body py-1">
           <div class="status-bar" style="font-size: 0.75rem; color: var(--text-dim);">
             <span v-if="state.ha_connected">HA: Connected <span v-if="state.ha_direct_connected">· direct</span></span>
-            <span v-if="state.uptime"> | Uptime: {{ formatDuration(state.uptime) }}</span>
+            <span v-if="state.uptime"> | Uptime: {{ formatUptime(state.uptime) }}</span>
             <span> | MQTT: {{ mqttConnected ? 'OK' : 'Disconnected' }}</span>
             <span v-if="state.version || state.dashboard_version"> | Dashboard <span v-if="state.dashboard_version">{{ state.dashboard_version }}</span><span v-if="state.version"> · Control {{ state.version }}</span></span>
           </div>

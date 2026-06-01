@@ -25,14 +25,6 @@ var (
 	Version string = "dev"
 )
 
-func init() {
-	// Override version package's version with our build-time version
-	if Version != "" && Version != "dev" {
-		// Note: version package uses its own internal variable
-		// This is just for reference
-	}
-}
-
 func main() {
 	// Command line flags - match Python exactly
 	var (
@@ -226,6 +218,7 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client) *gin.
 	router.GET("/", indexHandler())
 	router.GET("/ws", websocketHandler(mqttClient, haClient))
 	router.GET("/api/state", apiStateHandler(mqttClient))
+	router.GET("/health", healthHandler())
 	router.POST("/api/check-update", apiCheckUpdateHandler())
 	router.POST("/api/update", apiUpdateHandler())
 

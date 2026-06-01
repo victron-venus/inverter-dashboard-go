@@ -121,8 +121,8 @@ type State struct {
 	NoFeed           bool `json:"no_feed,omitempty"`
 	HouseSupport     bool `json:"house_support,omitempty"`
 	ChargeBattery    bool `json:"charge_battery,omitempty"`
-	DoNotSupplyEV    bool `json:"do_not_supply_ev,omitempty"`
-	LimitToEV        bool `json:"limit_to_ev,omitempty"`
+	DoNotSupplyCharger    bool `json:"do_not_supply_charger,omitempty"`
+	SetLimitToEVCharger   bool `json:"set_limit_to_ev_charger,omitempty"`
 	MinimizeCharging bool `json:"minimize_charging,omitempty"`
 	DryRun           bool `json:"dry_run,omitempty"`
 }

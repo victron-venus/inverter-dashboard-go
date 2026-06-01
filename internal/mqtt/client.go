@@ -344,13 +344,13 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 			if val, ok := v.(bool); ok {
 				st.ChargeBattery = val
 			}
-		case "do_not_supply_ev":
+		case "do_not_supply_charger":
 			if val, ok := v.(bool); ok {
-				st.DoNotSupplyEV = val
+				st.DoNotSupplyCharger = val
 			}
-		case "limit_to_ev":
+		case "set_limit_to_ev_charger":
 			if val, ok := v.(bool); ok {
-				st.LimitToEV = val
+				st.SetLimitToEVCharger = val
 			}
 		case "minimize_charging":
 			if val, ok := v.(bool); ok {
