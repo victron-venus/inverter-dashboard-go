@@ -32,7 +32,7 @@ The original **[inverter-dashboard](https://github.com/victron-venus/inverter-da
 
 - Victron Cerbo GX with MQTT enabled (or standalone MQTT broker)
 - Home Assistant (optional, for enhanced features)
-- Go 1.25+ (for building from source)
+- Go 1.25.11+ (for building from source)
 
 ### Installation
 
@@ -384,3 +384,4 @@ For issues and feature requests, please use the GitHub issue tracker.
 ---
 
 **Note:** This is a community project and is not affiliated with Victron Energy.
+y.
