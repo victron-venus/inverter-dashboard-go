@@ -8,7 +8,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/network/members)
 [![GitHub last commit](https://img.shields.io/github/last-commit/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/commits/main)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
-[![Go 1.24+](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://go.dev/)
+[![Go 1.25+](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://go.dev/)
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
 
@@ -32,7 +32,7 @@ The original **[inverter-dashboard](https://github.com/victron-venus/inverter-da
 
 - Victron Cerbo GX with MQTT enabled (or standalone MQTT broker)
 - Home Assistant (optional, for enhanced features)
-- Go 1.24+ (for building from source)
+- Go 1.25+ (for building from source)
 
 ### Installation
 
