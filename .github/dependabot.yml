@@ -30,3 +30,13 @@ updates:
       prefix: "ci"
     labels:
       - "ci"
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily

@@ -16,6 +16,9 @@ on:
   schedule:
     - cron: '30 1 * * 0'  # Run weekly on Sundays at 1:30 AM UTC
 
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze Go
@@ -26,6 +29,11 @@ jobs:
       security-events: write
 
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      with:
+        egress-policy: audit
+
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 

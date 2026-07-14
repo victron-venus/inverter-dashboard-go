@@ -1,5 +1,5 @@
 # Multi-stage build for Go binary - matches Python functionality
-FROM golang:1.26.5-alpine AS builder
+FROM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o inverter-dashboard .
 
 # Runtime stage - match Python slim image
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
 
 # Install ca-certificates for HTTPS calls
 RUN apt-get update && apt-get install -y \
