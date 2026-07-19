@@ -95,9 +95,21 @@ func main() {
 		log.Printf("[MAIN DEBUG] HomeAssistant config NOT found (nil or empty URL)")
 	}
 
-	// Start MQTT connection
-	if err := startMQTT(mqttClient); err != nil {
-		log.Fatalf("Failed to start MQTT: %v", err)
+	// Start MQTT connection (retry on failure instead of fatal)
+	var mqttConnected bool
+	for attempt := 1; attempt <= 10; attempt++ {
+		if err := startMQTT(mqttClient); err != nil {
+			log.Printf("MQTT connection attempt %d failed: %v", attempt, err)
+			if attempt < 10 {
+				time.Sleep(5 * time.Second)
+			}
+		} else {
+			mqttConnected = true
+			break
+		}
+	}
+	if !mqttConnected {
+		log.Fatalf("MQTT connection failed after 10 attempts")
 	}
 	defer mqttClient.Disconnect()
 
@@ -218,7 +230,7 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client) *gin.
 	router.GET("/", indexHandler())
 	router.GET("/ws", websocketHandler(mqttClient, haClient))
 	router.GET("/api/state", apiStateHandler(mqttClient))
-	router.GET("/health", healthHandler())
+	router.GET("/health", healthHandler(mqttClient))
 	router.POST("/api/check-update", apiCheckUpdateHandler())
 	router.POST("/api/update", apiUpdateHandler())
 
@@ -371,19 +383,32 @@ func loggingMiddleware() gin.HandlerFunc {
 
 // Health check
 type healthResponse struct {
-	Status    string    `json:"status"`
-	Version   string    `json:"version"`
-	Timestamp time.Time `json:"timestamp"`
-	Clients   int       `json:"websocket_clients"`
+	Status        string    `json:"status"`
+	Version       string    `json:"version"`
+	Timestamp     time.Time `json:"timestamp"`
+	Clients       int       `json:"websocket_clients"`
+	MQTTConnected bool      `json:"mqtt_connected"`
+	LastStateAge  string    `json:"last_state_age,omitempty"`
 }
 
-func healthHandler() gin.HandlerFunc {
+func healthHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		connected := mqttClient.IsConnected()
+		lastState := mqttClient.LastStateTime()
+		age := time.Since(lastState)
+
+		status := "ok"
+		if !connected || (!lastState.IsZero() && age > 30*time.Second) || lastState.IsZero() {
+			status = "degraded"
+		}
+
 		c.JSON(200, healthResponse{
-			Status:    "ok",
-			Version:   version.GetCurrent(),
-			Timestamp: time.Now().UTC(),
-			Clients:   websocket.GetConnectedCount(),
+			Status:        status,
+			Version:       version.GetCurrent(),
+			Timestamp:     time.Now().UTC(),
+			Clients:       websocket.GetConnectedCount(),
+			MQTTConnected: connected,
+			LastStateAge:  age.Truncate(time.Second).String(),
 		})
 	}
 }

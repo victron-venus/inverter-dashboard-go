@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
@@ -26,6 +27,8 @@ type Client struct {
 	consoleLines []string
 	consoleMu sync.RWMutex
 	maxConsoleLines int
+	lastStateTime time.Time
+	lastStateMu   sync.RWMutex
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -58,6 +61,14 @@ func NewClient(broker string, port int) *Client {
 
 func (c *Client) GetIP() string { return c.broker }
 func (c *Client) GetPort() int { return c.port }
+func (c *Client) IsConnected() bool {
+	return c.client != nil && c.client.IsConnected()
+}
+func (c *Client) LastStateTime() time.Time {
+	c.lastStateMu.RLock()
+	defer c.lastStateMu.RUnlock()
+	return c.lastStateTime
+}
 func (c *Client) GetState() *state.State {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
@@ -150,6 +161,10 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 		log.Printf("Failed to unmarshal state message: %v", err)
 		return
 	}
+
+	c.lastStateMu.Lock()
+	c.lastStateTime = time.Now()
+	c.lastStateMu.Unlock()
 
 	c.stateMu.Lock()
 	st := c.state

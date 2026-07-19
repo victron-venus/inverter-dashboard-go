@@ -205,10 +205,3 @@ func UpdateFiles(rawURL string) UpdateResult {
 	log.Printf("Updated to v%s", result.Version)
 	return result
 }
-
-// ScheduleRestart schedules an application restart
-func ScheduleRestart(delay time.Duration) {
-	log.Printf("Scheduling restart in %v", delay)
-	time.Sleep(delay)
-	os.Exit(0)
-}
