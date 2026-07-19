@@ -14,6 +14,30 @@ Remote web dashboard for Victron inverter control, rewritten in Go for better pe
 
 The original **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** stack is Python/FastAPI (`alvit/inverter-dashboard` on Docker Hub). This repository ships the same front-end assets as a **single binary** and publishes **`alvit/inverter-dashboard-go`**.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Venus["Venus OS (Cerbo GX)"]
+        INV["inverter-control"]
+        MQTT["MQTT Broker"]
+    end
+
+    subgraph Dashboard["Dashboard (Go Binary)"]
+        MQTT_SUB["MQTT Client"]
+        WS["WebSocket Server"]
+        WS --> UI["HTML/CSS/JS\nAssets"]
+    end
+
+    INV -->|"inverter/state"| MQTT
+    MQTT -->|"subscribe"| MQTT_SUB
+    MQTT_SUB --> WS
+    WS --> BROWSER["Browser"]
+
+    style MQTT_SUB fill:#00ADD8,color:#fff
+    style WS fill:#00ADD8,color:#fff
+```
+
 ## Features
 
 - **Real-time monitoring** of solar, grid, battery, and consumption
@@ -346,6 +370,10 @@ curl -H "Authorization: Bearer <TOKEN>" \
 3. Commit your changes: `git commit -am 'Add new feature'`
 4. Push to the branch: `git push origin feature-name`
 5. Create a Pull Request
+
+## Documentation
+
+- [System Architecture](./.github/docs/system-architecture.md) - Data flow diagrams, runbook
 
 ## Related Projects
 
