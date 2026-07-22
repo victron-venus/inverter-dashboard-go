@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 // MessageHandler is a function type for handling state updates
@@ -17,18 +17,18 @@ type MessageHandler func()
 
 // Client wraps the MQTT client and provides thread-safe state management
 type Client struct {
-	client mqtt.Client
-	broker string
-	port int
-	state *state.State
-	handler MessageHandler
-	handlerMu sync.RWMutex
-	stateMu sync.RWMutex
-	consoleLines []string
-	consoleMu sync.RWMutex
+	client          mqtt.Client
+	broker          string
+	port            int
+	state           *state.State
+	handler         MessageHandler
+	handlerMu       sync.RWMutex
+	stateMu         sync.RWMutex
+	consoleLines    []string
+	consoleMu       sync.RWMutex
 	maxConsoleLines int
-	lastStateTime time.Time
-	lastStateMu   sync.RWMutex
+	lastStateTime   time.Time
+	lastStateMu     sync.RWMutex
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -60,7 +60,7 @@ func NewClient(broker string, port int) *Client {
 }
 
 func (c *Client) GetIP() string { return c.broker }
-func (c *Client) GetPort() int { return c.port }
+func (c *Client) GetPort() int  { return c.port }
 func (c *Client) IsConnected() bool {
 	return c.client != nil && c.client.IsConnected()
 }
@@ -171,8 +171,8 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 
 	// Set version info
 	st.DashboardVersion = version.GetCurrent()
-	if version, ok := data["version"].(string); ok {
-		st.Version = version
+	if ver, ok := data["version"].(string); ok {
+		st.Version = ver
 	}
 
 	// Parse all fields from raw map
@@ -293,11 +293,11 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 			}
 		case "mppt_individual":
 			if floatArray, ok := v.([]interface{}); ok {
-				st.MPPTIndividual = c.parseFloatArray(floatArray)
+				st.MPPTIndividual = parseFloatSlice(floatArray)
 			}
 		case "tasmota_individual":
 			if floatArray, ok := v.([]interface{}); ok {
-				st.TasmotaIndividual = c.parseFloatArray(floatArray)
+				st.TasmotaIndividual = parseFloatSlice(floatArray)
 			}
 		case "loads":
 			if loadsMap, ok := v.(map[string]interface{}); ok {
@@ -549,10 +549,6 @@ func parseFloatSlice(arr []interface{}) []float64 {
 		}
 	}
 	return result
-}
-
-func (c *Client) parseFloatArray(arr []interface{}) []float64 {
-	return parseFloatSlice(arr)
 }
 
 func (c *Client) parseLoads(loadMap map[string]interface{}) map[string]float64 {

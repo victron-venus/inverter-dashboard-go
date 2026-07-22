@@ -1,20 +1,20 @@
 package homeassistant
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"strconv"
-	"bytes"
 	"fmt"
 	"log"
 	"net/http"
-	"sort"
-	"strings"
 	"net/url"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
-	"time"
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
+	"time"
 )
 
 // EntityState represents a single entity's state from HA
@@ -67,49 +67,50 @@ func convertConfigBooleanEntities(entities []config.BooleanEntityConfig) (map[st
 
 	return entityMap, buttons
 }
+
 type EntityState struct {
-	EntityID string `json:"entity_id"`
-	State string `json:"state"`
+	EntityID   string                 `json:"entity_id"`
+	State      string                 `json:"state"`
 	Attributes map[string]interface{} `json:"attributes"`
 }
 
 // Overlay represents the HA state merged with MQTT state
 type Overlay struct {
-	Booleans map[string]bool `json:"booleans"`
-	HADirectConnected bool `json:"ha_direct_connected"`
-	AdditionalFields map[string]interface{} `json:"-"`
+	Booleans          map[string]bool        `json:"booleans"`
+	HADirectConnected bool                   `json:"ha_direct_connected"`
+	AdditionalFields  map[string]interface{} `json:"-"`
 }
 
 // Button defines a UI button for home controls
 type Button struct {
-	ID string `json:"id"`
-	Label string `json:"label"`
-	Entity string `json:"entity"`
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Entity   string `json:"entity"`
 	StateKey string `json:"state_key"`
-Order    int    `json:"order"`
+	Order    int    `json:"order"`
 }
 
 // Client handles Home Assistant REST API interactions
 type Client struct {
-	httpURL string
-	token string
-	directMode bool
-	pollInterval time.Duration
-	booleanEntities map[string]string
-	booleanButtons []Button
-	switchEntities []Button
-	waterValve string
-	waterPump string
-	waterLevel string
-	carSOC string
-	evChargingKW string
-	evPower string
+	httpURL           string
+	token             string
+	directMode        bool
+	pollInterval      time.Duration
+	booleanEntities   map[string]string
+	booleanButtons    []Button
+	switchEntities    []Button
+	waterValve        string
+	waterPump         string
+	waterLevel        string
+	carSOC            string
+	evChargingKW      string
+	evPower           string
 	applianceEntities map[string]string
-	vueSensors map[string]string
+	vueSensors        map[string]string
 
 	// Runtime state
-	overlay Overlay
-	overlayMu sync.RWMutex
+	overlay    Overlay
+	overlayMu  sync.RWMutex
 	configured bool
 
 	httpClient *http.Client
@@ -122,7 +123,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 			configured: false,
 			overlayMu:  sync.RWMutex{},
 			overlay: Overlay{
-				Booleans:         make(map[string]bool),
+				Booleans:          make(map[string]bool),
 				HADirectConnected: true,
 			},
 		}
@@ -135,19 +136,19 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 	booleanEntityMap, booleanButtons := convertConfigBooleanEntities(cfg.BooleanEntities)
 
 	client := &Client{
-		httpURL:         cfg.URL,
-		token:           cfg.Token,
-		directMode:      cfg.DirectControls,
-		pollInterval:    time.Duration(cfg.PollInterval * float64(time.Second)),
-		booleanEntities: booleanEntityMap,
-		booleanButtons:  booleanButtons,
+		httpURL:           cfg.URL,
+		token:             cfg.Token,
+		directMode:        cfg.DirectControls,
+		pollInterval:      time.Duration(cfg.PollInterval * float64(time.Second)),
+		booleanEntities:   booleanEntityMap,
+		booleanButtons:    booleanButtons,
 		applianceEntities: cfg.ApplianceEntities,
-		vueSensors:       cfg.VueSensors,
-		switchEntities:   switchEntities,
-		configured:       false,
-		overlayMu:        sync.RWMutex{},
+		vueSensors:        cfg.VueSensors,
+		switchEntities:    switchEntities,
+		configured:        false,
+		overlayMu:         sync.RWMutex{},
 		overlay: Overlay{
-			Booleans:         make(map[string]bool),
+			Booleans:          make(map[string]bool),
 			HADirectConnected: true,
 		},
 	}
@@ -229,15 +230,6 @@ func (c *Client) IsToggleAllowed(entityID string) bool {
 // parseSwitchEntities handles Python's three entity formats:
 // - String: "entity_id"
 // - Tuple/List: ["entity_id", "Label"]
-// - Dict: {"entity": "entity_id", "label": "Label"}
-// parseSwitchEntities handles Python's three entity formats:
-// - String: "entity_id"
-// - Tuple/List: ["entity_id", "Label"]
-// - Dict: {"entity": "entity_id", "label": "label"}
-// Plus direct YAML format: []string{"entity_id", "Label"}
-// parseSwitchEntities handles Python's three entity formats:
-// - String: "entity_id"
-// - Tuple/List: ["entity_id", "Label"]
 // - Dict: {"entity": "entity_id", "label": "label"}
 // Plus direct YAML format: []string{"entity_id", "Label"}
 func parseSwitchEntities(entities map[string]interface{}) map[string]Button {
@@ -245,7 +237,7 @@ func parseSwitchEntities(entities map[string]interface{}) map[string]Button {
 
 	for key, value := range entities {
 		btn := Button{
-			ID: strings.ReplaceAll(key, "_", "-"),
+			ID:       strings.ReplaceAll(key, "_", "-"),
 			StateKey: key,
 		}
 
@@ -296,11 +288,11 @@ func parseSwitchEntities(entities map[string]interface{}) map[string]Button {
 			} else {
 				btn.Label = generateDefaultLabel(key)
 			}
-if order, ok := v["order"].(int); ok {
-		btn.Order = order
-	} else if order, ok := v["order"].(float64); ok {
-		btn.Order = int(order)
-	}
+			if order, ok := v["order"].(int); ok {
+				btn.Order = order
+			} else if order, ok := v["order"].(float64); ok {
+				btn.Order = int(order)
+			}
 
 		default:
 			continue // Skip invalid type
@@ -551,37 +543,6 @@ func parseStateToSeconds(raw string) int {
 	return 0
 }
 
-func (c *Client) mergeSwitchState(data Overlay) Overlay {
-	merged := data
-	merged.HADirectConnected = c.overlay.HADirectConnected
-
-	if c.overlay.HADirectConnected {
-		if merged.Booleans == nil {
-			merged.Booleans = make(map[string]bool)
-		}
-		for k, v := range c.overlay.Booleans {
-			merged.Booleans[k] = v
-		}
-	}
-
-	updatedSwitches := make(map[string]bool)
-	for _, btn := range c.switchEntities {
-		if val, ok := c.overlay.AdditionalFields[btn.StateKey]; ok {
-			updatedSwitches[btn.StateKey] = val.(bool)
-		}
-	}
-
-	for k, v := range updatedSwitches {
-		merged.AdditionalFields[k] = v
-	}
-
-	return merged
-}
-
-func getStateForDomain(domain string) bool {
-	return false
-}
-
 // getEntityState fetches the current state of a single entity
 func (c *Client) getEntityState(ctx context.Context, entityID string) (string, error) {
 	if c.httpClient == nil {
@@ -748,60 +709,6 @@ func (c *Client) GetPollInterval() time.Duration {
 	return c.pollInterval
 }
 
-// Parse boolean entities similarly to switch entities for header toggles
-func parseBooleanEntities(entities map[string]interface{}) (map[string]string, map[string]Button) {
-	entityMap := make(map[string]string)
-	buttonMap := make(map[string]Button)
-
-	for key, value := range entities {
-		btn := Button{
-			ID:       strings.ReplaceAll(key, "_", "-"),
-			StateKey: key,
-		}
-
-		switch v := value.(type) {
-		case string:
-			btn.Entity = v
-			btn.Label = generateDefaultLabel(key)
-			entityMap[key] = v
-		case []interface{}:
-			if len(v) > 0 {
-				if entityID, ok := v[0].(string); ok {
-					btn.Entity = entityID
-					entityMap[key] = entityID
-				}
-				if len(v) > 1 {
-					if label, ok := v[1].(string); ok && label != "" {
-						btn.Label = label
-					} else {
-						btn.Label = generateDefaultLabel(key)
-					}
-				}
-			}
-		case map[string]interface{}:
-			if entityID, ok := v["entity"].(string); ok {
-				btn.Entity = entityID
-				entityMap[key] = entityID
-			}
-			if label, ok := v["label"].(string); ok && label != "" {
-				btn.Label = label
-			} else if label, ok := v["short"].(string); ok && label != "" {
-				btn.Label = label
-			} else if label, ok := v["name"].(string); ok && label != "" {
-				btn.Label = label
-			} else {
-				btn.Label = generateDefaultLabel(key)
-			}
-		default:
-			continue
-		}
-
-		buttonMap[key] = btn
-	}
-
-	return entityMap, buttonMap
-}
-
 // GetBooleanButtons returns parsed boolean entity buttons for header toggles
 func (c *Client) GetBooleanButtons() []Button {
 	if !c.configured || len(c.booleanButtons) == 0 {
@@ -812,9 +719,9 @@ func (c *Client) GetBooleanButtons() []Button {
 	for _, btn := range c.booleanButtons {
 		buttons = append(buttons, btn)
 	}
-// Sort buttons by order to prevent shuffle
+	// Sort buttons by order to prevent shuffle
 	sort.Slice(buttons, func(i, j int) bool {
-			return buttons[i].Order < buttons[j].Order
+		return buttons[i].Order < buttons[j].Order
 	})
 
 	return buttons

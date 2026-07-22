@@ -2,13 +2,13 @@ package state
 
 // DailyStats represents daily statistics with money calculations
 type DailyStats struct {
-	SolarKWh            float64   `json:"solar_kwh"`
-	SolarMoney          float64   `json:"solar_money"`
-	GridKWh             float64   `json:"grid_kwh"`
-	GridMoney           float64   `json:"grid_money"`
-	BattInKWh           float64   `json:"batt_in_kwh"`
-	BattOutKWh          float64   `json:"batt_out_kwh"`
-	BattNetKWh          float64   `json:"batt_net_kwh"`
+	SolarKWh   float64 `json:"solar_kwh"`
+	SolarMoney float64 `json:"solar_money"`
+	GridKWh    float64 `json:"grid_kwh"`
+	GridMoney  float64 `json:"grid_money"`
+	BattInKWh  float64 `json:"batt_in_kwh"`
+	BattOutKWh float64 `json:"batt_out_kwh"`
+	BattNetKWh float64 `json:"batt_net_kwh"`
 	// Extra fields from reference
 	ProducedToday       float64   `json:"produced_today,omitempty"`
 	ProducedDollars     float64   `json:"produced_dollars,omitempty"`
@@ -59,36 +59,36 @@ type Charger struct {
 // State represents complete dashboard state
 type State struct {
 	// Using interface for booleans to match reference
-	Booleans map[string]interface{} `json:"booleans"`
-	Features map[string]interface{} `json:"features"`
+	Booleans   map[string]interface{} `json:"booleans"`
+	Features   map[string]interface{} `json:"features"`
 	DailyStats DailyStats             `json:"daily_stats"`
 	ESSMode    ESSMode                `json:"ess_mode"`
 
 	// Core metrics
-	SolarTotal         float64   `json:"solar_total,omitempty"`
-	MpptTotal          float64   `json:"mppt_total,omitempty"`
-	PVTotal            float64   `json:"pv_total,omitempty"`
-	GT                 float64   `json:"gt,omitempty"`
-	G1                 float64   `json:"g1,omitempty"`
-	G2                 float64   `json:"g2,omitempty"`
-	TT                 float64   `json:"tt,omitempty"`
-	T1                 float64   `json:"t1,omitempty"`
-	T2                 float64   `json:"t2,omitempty"`
-	BC                 float64   `json:"bc,omitempty"`
-	BV                 float64   `json:"bv,omitempty"`
-	BP                 float64   `json:"bp,omitempty"`
-	Setpoint           float64   `json:"setpoint,omitempty"`
-	BatteryVoltage     float64   `json:"battery_voltage,omitempty"`
-	BatteryCurrent     float64   `json:"battery_current,omitempty"`
-	BatteryPower       float64   `json:"battery_power,omitempty"`
-	BatterySOC         float64   `json:"battery_soc,omitempty"`
-	InverterState      string    `json:"inverter_state,omitempty"`
-	Uptime             float64   `json:"uptime,omitempty"`
-	HAConnected        bool      `json:"ha_connected,omitempty"`
-	HADirectConnected  bool      `json:"ha_direct_connected,omitempty"`
-	Version            string    `json:"version,omitempty"`
-	DashboardVersion   string    `json:"dashboard_version,omitempty"`
-	Console            []string  `json:"console,omitempty"`
+	SolarTotal        float64  `json:"solar_total,omitempty"`
+	MpptTotal         float64  `json:"mppt_total,omitempty"`
+	PVTotal           float64  `json:"pv_total,omitempty"`
+	GT                float64  `json:"gt,omitempty"`
+	G1                float64  `json:"g1,omitempty"`
+	G2                float64  `json:"g2,omitempty"`
+	TT                float64  `json:"tt,omitempty"`
+	T1                float64  `json:"t1,omitempty"`
+	T2                float64  `json:"t2,omitempty"`
+	BC                float64  `json:"bc,omitempty"`
+	BV                float64  `json:"bv,omitempty"`
+	BP                float64  `json:"bp,omitempty"`
+	Setpoint          float64  `json:"setpoint,omitempty"`
+	BatteryVoltage    float64  `json:"battery_voltage,omitempty"`
+	BatteryCurrent    float64  `json:"battery_current,omitempty"`
+	BatteryPower      float64  `json:"battery_power,omitempty"`
+	BatterySOC        float64  `json:"battery_soc,omitempty"`
+	InverterState     string   `json:"inverter_state,omitempty"`
+	Uptime            float64  `json:"uptime,omitempty"`
+	HAConnected       bool     `json:"ha_connected,omitempty"`
+	HADirectConnected bool     `json:"ha_direct_connected,omitempty"`
+	Version           string   `json:"version,omitempty"`
+	DashboardVersion  string   `json:"dashboard_version,omitempty"`
+	Console           []string `json:"console,omitempty"`
 
 	// Arrays for detailed data
 	Batteries         []Battery     `json:"batteries,omitempty"`
@@ -103,8 +103,8 @@ type State struct {
 	// EV data - always shown
 
 	// Water data - always shown
-	WaterValve  bool    `json:"water_valve,omitempty"`
-	PumpSwitch  bool    `json:"pump_switch,omitempty"`
+	WaterValve bool `json:"water_valve,omitempty"`
+	PumpSwitch bool `json:"pump_switch,omitempty"`
 
 	// Appliance data - shown when running
 	DishwasherRunning  bool    `json:"dishwasher_running,omitempty"`
@@ -117,12 +117,12 @@ type State struct {
 	DryerPower         float64 `json:"dryer_power,omitempty"`
 
 	// Charger booleans per reference
-	OnlyCharging     bool `json:"only_charging,omitempty"`
-	NoFeed           bool `json:"no_feed,omitempty"`
-	HouseSupport     bool `json:"house_support,omitempty"`
-	ChargeBattery    bool `json:"charge_battery,omitempty"`
-	DoNotSupplyCharger    bool `json:"do_not_supply_charger,omitempty"`
-	SetLimitToEVCharger   bool `json:"set_limit_to_ev_charger,omitempty"`
-	MinimizeCharging bool `json:"minimize_charging,omitempty"`
-	DryRun           bool `json:"dry_run,omitempty"`
+	OnlyCharging        bool `json:"only_charging,omitempty"`
+	NoFeed              bool `json:"no_feed,omitempty"`
+	HouseSupport        bool `json:"house_support,omitempty"`
+	ChargeBattery       bool `json:"charge_battery,omitempty"`
+	DoNotSupplyCharger  bool `json:"do_not_supply_charger,omitempty"`
+	SetLimitToEVCharger bool `json:"set_limit_to_ev_charger,omitempty"`
+	MinimizeCharging    bool `json:"minimize_charging,omitempty"`
+	DryRun              bool `json:"dry_run,omitempty"`
 }

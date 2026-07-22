@@ -9,10 +9,10 @@ import (
 
 func TestStateToMap(t *testing.T) {
 	s := &state.State{
-		SolarTotal:   3500.0,
-		GT:           150.0,
-		BatterySOC:   85.5,
-		TT:           1200.0,
+		SolarTotal:    3500.0,
+		GT:            150.0,
+		BatterySOC:    85.5,
+		TT:            1200.0,
 		InverterState: "On",
 		Booleans: map[string]interface{}{
 			"only_charging": true,

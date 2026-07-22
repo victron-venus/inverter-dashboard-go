@@ -33,11 +33,11 @@ func FormatHeaderToggles() []map[string]string {
 // FormatDailyStats computes daily stats with money
 func (s *State) FormatDailyStats() map[string]interface{} {
 	return map[string]interface{}{
-		"solar_kwh":   s.DailyStats.SolarKWh,
-		"solar_money": s.DailyStats.SolarMoney,
-		"grid_kwh":    s.DailyStats.GridKWh,
-		"grid_money":  s.DailyStats.GridMoney,
-		"batt_in_kwh": s.DailyStats.BattInKWh,
+		"solar_kwh":    s.DailyStats.SolarKWh,
+		"solar_money":  s.DailyStats.SolarMoney,
+		"grid_kwh":     s.DailyStats.GridKWh,
+		"grid_money":   s.DailyStats.GridMoney,
+		"batt_in_kwh":  s.DailyStats.BattInKWh,
 		"batt_out_kwh": s.DailyStats.BattOutKWh,
 		"batt_net_kwh": s.DailyStats.BattNetKWh,
 		"display_text": fmt.Sprintf("☀️ %.2f kWh ($%.2f) | Grid: %.2f kWh ($%.2f) | 🔋 I: %.2f kWh, O: %.2f kWh, Δ: %.2f kWh",
