@@ -12,7 +12,9 @@
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
 
-The original **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** stack is Python/FastAPI (`alvit/inverter-dashboard` on Docker Hub). This repository ships the same front-end assets as a **single binary** and publishes **`alvit/inverter-dashboard-go`**.
+**Recommended for Cerbo GX** — single binary, minimal memory, same UI assets as the Python dashboard.
+
+The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** (`alvit/inverter-dashboard` on Docker Hub) suits NAS/Docker deployments. For a native desktop/mobile app, see **[inverter-desktop](https://github.com/victron-venus/inverter-desktop)**.
 
 ## Architecture
 
@@ -389,7 +391,7 @@ This project is part of the Victron Venus OS integration suite:
 | [dbus-tasmota-pv](https://github.com/victron-venus/dbus-tasmota-pv) | Tasmota smart plug integration as a PV inverter on D-Bus |
 | [esphome-jbd-bms-mqtt](https://github.com/victron-venus/esphome-jbd-bms-mqtt) | ESP32 Bluetooth monitor for JBD BMS batteries |
 | [inverter-monitoring](https://github.com/victron-venus/inverter-monitoring) | TIG (Telegraf, InfluxDB, Grafana) monitoring stack |
-| [terraform-github-victron](https://github.com/4alvit/terraform-github-victron) | Infrastructure as Code for the GitHub organization |
+| [terraform-github](https://github.com/victron-venus/terraform-github) | Infrastructure as Code for the GitHub organization |
 
 ## Author
 
@@ -412,4 +414,3 @@ For issues and feature requests, please use the GitHub issue tracker.
 ---
 
 **Note:** This is a community project and is not affiliated with Victron Energy.
-y.
