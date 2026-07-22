@@ -28,11 +28,11 @@ var (
 func main() {
 	// Command line flags - match Python exactly
 	var (
-		mqttHost  = flag.String("mqtt-host", "", "MQTT broker host")
-		mqttPort  = flag.Int("mqtt-port", 0, "MQTT broker port")
-		webPort   = flag.Int("port", 0, "Web server port")
-		sslCert   = flag.String("ssl-cert", "", "SSL certificate file")
-		sslKey    = flag.String("ssl-key", "", "SSL key file")
+		mqttHost    = flag.String("mqtt-host", "", "MQTT broker host")
+		mqttPort    = flag.Int("mqtt-port", 0, "MQTT broker port")
+		webPort     = flag.Int("port", 0, "Web server port")
+		sslCert     = flag.String("ssl-cert", "", "SSL certificate file")
+		sslKey      = flag.String("ssl-key", "", "SSL key file")
 		showVersion = flag.Bool("version", false, "Show version and exit")
 	)
 	flag.Parse()
@@ -192,7 +192,7 @@ func haPoller(haClient *homeassistant.Client) {
 			continue
 		}
 		log.Printf("[HA POLL DEBUG] FetchStatesOnce() completed, HADirectConnected: %v", overlay.HADirectConnected)
-			if overlay.HADirectConnected {
+		if overlay.HADirectConnected {
 			log.Printf("[HA POLL] Successfully fetched %d entitites", len(overlay.AdditionalFields))
 			if len(overlay.AdditionalFields) > 0 {
 				log.Printf("[HA POLL] Values: %+v", overlay.AdditionalFields)
@@ -305,10 +305,10 @@ func apiStateHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"ok": true,
+			"ok":                true,
 			"dashboard_version": version.GetCurrent(),
-			"control_version": controlVersion,
-			"has_mqtt_state": has_mqtt_state,
+			"control_version":   controlVersion,
+			"has_mqtt_state":    has_mqtt_state,
 		})
 	}
 }
@@ -331,7 +331,7 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 		current := version.GetCurrent()
 		c.JSON(200, gin.H{
 			"current": current,
-			"latest": latest,
+			"latest":  latest,
 		})
 	}
 }
@@ -352,7 +352,7 @@ func apiUpdateHandler() gin.HandlerFunc {
 			}()
 
 			c.JSON(200, gin.H{
-				"status": "updated",
+				"status":  "updated",
 				"version": result.Version,
 				"message": fmt.Sprintf("Updated to v%s, restarting...", result.Version),
 			})

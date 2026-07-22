@@ -12,9 +12,9 @@ import (
 
 // Config holds application configuration matching Python exactly
 type Config struct {
-	MQTT MQTTConfig
-	Web WebConfig
-	GitHub GitHubConfig
+	MQTT          MQTTConfig
+	Web           WebConfig
+	GitHub        GitHubConfig
 	HomeAssistant *HomeAssistantConfig
 }
 
@@ -33,12 +33,11 @@ type WebConfig struct {
 // GitHubConfig holds repository info
 type GitHubConfig struct {
 	Repository string
-	RawURL string
+	RawURL     string
 }
 
-
 type EntityConfig struct {
-	Key   string `yaml:"key"`
+	Key    string `yaml:"key"`
 	Entity string `yaml:"entity"`
 	Label  string `yaml:"label"`
 	Order  int    `yaml:"order"`
@@ -81,22 +80,26 @@ func convertMapToBooleanEntitySlice(input map[string]interface{}) []BooleanEntit
 	return result
 }
 
+// defaultLabel creates a default label from a state key by stripping "HOME_" prefix and converting underscores to spaces
+func defaultLabel(key string) string {
+	s := strings.ToUpper(key)
+	s = strings.TrimPrefix(s, "HOME_")
+	return strings.ReplaceAll(s, "_", " ")
+}
+
 // convertMapToEntitySlice converts a map[string]interface{} from YAML to []EntityConfig
 func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 	var result []EntityConfig
 	for key, value := range input {
 		btn := EntityConfig{
-			Key:      key,
-			Order:    0,
+			Key:   key,
+			Order: 0,
 		}
 
 		switch v := value.(type) {
 		case string:
 			btn.Entity = v
-			btn.Label = strings.ReplaceAll(strings.ToUpper(key), "_", " ")
-			if strings.HasPrefix(strings.ToUpper(key), "HOME_") {
-				btn.Label = strings.ReplaceAll(strings.ToUpper(key[5:]), "_", " ")
-			}
+			btn.Label = defaultLabel(key)
 
 		case []interface{}:
 			if len(v) > 0 {
@@ -137,33 +140,30 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 		}
 
 		if btn.Label == "" {
-			btn.Label = strings.ReplaceAll(strings.ToUpper(key), "_", " ")
-			if strings.HasPrefix(strings.ToUpper(key), "HOME_") {
-				btn.Label = strings.ReplaceAll(strings.ToUpper(key[5:]), "_", " ")
-			}
+			btn.Label = defaultLabel(key)
 		}
 
 		result = append(result, btn)
 	}
 	return result
 }
+
 // HomeAssistantConfig from config.yaml
 type HomeAssistantConfig struct {
-
-	URL string
-	Token string
-	DirectControls bool
-	PollInterval float64
-	BooleanEntities []BooleanEntityConfig
-	SwitchEntities []EntityConfig
-	WaterValveEntity string
-	WaterLevelEntity string
-	PumpSwitchEntity string
-	CarSOCEntity string
+	URL                string
+	Token              string
+	DirectControls     bool
+	PollInterval       float64
+	BooleanEntities    []BooleanEntityConfig
+	SwitchEntities     []EntityConfig
+	WaterValveEntity   string
+	WaterLevelEntity   string
+	PumpSwitchEntity   string
+	CarSOCEntity       string
 	EVChargingKWEntity string
-	EVPowerEntity string
-	ApplianceEntities map[string]string
-	VueSensors        map[string]string
+	EVPowerEntity      string
+	ApplianceEntities  map[string]string
+	VueSensors         map[string]string
 }
 
 // Load reads configuration matching Python config.py behavior exactly
@@ -218,20 +218,20 @@ func loadConfigYAML(cfg *Config) error {
 		MQTT          *yamlMQTT `yaml:"mqtt"`
 		Web           *yamlWeb  `yaml:"web"`
 		HomeAssistant *struct {
-			URL               string                          `yaml:"url"`
-			Token             string                          `yaml:"token"`
-			DirectControls    *bool                           `yaml:"direct_controls"`
-			PollIntervalSeconds float64                       `yaml:"poll_interval_seconds"`
-			BooleanEntities   map[string]interface{}               `yaml:"boolean_entities"`
-			SwitchEntities map[string]interface{} `yaml:"switch_entities"`
-			WaterValveEntity  string                          `yaml:"water_valve_entity"`
-			WaterLevelEntity  string                          `yaml:"water_level_entity"`
-			PumpSwitchEntity  string                          `yaml:"pump_switch_entity"`
-			CarSOCEntity      string                          `yaml:"car_soc_entity"`
-			EVChargingKWEntity string                         `yaml:"ev_charging_kw_entity"`
-			EVPowerEntity     string                          `yaml:"ev_power_entity"`
-			ApplianceEntities map[string]string               `yaml:"appliance_entities"`
-		VueSensors		map[string]string `yaml:"vue_sensors"`
+			URL                 string                 `yaml:"url"`
+			Token               string                 `yaml:"token"`
+			DirectControls      *bool                  `yaml:"direct_controls"`
+			PollIntervalSeconds float64                `yaml:"poll_interval_seconds"`
+			BooleanEntities     map[string]interface{} `yaml:"boolean_entities"`
+			SwitchEntities      map[string]interface{} `yaml:"switch_entities"`
+			WaterValveEntity    string                 `yaml:"water_valve_entity"`
+			WaterLevelEntity    string                 `yaml:"water_level_entity"`
+			PumpSwitchEntity    string                 `yaml:"pump_switch_entity"`
+			CarSOCEntity        string                 `yaml:"car_soc_entity"`
+			EVChargingKWEntity  string                 `yaml:"ev_charging_kw_entity"`
+			EVPowerEntity       string                 `yaml:"ev_power_entity"`
+			ApplianceEntities   map[string]string      `yaml:"appliance_entities"`
+			VueSensors          map[string]string      `yaml:"vue_sensors"`
 		} `yaml:"homeassistant"`
 	}
 
@@ -266,20 +266,20 @@ func loadConfigYAML(cfg *Config) error {
 			directControls = *top.HomeAssistant.DirectControls
 		}
 		ha := &HomeAssistantConfig{
-			URL:               top.HomeAssistant.URL,
-			Token:             top.HomeAssistant.Token,
-			DirectControls:    directControls,
-			PollInterval:      top.HomeAssistant.PollIntervalSeconds,
-			BooleanEntities:   convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
-			SwitchEntities:    convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
-			WaterValveEntity:  top.HomeAssistant.WaterValveEntity,
-			WaterLevelEntity:  top.HomeAssistant.WaterLevelEntity,
-			PumpSwitchEntity:  top.HomeAssistant.PumpSwitchEntity,
-			CarSOCEntity:      top.HomeAssistant.CarSOCEntity,
+			URL:                top.HomeAssistant.URL,
+			Token:              top.HomeAssistant.Token,
+			DirectControls:     directControls,
+			PollInterval:       top.HomeAssistant.PollIntervalSeconds,
+			BooleanEntities:    convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
+			SwitchEntities:     convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
+			WaterValveEntity:   top.HomeAssistant.WaterValveEntity,
+			WaterLevelEntity:   top.HomeAssistant.WaterLevelEntity,
+			PumpSwitchEntity:   top.HomeAssistant.PumpSwitchEntity,
+			CarSOCEntity:       top.HomeAssistant.CarSOCEntity,
 			EVChargingKWEntity: top.HomeAssistant.EVChargingKWEntity,
-			EVPowerEntity:     top.HomeAssistant.EVPowerEntity,
-			ApplianceEntities: top.HomeAssistant.ApplianceEntities,
-		VueSensors:        top.HomeAssistant.VueSensors,
+			EVPowerEntity:      top.HomeAssistant.EVPowerEntity,
+			ApplianceEntities:  top.HomeAssistant.ApplianceEntities,
+			VueSensors:         top.HomeAssistant.VueSensors,
 		}
 		cfg.HomeAssistant = ha
 	}

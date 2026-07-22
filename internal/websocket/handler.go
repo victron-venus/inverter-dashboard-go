@@ -174,7 +174,6 @@ func handleMessage(msg Message, mqttClient *mqtt.Client, haClient *homeassistant
 }
 
 // handleToggle handles toggle actions
-// handleToggle handles toggle actions
 func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for toggle")
@@ -213,7 +212,6 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 	})
 }
 
-// handlePress handles button press actions
 // handlePress handles button press actions
 func handlePress(entityID string, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
 	if entityID == "" {
@@ -286,7 +284,6 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 		uiConfig["boolean_buttons"] = haClient.GetBooleanButtons()
 		haDirectConnected = overlay.HADirectConnected
 	}
-
 
 	// Debug: show overlay values
 	if haDirectConnected {
@@ -418,39 +415,39 @@ func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedK
 // stateToMap converts State struct to map[string]interface{}
 func stateToMap(s *state.State) map[string]interface{} {
 	return map[string]interface{}{
-		"booleans": s.Booleans,
-		"features": safeFeatures(s.Features),
-		"daily_stats": s.DailyStats,
-		"ess_mode": s.ESSMode,
-		"solar_total": s.SolarTotal,
-		"mppt_total": s.MpptTotal,
-		"pv_total": s.PVTotal,
-		"solar_sources": s.SolarSources,
-		"mppt_chargers": s.MPPTChargers,
-		"mppt_individual": s.MPPTIndividual,
-		"tasmota_individual": s.TasmotaIndividual,
-		"batteries": s.Batteries,
-		"gt": s.GT,
-		"g1": s.G1,
-		"g2": s.G2,
-		"tt": s.TT,
-		"t1": s.T1,
-		"t2": s.T2,
-		"bc": s.BC,
-		"bv": s.BV,
-		"bp": s.BP,
-		"setpoint": s.Setpoint,
-		"battery_voltage": s.BatteryVoltage,
-		"battery_current": s.BatteryCurrent,
-		"battery_power": s.BatteryPower,
-		"battery_soc": s.BatterySOC,
-		"inverter_state": s.InverterState,
-		"uptime": s.Uptime,
-		"ha_connected": s.HAConnected,
+		"booleans":            s.Booleans,
+		"features":            safeFeatures(s.Features),
+		"daily_stats":         s.DailyStats,
+		"ess_mode":            s.ESSMode,
+		"solar_total":         s.SolarTotal,
+		"mppt_total":          s.MpptTotal,
+		"pv_total":            s.PVTotal,
+		"solar_sources":       s.SolarSources,
+		"mppt_chargers":       s.MPPTChargers,
+		"mppt_individual":     s.MPPTIndividual,
+		"tasmota_individual":  s.TasmotaIndividual,
+		"batteries":           s.Batteries,
+		"gt":                  s.GT,
+		"g1":                  s.G1,
+		"g2":                  s.G2,
+		"tt":                  s.TT,
+		"t1":                  s.T1,
+		"t2":                  s.T2,
+		"bc":                  s.BC,
+		"bv":                  s.BV,
+		"bp":                  s.BP,
+		"setpoint":            s.Setpoint,
+		"battery_voltage":     s.BatteryVoltage,
+		"battery_current":     s.BatteryCurrent,
+		"battery_power":       s.BatteryPower,
+		"battery_soc":         s.BatterySOC,
+		"inverter_state":      s.InverterState,
+		"uptime":              s.Uptime,
+		"ha_connected":        s.HAConnected,
 		"ha_direct_connected": s.HADirectConnected,
-		"version": s.Version,
-		"dashboard_version": s.DashboardVersion,
-		"console": s.Console,
+		"version":             s.Version,
+		"dashboard_version":   s.DashboardVersion,
+		"console":             s.Console,
 	}
 }
 
