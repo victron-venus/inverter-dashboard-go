@@ -67,7 +67,10 @@ if gh release download "$TAG" \
   --pattern "*.tar.gz" \
   --dir "$TEMP_DIR" 2>/dev/null; then
   log_info "Extracting artifacts..."
-  tar -xzf "$TEMP_DIR"/vue-spa-dist.tar.gz -C "$VUE_UI_DIR" 2>/dev/null || true
+  for f in "$TEMP_DIR"/*.tar.gz; do
+    [ -e "$f" ] || continue
+    tar -xzf "$f" -C "$VUE_UI_DIR"
+  done
 fi
 
 # Check if we got artifacts

@@ -1,6 +1,7 @@
 package html
 
 import (
+	"bytes"
 	_ "embed"
 	"strings"
 )
@@ -26,7 +27,7 @@ var vueIndexHTML []byte
 
 // GetVueUIHTML returns Vue UI index.html if available
 func GetVueUIHTML() ([]byte, bool) {
-	if len(vueIndexHTML) == 0 {
+	if len(vueIndexHTML) == 0 || bytes.Contains(vueIndexHTML, []byte("Vue UI not")) || bytes.Contains(vueIndexHTML, []byte("Dev placeholder")) {
 		return nil, false
 	}
 	return vueIndexHTML, true
