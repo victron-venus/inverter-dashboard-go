@@ -54,6 +54,14 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
+      - name: Download Vue SPA from inverter-dashboard-vue
+        run: |
+          mkdir -p internal/html/dist
+          gh release download victron-venus/inverter-dashboard-vue --pattern 'vue-spa-dist.tar.gz' --dir dist-tmp
+          tar -xzf dist-tmp/vue-spa-dist.tar.gz -C internal/html/dist/
+          rm -rf dist-tmp
+          echo "Vue SPA embedded in: internal/html/dist/"
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
