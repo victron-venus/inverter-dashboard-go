@@ -284,7 +284,12 @@ func waitForShutdown(server *gin.Engine, mqttClient *mqtt.Client, haClient *home
 
 func indexHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Data(200, "text/html; charset=utf-8", []byte(html.GetDashboardHTML()))
+		// Try Vue UI first, fall back to Go embedded dashboard
+		if vueHTML, ok := html.GetVueUIHTML(); ok {
+			c.Data(200, "text/html; charset=utf-8", vueHTML)
+		} else {
+			c.Data(200, "text/html; charset=utf-8", []byte(html.GetDashboardHTML()))
+		}
 	}
 }
 

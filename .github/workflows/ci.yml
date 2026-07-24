@@ -22,6 +22,27 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
+      - name: Fetch Vue UI (optional - don't fail CI if not available)
+        run: |
+          mkdir -p internal/html/vue-ui
+
+          # Try to get Vue UI from CI build or latest release
+          if gh release view ci-latest --repo victron-venus/inverter-dashboard-vue &>/dev/null; then
+            echo "Downloading Vue UI from ci-latest..."
+            gh release download ci-latest --repo victron-venus/inverter-dashboard-vue --pattern '*.tar.gz' --dir . -o vue-dist.tar.gz || true
+            if [ -f vue-dist.tar.gz ]; then
+              tar -xzf vue-dist.tar.gz -C internal/html/vue-ui
+              echo "Vue UI downloaded successfully"
+            fi
+          fi
+
+          # Create placeholder if no Vue UI
+          if [ ! "$(ls -A internal/html/vue-ui 2>/dev/null)" ]; then
+            echo "No Vue UI available, creating placeholder..."
+            echo '<!DOCTYPE html><html><body><p>Vue UI not embedded (run with full build to include)</p></body></html>' > internal/html/vue-ui/index.html
+            echo "build:without-vue-ui" > internal/html/vue-ui/.no-vue-ui
+          fi
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -31,3 +52,10 @@ jobs:
 
       - name: Go build
         run: go build -v .
+
+      - name: Verify Vue UI embedding
+        run: |
+          if [ -f internal/html/vue-ui/index.html ]; then
+            echo "Vue UI status:"
+            head -5 internal/html/vue-ui/index.html
+          fi
