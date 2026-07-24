@@ -21,8 +21,7 @@ var dashboardCSS string
 var dashboardJS string
 
 // Vue UI files (extracted from inverter-dashboard-vue release)
-
-//go:embed vue-ui/index.html
+//go:embed dist/index.html
 var vueIndexHTML []byte
 
 // GetVueUIHTML returns Vue UI index.html if available
