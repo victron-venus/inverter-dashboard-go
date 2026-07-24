@@ -52,6 +52,16 @@ flowchart LR
 - **Cross-platform** binaries for easy deployment
 - **Chart visualization** with uPlot for power flow history
 
+## Release Channels & CI/CD
+
+This project uses automated GitHub Actions workflows for continuous delivery:
+
+- **Stable Releases**: Tagged as `vX.Y.Z` (e.g., `v1.0.0`). Compiles standalone binaries for macOS (Intel & Apple Silicon), Linux (amd64, arm64, Raspberry Pi ARMv7).
+- **Pre-releases**: Tagged with `vX.Y.Z-rc.N` or `vX.Y.Z-beta.N`. Automatically marked as **Pre-release** on GitHub to prevent accidental deployment to production environments.
+- **Nightly Builds**: Built daily at 02:00 UTC from `main`. Publishes binary artifacts to the rolling **[Nightly Build Release](https://github.com/victron-venus/inverter-dashboard-go/releases/tag/nightly)** and updates the Docker image tag `ghcr.io/victron-venus/inverter-dashboard-go:nightly`.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
