@@ -73,6 +73,7 @@ __pycache__/
 # Editor / merge debris
 *.backup
 *.bak
+*.tmp
 
 # Local release / commit helpers (sensitive or machine-specific; not for git)
 commit.sh
