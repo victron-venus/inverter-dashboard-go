@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/html"
+	"github.com/victron-venus/inverter-dashboard-go/internal/metrics"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket"
@@ -124,13 +126,18 @@ func main() {
 		log.Printf("[MAIN DEBUG] HA poller NOT started (haClient=nil or !IsDirectMode)")
 	}
 
-	// Set state callback for WebSocket broadcasts
+	// Set state callback for WebSocket broadcasts and metrics updates
 	mqttClient.SetMessageHandler(func() {
 		var broadcastOverlay homeassistant.Overlay
 		if haClient != nil {
 			broadcastOverlay = haClient.GetOverlay()
 		}
 		websocket.BroadcastState(mqttClient, haClient, broadcastOverlay)
+
+		// Update Prometheus metrics from current state
+		state := mqttClient.GetState()
+		metrics.DefaultCollector.UpdateFromState(state)
+		metrics.DefaultCollector.UpdateWebsocketClients()
 	})
 
 	// Check for updates on startup
@@ -225,6 +232,17 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client) *gin.
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(loggingMiddleware())
+
+	// Serve Vue UI static assets (JS/CSS) from dist directory
+	distDir := "internal/html/dist"
+	if _, err := os.Stat(distDir); err == nil {
+		router.Static("/assets", distDir+"/assets")
+		log.Printf("Serving Vue UI assets from %s", distDir)
+	}
+
+	// Prometheus metrics endpoint
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	log.Printf("Prometheus metrics endpoint enabled at /metrics")
 
 	// Routes
 	router.GET("/", indexHandler())
