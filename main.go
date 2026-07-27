@@ -140,6 +140,9 @@ func main() {
 		metrics.DefaultCollector.UpdateWebsocketClients()
 	})
 
+	// Start command buffer metrics collector
+	go collectCommandBufferMetrics(mqttClient)
+
 	// Check for updates on startup
 	go checkVersion(cfg.GitHub.RawURL)
 
@@ -433,5 +436,20 @@ func healthHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 			MQTTConnected: connected,
 			LastStateAge:  age.Truncate(time.Second).String(),
 		})
+	}
+}
+
+// collectCommandBufferMetrics periodically updates Prometheus metrics for the MQTT command buffer
+func collectCommandBufferMetrics(mqttClient *mqtt.Client) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if mqttClient != nil {
+			stats := mqttClient.GetCmdBufferStats()
+			if stats != nil {
+				metrics.DefaultCollector.UpdateMqttCmdBuffer(stats)
+			}
+		}
 	}
 }
