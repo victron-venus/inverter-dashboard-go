@@ -29,6 +29,7 @@ type Client struct {
 	maxConsoleLines int
 	lastStateTime   time.Time
 	lastStateMu     sync.RWMutex
+	cmdBuffer       *CommandBuffer
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -41,7 +42,7 @@ func NewClient(broker string, port int) *Client {
 	opts.SetConnectRetry(true)
 	opts.SetConnectRetryInterval(5)
 
-	return &Client{
+	client := &Client{
 		client: mqtt.NewClient(opts),
 		broker: broker,
 		port:   port,
@@ -57,6 +58,11 @@ func NewClient(broker string, port int) *Client {
 		consoleLines:    make([]string, 0),
 		maxConsoleLines: 50,
 	}
+
+	// Initialize command buffer with capacity of 1000 commands
+	client.cmdBuffer = NewCommandBuffer(1000, client)
+
+	return client
 }
 
 func (c *Client) GetIP() string { return c.broker }
@@ -73,6 +79,14 @@ func (c *Client) GetState() *state.State {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
 	return c.state
+}
+
+// GetCmdBufferStats returns command buffer statistics
+func (c *Client) GetCmdBufferStats() map[string]interface{} {
+	if c.cmdBuffer == nil {
+		return nil
+	}
+	return c.cmdBuffer.Stats()
 }
 
 func (c *Client) GetConsole() []string {
@@ -99,6 +113,12 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("failed to connect to mqtt broker: %w", token.Error())
 	}
 	log.Printf("Connected to MQTT broker")
+
+	// Start command buffer worker
+	if c.cmdBuffer != nil {
+		c.cmdBuffer.Start()
+	}
+
 	return nil
 }
 
@@ -148,7 +168,21 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	return nil
 }
 
+// PublishCommandAsync publishes a command asynchronously via the command buffer.
+// Returns immediately; the command will be sent when the broker is available.
+func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
+	if c.cmdBuffer == nil {
+		return fmt.Errorf("command buffer not initialized")
+	}
+	return c.cmdBuffer.Enqueue(action, payload)
+}
+
 func (c *Client) Disconnect() {
+	// Stop command buffer worker
+	if c.cmdBuffer != nil {
+		c.cmdBuffer.Stop()
+	}
+
 	if c.client != nil && c.client.IsConnected() {
 		c.client.Disconnect(250)
 		log.Printf("Disconnected from MQTT broker")

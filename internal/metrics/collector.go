@@ -17,6 +17,10 @@ type Collector struct {
 	GridWatts prometheus.Gauge
 	// Active WebSocket clients
 	WebsocketClients prometheus.Gauge
+	// MQTT command buffer stats
+	MqttCmdBufferSize       prometheus.Gauge
+	MqttCmdBufferCapacity   prometheus.Gauge
+	MqttCmdBufferUtilization prometheus.Gauge
 }
 
 // NewCollector creates and registers all metrics
@@ -38,6 +42,18 @@ func NewCollector() *Collector {
 			Name: "websocket_active_clients",
 			Help: "Number of active WebSocket connections",
 		}),
+		MqttCmdBufferSize: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "mqtt_command_buffer_size",
+			Help: "Current number of commands in the MQTT command buffer",
+		}),
+		MqttCmdBufferCapacity: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "mqtt_command_buffer_capacity",
+			Help: "Maximum capacity of the MQTT command buffer",
+		}),
+		MqttCmdBufferUtilization: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "mqtt_command_buffer_utilization",
+			Help: "MQTT command buffer utilization percentage (0-100)",
+		}),
 	}
 	return c
 }
@@ -58,6 +74,22 @@ func (c *Collector) UpdateFromState(st *state.State) {
 // UpdateWebsocketClients updates the active WebSocket client count
 func (c *Collector) UpdateWebsocketClients() {
 	c.WebsocketClients.Set(float64(websocket.GetConnectedCount()))
+}
+
+// UpdateMqttCmdBuffer updates MQTT command buffer metrics
+func (c *Collector) UpdateMqttCmdBuffer(stats map[string]interface{}) {
+	if stats == nil {
+		return
+	}
+	if size, ok := stats["count"].(int); ok {
+		c.MqttCmdBufferSize.Set(float64(size))
+	}
+	if cap, ok := stats["capacity"].(int); ok {
+		c.MqttCmdBufferCapacity.Set(float64(cap))
+	}
+	if util, ok := stats["utilization"].(float64); ok {
+		c.MqttCmdBufferUtilization.Set(util)
+	}
 }
 
 // DefaultCollector is the global metrics collector
