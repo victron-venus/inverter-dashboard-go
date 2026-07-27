@@ -67,13 +67,16 @@ func (cb *CommandBuffer) Start() {
 
 // Stop stops the background worker and drains the queue
 func (cb *CommandBuffer) Stop() {
+	cb.mu.Lock()
 	cb.workerCancel()
 	cb.notEmpty.Broadcast()
+	cb.mu.Unlock()
 	cb.workerWG.Wait()
 	log.Printf("MQTT command buffer worker stopped")
 }
 
-// Enqueue adds a command to the buffer. Returns error if buffer is full.
+// Enqueue adds a command to the buffer. If the buffer is full, the oldest
+// command is dropped (ring-buffer behavior). Always returns nil.
 func (cb *CommandBuffer) Enqueue(action string, payload interface{}) error {
 	cmd := Command{
 		Action:  action,
@@ -111,7 +114,6 @@ func (cb *CommandBuffer) worker() {
 			// Buffer empty, wait for signal or context cancellation
 			cb.mu.Lock()
 			for cb.count == 0 {
-				cb.notEmpty.Wait()
 				select {
 				case <-cb.workerCtx.Done():
 					cb.mu.Unlock()
@@ -120,16 +122,23 @@ func (cb *CommandBuffer) worker() {
 					return
 				default:
 				}
+				cb.notEmpty.Wait()
 			}
 			cb.mu.Unlock()
 			continue
 		}
 
-		// Process command with retry
-		if err := cb.publishWithRetry(cmd); err != nil {
-			log.Printf("Failed to publish command after retries: action=%s, error=%v", cmd.Action, err)
-			// Could implement dead letter queue here if needed
-		}
+		// Process command with retry in the background so a single stuck
+		// command (e.g. one that requires many retries with backoff) does
+		// not block the worker from dequeuing and processing newer commands.
+		cb.workerWG.Add(1)
+		go func(cmd Command) {
+			defer cb.workerWG.Done()
+			if err := cb.publishWithRetry(cmd); err != nil {
+				log.Printf("Failed to publish command after retries: action=%s, error=%v", cmd.Action, err)
+				// Could implement dead letter queue here if needed
+			}
+		}(cmd)
 	}
 }
 
