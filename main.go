@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,10 +15,15 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/html"
+	"github.com/victron-venus/inverter-dashboard-go/internal/logging"
 	"github.com/victron-venus/inverter-dashboard-go/internal/metrics"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
+	"github.com/victron-venus/inverter-dashboard-go/internal/tracing"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"log/slog"
 )
 
 var (
@@ -45,10 +49,24 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Initialize OpenTelemetry tracing
+	traceCfg := tracing.DefaultConfig()
+	traceCfg.ServiceVersion = version.GetCurrent()
+	tp, err := tracing.InitTracer(traceCfg)
+	if err != nil {
+		slog.Error("Warning: failed to initialize tracing", "error", err)
+	} else {
+		defer tracing.Shutdown(context.Background(), tp)
+	}
+
+	// Initialize structured logger
+	logger := logging.New("inverter-dashboard-go", version.GetCurrent(), slog.LevelInfo)
+
 	// Load configuration - Python uses environment only
 	cfg, err := config.Load("")
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Error(logging.DefaultContext(), "Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
 	// Override with command line flags if provided
@@ -68,10 +86,15 @@ func main() {
 		proto = "https"
 	}
 
-	// Print startup info
-	log.Printf("Starting Inverter Dashboard v%s", version.GetCurrent())
-	log.Printf("MQTT: %s:%d", cfg.MQTT.Host, cfg.MQTT.Port)
-	log.Printf("Web: %s://%s:%d", proto, cfg.Web.Host, cfg.Web.Port)
+	// Print startup info using structured logger
+	logger.Info(logging.DefaultContext(), "Starting Inverter Dashboard",
+		"version", version.GetCurrent(),
+		"mqtt_host", cfg.MQTT.Host,
+		"mqtt_port", cfg.MQTT.Port,
+		"web_proto", proto,
+		"web_host", cfg.Web.Host,
+		"web_port", cfg.Web.Port,
+	)
 
 	// Create MQTT client
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
@@ -79,29 +102,35 @@ func main() {
 	// Create Home Assistant client (optional)
 	var haClient *homeassistant.Client
 	if cfg.HomeAssistant != nil && cfg.HomeAssistant.URL != "" {
-		log.Printf("[MAIN DEBUG] HomeAssistant config found, creating HA client")
-		log.Printf("[MAIN CONFIG] HomeAssistant URL: %s", cfg.HomeAssistant.URL)
-		log.Printf("[MAIN CONFIG] HomeAssistant Token: %s...%s (truncated)", cfg.HomeAssistant.Token[:10], cfg.HomeAssistant.Token[len(cfg.HomeAssistant.Token)-5:])
-		log.Printf("[MAIN CONFIG] HA Entities configured:")
-		log.Printf("[MAIN CONFIG]   - Boolean entities: %d", len(cfg.HomeAssistant.BooleanEntities))
-		log.Printf("[MAIN CONFIG]   - Switch entities: %d", len(cfg.HomeAssistant.SwitchEntities))
-		log.Printf("[MAIN CONFIG]   - Water level entity: %s", cfg.HomeAssistant.WaterLevelEntity)
-		log.Printf("[MAIN CONFIG]   - Car SoC entity: %s", cfg.HomeAssistant.CarSOCEntity)
-		log.Printf("[MAIN CONFIG]   - EV Charging KW entity: %s", cfg.HomeAssistant.EVChargingKWEntity)
-		log.Printf("[MAIN CONFIG]   - EV Power entity: %s", cfg.HomeAssistant.EVPowerEntity)
-		log.Printf("[MAIN CONFIG]   - Appliance entities: %d", len(cfg.HomeAssistant.ApplianceEntities))
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HomeAssistant config found, creating HA client")
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HomeAssistant URL configured", "url", cfg.HomeAssistant.URL)
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA Entities configured",
+			"boolean_entities", len(cfg.HomeAssistant.BooleanEntities),
+			"switch_entities", len(cfg.HomeAssistant.SwitchEntities),
+			"water_level_entity", cfg.HomeAssistant.WaterLevelEntity,
+			"car_soc_entity", cfg.HomeAssistant.CarSOCEntity,
+			"ev_charging_kw_entity", cfg.HomeAssistant.EVChargingKWEntity,
+			"ev_power_entity", cfg.HomeAssistant.EVPowerEntity,
+			"appliance_entities", len(cfg.HomeAssistant.ApplianceEntities),
+		)
 
 		haClient = homeassistant.NewClient(cfg.HomeAssistant)
-		log.Printf("[MAIN DEBUG] HA client created: configured=%v", haClient != nil && haClient.IsDirectMode())
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA client created",
+			"configured", haClient != nil && haClient.IsDirectMode(),
+			"direct_mode", haClient.IsDirectMode(),
+		)
 	} else {
-		log.Printf("[MAIN DEBUG] HomeAssistant config NOT found (nil or empty URL)")
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HomeAssistant config NOT found (nil or empty URL)")
 	}
 
 	// Start MQTT connection (retry on failure instead of fatal)
 	var mqttConnected bool
 	for attempt := 1; attempt <= 10; attempt++ {
 		if err := startMQTT(mqttClient); err != nil {
-			log.Printf("MQTT connection attempt %d failed: %v", attempt, err)
+			logger.Warn(logging.DefaultContext().With("component", "mqtt"), "MQTT connection attempt failed",
+				"attempt", attempt,
+				"error", err,
+			)
 			if attempt < 10 {
 				time.Sleep(5 * time.Second)
 			}
@@ -111,19 +140,26 @@ func main() {
 		}
 	}
 	if !mqttConnected {
-		log.Fatalf("MQTT connection failed after 10 attempts")
+		logger.Error(logging.DefaultContext().With("component", "mqtt"), "MQTT connection failed after 10 attempts")
+		os.Exit(1)
 	}
 	defer mqttClient.Disconnect()
 
 	// Start HA polling if configured
 	if haClient != nil {
-		log.Printf("[MAIN DEBUG] Checking if HA polling should start: haClient!=nil, IsDirectMode=%v", haClient.IsDirectMode())
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Checking if HA polling should start",
+			"ha_client", haClient != nil,
+			"direct_mode", haClient.IsDirectMode(),
+		)
 	}
 	if haClient != nil && haClient.IsDirectMode() {
-		log.Printf("[MAIN DEBUG] Starting HA poller goroutine")
-		go haPoller(haClient)
+		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Starting HA poller goroutine")
+		go haPoller(haClient, logger)
 	} else {
-		log.Printf("[MAIN DEBUG] HA poller NOT started (haClient=nil or !IsDirectMode)")
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "HA poller NOT started",
+			"ha_client", haClient != nil,
+			"direct_mode", haClient != nil && haClient.IsDirectMode(),
+		)
 	}
 
 	// Set state callback for WebSocket broadcasts and metrics updates
@@ -144,33 +180,39 @@ func main() {
 	go collectCommandBufferMetrics(mqttClient)
 
 	// Check for updates on startup
-	go checkVersion(cfg.GitHub.RawURL)
+	go checkVersion(cfg.GitHub.RawURL, logger)
 
-	// Create and configure HTTP server
-	server := createServer(mqttClient, haClient)
+	// Create and configure HTTP server with tracing middleware
+	var tracer trace.Tracer
+	if tp != nil {
+		tracer = tp.Tracer()
+	} else {
+		tracer = otel.Tracer("inverter-dashboard-go")
+	}
+	server := createServer(mqttClient, haClient, logger, tracer)
 
 	// Start server in a goroutine
-	go startServer(server, cfg, *sslCert, *sslKey)
+	go startServer(server, cfg, *sslCert, *sslKey, logger)
 
 	// Wait for shutdown signal
-	waitForShutdown(server, mqttClient, haClient)
+	waitForShutdown(server, mqttClient, haClient, logger)
 }
 
-func checkVersion(rawURL string) {
+func checkVersion(rawURL string, logger *logging.Logger) {
 	if rawURL == "" {
 		return
 	}
-	log.Printf("Checking for updates...")
+	logger.Info(logging.DefaultContext().With("component", "version"), "Checking for updates...")
 	latest, err := version.CheckLatest(rawURL)
 	if err != nil {
-		log.Printf("Version check failed: %v", err)
+		logger.Error(logging.DefaultContext().With("component", "version"), "Version check failed", "error", err)
 		return
 	}
 	if latest != "" {
 		version.SetLatestCached(latest)
-		log.Printf("Latest version: %s", latest)
+		logger.Info(logging.DefaultContext().With("component", "version"), "Latest version found", "latest", latest)
 	} else {
-		log.Printf("Already on latest version")
+		logger.Info(logging.DefaultContext().With("component", "version"), "Already on latest version")
 	}
 }
 
@@ -185,67 +227,88 @@ func startMQTT(client *mqtt.Client) error {
 		return fmt.Errorf("failed to subscribe to topics: %w", err)
 	}
 
-	log.Printf("MQTT client started and connected to %s:%d", client.GetIP(), client.GetPort())
+	slog.Info("MQTT client started and connected", "host", client.GetIP(), "port", client.GetPort())
 	return nil
 }
 
-func haPoller(haClient *homeassistant.Client) {
-	log.Printf("Starting Home Assistant poller")
-	defer log.Printf("Home Assistant poller stopped")
+func haPoller(haClient *homeassistant.Client, logger *logging.Logger) {
+	logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Starting Home Assistant poller")
+	defer logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Home Assistant poller stopped")
+
 	ticker := time.NewTicker(haClient.GetPollInterval())
+	defer ticker.Stop()
 
 	for range ticker.C {
-		log.Printf("[HA POLL DEBUG] Poll tick received, calling FetchStatesOnce()")
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Poll tick received, calling FetchStatesOnce()")
 		overlay, err := haClient.FetchStatesOnce()
 		if err != nil {
-			log.Printf("HA poll failed: %v", err)
+			logger.Error(logging.DefaultContext().With("component", "homeassistant"), "HA poll failed", "error", err)
 			continue
 		}
-		log.Printf("[HA POLL DEBUG] FetchStatesOnce() completed, HADirectConnected: %v", overlay.HADirectConnected)
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "FetchStatesOnce() completed",
+			"ha_direct_connected", overlay.HADirectConnected,
+		)
 		if overlay.HADirectConnected {
-			log.Printf("[HA POLL] Successfully fetched %d entitites", len(overlay.AdditionalFields))
+			logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Successfully fetched entities",
+				"count", len(overlay.AdditionalFields),
+			)
 			if len(overlay.AdditionalFields) > 0 {
-				log.Printf("[HA POLL] Values: %+v", overlay.AdditionalFields)
+				logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Values", "fields", overlay.AdditionalFields)
 
 				// Log all collected boolean entities with their current states
-				log.Printf("[HA POLL] Boolean Entities (configured: %d):", len(overlay.Booleans))
+				logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Boolean Entities",
+					"configured", len(overlay.Booleans),
+				)
 				for name, state := range overlay.Booleans {
 					status := "OFF"
 					if state {
 						status = "ON"
 					}
-					log.Printf("[HA POLL] - %s: %s", name, status)
+					logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Boolean entity",
+						"name", name,
+						"status", status,
+					)
 				}
 
 				// Log all entities from overlay.AdditionalFields
-				log.Printf("[HA POLL] Additional Fields (entities: %d):", len(overlay.AdditionalFields))
+				logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Additional Fields",
+					"entities", len(overlay.AdditionalFields),
+				)
 				for entity, value := range overlay.AdditionalFields {
-					log.Printf("[HA POLL] - %s: %v", entity, value)
+					logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Entity value",
+						"entity", entity,
+						"value", value,
+					)
 				}
 			}
 			haClient.ReplaceOverlay(overlay)
 		} else {
-			log.Printf("[HA POLL DEBUG] HADirectConnected=false, ReplaceOverlay NOT called")
+			logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "HADirectConnected=false, ReplaceOverlay NOT called")
 		}
 	}
 }
 
-func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client) *gin.Engine {
+func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logger *logging.Logger, tracer trace.Tracer) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(loggingMiddleware())
+	router.Use(logging.NewStructuredMiddleware(logger))
+
+	// Add tracing middleware if tracer is available
+	if tracer != nil {
+		router.Use(tracing.GinMiddleware(tracer, "inverter-dashboard-go"))
+	}
 
 	// Serve Vue UI static assets (JS/CSS) from dist directory
 	distDir := "internal/html/dist"
 	if _, err := os.Stat(distDir); err == nil {
 		router.Static("/assets", distDir+"/assets")
-		log.Printf("Serving Vue UI assets from %s", distDir)
+		logger.Info(logging.DefaultContext().With("component", "http"), "Serving Vue UI assets", "dir", distDir)
 	}
 
 	// Prometheus metrics endpoint
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	log.Printf("Prometheus metrics endpoint enabled at /metrics")
+	logger.Info(logging.DefaultContext().With("component", "http"), "Prometheus metrics endpoint enabled at /metrics")
 
 	// Routes
 	router.GET("/", indexHandler())
@@ -258,29 +321,31 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client) *gin.
 	return router
 }
 
-func startServer(server *gin.Engine, cfg *config.Config, sslCert string, sslKey string) {
+func startServer(server *gin.Engine, cfg *config.Config, sslCert string, sslKey string, logger *logging.Logger) {
 	addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 	if sslCert != "" && sslKey != "" {
-		log.Printf("Starting HTTPS web server on %s", addr)
+		logger.Info(logging.DefaultContext().With("component", "http"), "Starting HTTPS web server", "addr", addr)
 		if err := server.RunTLS(addr, sslCert, sslKey); err != nil {
-			log.Fatalf("Failed to start HTTPS server: %v", err)
+			logger.Error(logging.DefaultContext().With("component", "http"), "Failed to start HTTPS server", "error", err)
+			os.Exit(1)
 		}
 	} else {
-		log.Printf("Starting HTTP web server on %s", addr)
+		logger.Info(logging.DefaultContext().With("component", "http"), "Starting HTTP web server", "addr", addr)
 		if err := server.Run(addr); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+			logger.Error(logging.DefaultContext().With("component", "http"), "Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}
 }
 
-func waitForShutdown(server *gin.Engine, mqttClient *mqtt.Client, haClient *homeassistant.Client) {
+func waitForShutdown(server *gin.Engine, mqttClient *mqtt.Client, haClient *homeassistant.Client, logger *logging.Logger) {
 	// Create signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Wait for signal
 	<-sigChan
-	log.Println("Shutting down...")
+	logger.Info(logging.DefaultContext().With("component", "main"), "Shutting down...")
 
 	// Close WebSocket connections
 	websocket.CloseAll()
@@ -295,10 +360,10 @@ func waitForShutdown(server *gin.Engine, mqttClient *mqtt.Client, haClient *home
 	}
 
 	if err := tempServer.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		logger.Error(logging.DefaultContext().With("component", "http"), "Server shutdown error", "error", err)
 	}
 
-	log.Println("Shutdown complete")
+	logger.Info(logging.DefaultContext().With("component", "main"), "Shutdown complete")
 }
 
 // HTTP Handlers
@@ -364,7 +429,7 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 
 func apiUpdateHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Println("Update requested...")
+		slog.Info("Update requested...")
 
 		githubURL := "https://raw.githubusercontent.com/victron-venus/inverter-dashboard-go/main"
 		result := version.UpdateFiles(githubURL)
@@ -373,7 +438,7 @@ func apiUpdateHandler() gin.HandlerFunc {
 			// Schedule restart
 			go func() {
 				time.Sleep(1 * time.Second)
-				log.Printf("Restarting after update to v%s", result.Version)
+				slog.Info("Restarting after update", "version", result.Version)
 				os.Exit(0)
 			}()
 
@@ -388,23 +453,6 @@ func apiUpdateHandler() gin.HandlerFunc {
 			})
 		}
 	}
-}
-
-// loggingMiddleware logs HTTP requests
-func loggingMiddleware() gin.HandlerFunc {
-	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-			param.ClientIP,
-			param.TimeStamp.Format("2006/01/02 15:04:05"),
-			param.Method,
-			param.Path,
-			param.Request.Proto,
-			param.StatusCode,
-			param.Latency,
-			param.Request.UserAgent(),
-			param.ErrorMessage,
-		)
-	})
 }
 
 // Health check
