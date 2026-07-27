@@ -26,31 +26,32 @@ type CommandBuffer struct {
 	count        int
 	mu           sync.Mutex
 	notEmpty     *sync.Cond
-	workerCtx    context.Context
 	workerCancel context.CancelFunc
 	workerWG     sync.WaitGroup
+	sem          chan struct{}
 
 	// Retry configuration
-	baseDelay      time.Duration
-	maxDelay       time.Duration
-	maxRetries     int
-	retryJitter    float64
+	baseDelay   time.Duration
+	maxDelay    time.Duration
+	maxRetries  int
+	retryJitter float64
 }
+
+// maxConcurrentRetries bounds the number of concurrent per-command retry
+// goroutines spawned by the worker.
+const maxConcurrentRetries = 10
 
 // NewCommandBuffer creates a new command buffer with the given capacity
 func NewCommandBuffer(capacity int, client *Client) *CommandBuffer {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	cb := &CommandBuffer{
-		client:       client,
-		buffer:       make([]Command, capacity),
-		capacity:     capacity,
-		workerCtx:    ctx,
-		workerCancel: cancel,
-		baseDelay:    100 * time.Millisecond,
-		maxDelay:     30 * time.Second,
-		maxRetries:   10,
-		retryJitter:  0.1,
+		client:      client,
+		buffer:      make([]Command, capacity),
+		capacity:    capacity,
+		sem:         make(chan struct{}, maxConcurrentRetries),
+		baseDelay:   100 * time.Millisecond,
+		maxDelay:    30 * time.Second,
+		maxRetries:  10,
+		retryJitter: 0.1,
 	}
 
 	cb.notEmpty = sync.NewCond(&cb.mu)
@@ -60,8 +61,10 @@ func NewCommandBuffer(capacity int, client *Client) *CommandBuffer {
 
 // Start begins the background worker that processes the command queue
 func (cb *CommandBuffer) Start() {
+	ctx, cancel := context.WithCancel(context.Background())
+	cb.workerCancel = cancel
 	cb.workerWG.Add(1)
-	go cb.worker()
+	go cb.worker(ctx)
 	log.Printf("MQTT command buffer worker started (capacity: %d)", cb.capacity)
 }
 
@@ -105,7 +108,7 @@ func (cb *CommandBuffer) Enqueue(action string, payload interface{}) error {
 }
 
 // worker processes commands from the buffer with exponential backoff
-func (cb *CommandBuffer) worker() {
+func (cb *CommandBuffer) worker(ctx context.Context) {
 	defer cb.workerWG.Done()
 
 	for {
@@ -115,7 +118,7 @@ func (cb *CommandBuffer) worker() {
 			cb.mu.Lock()
 			for cb.count == 0 {
 				select {
-				case <-cb.workerCtx.Done():
+				case <-ctx.Done():
 					cb.mu.Unlock()
 					// Drain remaining commands on shutdown
 					cb.drain()
@@ -131,10 +134,18 @@ func (cb *CommandBuffer) worker() {
 		// Process command with retry in the background so a single stuck
 		// command (e.g. one that requires many retries with backoff) does
 		// not block the worker from dequeuing and processing newer commands.
+		// The number of concurrent retry goroutines is bounded by cb.sem.
 		cb.workerWG.Add(1)
+		select {
+		case cb.sem <- struct{}{}:
+		case <-ctx.Done():
+			cb.workerWG.Done()
+			return
+		}
 		go func(cmd Command) {
 			defer cb.workerWG.Done()
-			if err := cb.publishWithRetry(cmd); err != nil {
+			defer func() { <-cb.sem }()
+			if err := cb.publishWithRetry(ctx, cmd); err != nil {
 				log.Printf("Failed to publish command after retries: action=%s, error=%v", cmd.Action, err)
 				// Could implement dead letter queue here if needed
 			}
@@ -174,12 +185,12 @@ func (cb *CommandBuffer) drain() {
 }
 
 // publishWithRetry attempts to publish with exponential backoff
-func (cb *CommandBuffer) publishWithRetry(cmd Command) error {
+func (cb *CommandBuffer) publishWithRetry(ctx context.Context, cmd Command) error {
 	delay := cb.baseDelay
 
 	for attempt := 0; attempt <= cb.maxRetries; attempt++ {
 		select {
-		case <-cb.workerCtx.Done():
+		case <-ctx.Done():
 			return fmt.Errorf("worker context cancelled")
 		default:
 		}
@@ -202,7 +213,7 @@ func (cb *CommandBuffer) publishWithRetry(cmd Command) error {
 			attempt+1, cb.maxRetries+1, sleepTime, cmd.Action, err)
 
 		select {
-		case <-cb.workerCtx.Done():
+		case <-ctx.Done():
 			return fmt.Errorf("worker context cancelled")
 		case <-time.After(sleepTime):
 		}
@@ -301,10 +312,10 @@ func (cb *CommandBuffer) Stats() map[string]interface{} {
 	defer cb.mu.Unlock()
 
 	return map[string]interface{}{
-		"capacity":     cb.capacity,
-		"count":        cb.count,
-		"head":         cb.head,
-		"tail":         cb.tail,
-		"utilization":  float64(cb.count) / float64(cb.capacity) * 100,
+		"capacity":    cb.capacity,
+		"count":       cb.count,
+		"head":        cb.head,
+		"tail":        cb.tail,
+		"utilization": float64(cb.count) / float64(cb.capacity) * 100,
 	}
 }
