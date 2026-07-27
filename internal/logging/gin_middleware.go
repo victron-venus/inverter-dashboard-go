@@ -13,10 +13,11 @@ func NewStructuredMiddleware(logger *Logger) gin.HandlerFunc {
 		method := c.Request.Method
 		clientIP := c.ClientIP()
 
-		// Create request context
-		ctx := DefaultContext().
+		// Create request context, enriched with trace/span IDs if a
+		// tracing middleware has already populated the request context.
+		ctx := ExtractTraceInfo(c.Request.Context(), DefaultContext().
 			With("component", "http").
-			WithRequestID(c.GetHeader("X-Request-ID"))
+			WithRequestID(c.GetHeader("X-Request-ID")))
 
 		// Log request start
 		logger.Info(ctx, "HTTP request started",
@@ -39,7 +40,7 @@ func NewStructuredMiddleware(logger *Logger) gin.HandlerFunc {
 			"method", method,
 			"path", path,
 			"status", status,
-			"latency_ms", latency.Milliseconds(),
+			"latency_ms", float64(latency.Microseconds()) / 1000.0,
 			"response_size", size,
 		}
 

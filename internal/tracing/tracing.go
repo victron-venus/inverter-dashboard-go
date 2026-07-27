@@ -58,7 +58,7 @@ func InitTracer(cfg Config) (*Tracer, error) {
 	if cfg.Environment == "" {
 		cfg.Environment = "development"
 	}
-	if cfg.SampleRate <= 0 {
+	if cfg.SampleRate < 0 {
 		cfg.SampleRate = 1.0
 	}
 

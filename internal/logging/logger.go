@@ -9,6 +9,8 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Logger wraps slog.Logger with additional context
@@ -29,7 +31,7 @@ func New(service, version string, level slog.Level) *Logger {
 			}
 			// Add timestamp in RFC3339 format
 			if a.Key == "time" {
-				return slog.String("timestamp", time.Now().UTC().Format(time.RFC3339))
+				return slog.String("timestamp", a.Value.Time().UTC().Format(time.RFC3339))
 			}
 			return a
 		},
@@ -133,10 +135,15 @@ func NewContext() Context {
 	return Context{Data: make(map[string]any)}
 }
 
-// With adds a key-value pair to the context
+// With adds a key-value pair to the context, returning a new Context that
+// does not share its underlying map with the receiver.
 func (c Context) With(key string, value any) Context {
-	c.Data[key] = value
-	return c
+	data := make(map[string]any, len(c.Data)+1)
+	for k, v := range c.Data {
+		data[k] = v
+	}
+	data[key] = value
+	return Context{Data: data}
 }
 
 // WithTraceID adds a trace ID to the context
@@ -154,10 +161,21 @@ func (c Context) WithRequestID(requestID string) Context {
 	return c.With("request_id", requestID)
 }
 
-// ExtractTraceInfo extracts trace/span IDs from context if available
-func ExtractTraceInfo(ctx Context) Context {
-	// This would integrate with OpenTelemetry if needed
-	return ctx
+// ExtractTraceInfo extracts trace/span IDs from a standard context.Context
+// (populated by OpenTelemetry) and adds them to the logging Context.
+func ExtractTraceInfo(ctx context.Context, logCtx Context) Context {
+	span := trace.SpanFromContext(ctx)
+	spanCtx := span.SpanContext()
+	if !spanCtx.IsValid() {
+		return logCtx
+	}
+	if spanCtx.HasTraceID() {
+		logCtx = logCtx.WithTraceID(spanCtx.TraceID().String())
+	}
+	if spanCtx.HasSpanID() {
+		logCtx = logCtx.WithSpanID(spanCtx.SpanID().String())
+	}
+	return logCtx
 }
 
 // NewFromContext creates a logger with context extracted from a request

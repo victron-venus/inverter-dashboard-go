@@ -292,12 +292,13 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logge
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(logging.NewStructuredMiddleware(logger))
 
-	// Add tracing middleware if tracer is available
+	// Add tracing middleware before the logging middleware so that trace/span
+	// IDs are already present in the request context when requests are logged.
 	if tracer != nil {
 		router.Use(tracing.GinMiddleware(tracer, "inverter-dashboard-go"))
 	}
+	router.Use(logging.NewStructuredMiddleware(logger))
 
 	// Serve Vue UI static assets (JS/CSS) from dist directory
 	distDir := "internal/html/dist"
