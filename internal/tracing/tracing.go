@@ -47,8 +47,8 @@ type Tracer struct {
 	tracer   trace.Tracer
 }
 
-// InitTracer initializes OpenTelemetry tracing with the given configuration
-func InitTracer(cfg Config) (*Tracer, error) {
+// applyDefaults fills in default values for any unset configuration fields.
+func applyDefaults(cfg Config) Config {
 	if cfg.ServiceName == "" {
 		cfg.ServiceName = "inverter-dashboard-go"
 	}
@@ -61,41 +61,75 @@ func InitTracer(cfg Config) (*Tracer, error) {
 	if cfg.SampleRate < 0 {
 		cfg.SampleRate = 1.0
 	}
+	return cfg
+}
 
+// newOtlpExporter creates an OTLP HTTP span exporter for the given endpoint.
+func newOtlpExporter(cfg Config) (sdktrace.SpanExporter, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var exp sdktrace.SpanExporter
+	var err error
+	if cfg.Insecure {
+		exp, err = otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
+			otlptracehttp.WithInsecure(),
+		)
+	} else {
+		exp, err = otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
+	}
+	log.Printf("OpenTelemetry OTLP HTTP exporter enabled: %s", cfg.OtlpEndpoint)
+	return exp, nil
+}
+
+// newStdoutExporter creates a stdout span exporter for debugging.
+func newStdoutExporter() (sdktrace.SpanExporter, error) {
+	exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout exporter: %w", err)
+	}
+	log.Println("OpenTelemetry stdout exporter enabled")
+	return exp, nil
+}
+
+// buildExporters constructs the list of span exporters requested by cfg.
+func buildExporters(cfg Config) ([]sdktrace.SpanExporter, error) {
 	var exporters []sdktrace.SpanExporter
 
 	// OTLP HTTP exporter (for Grafana Tempo, Jaeger, etc.)
 	if cfg.OtlpEndpoint != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		var exp sdktrace.SpanExporter
-		var err error
-		if cfg.Insecure {
-			exp, err = otlptracehttp.New(ctx,
-				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-				otlptracehttp.WithInsecure(),
-			)
-		} else {
-			exp, err = otlptracehttp.New(ctx,
-				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-			)
-		}
+		exp, err := newOtlpExporter(cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
+			return nil, err
 		}
 		exporters = append(exporters, exp)
-		log.Printf("OpenTelemetry OTLP HTTP exporter enabled: %s", cfg.OtlpEndpoint)
 	}
 
 	// Stdout exporter for debugging
 	if cfg.EnableStdout {
-		exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		exp, err := newStdoutExporter()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create stdout exporter: %w", err)
+			return nil, err
 		}
 		exporters = append(exporters, exp)
-		log.Println("OpenTelemetry stdout exporter enabled")
+	}
+
+	return exporters, nil
+}
+
+// InitTracer initializes OpenTelemetry tracing with the given configuration
+func InitTracer(cfg Config) (*Tracer, error) {
+	cfg = applyDefaults(cfg)
+
+	exporters, err := buildExporters(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	// If no exporters configured, return no-op tracer

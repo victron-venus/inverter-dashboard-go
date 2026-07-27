@@ -26,6 +26,8 @@ import (
 	"log/slog"
 )
 
+const serviceName = "inverter-dashboard-go"
+
 var (
 	// Version is set during build
 	Version string = "dev"
@@ -60,7 +62,7 @@ func main() {
 	}
 
 	// Initialize structured logger
-	logger := logging.New("inverter-dashboard-go", version.GetCurrent(), slog.LevelInfo)
+	logger := logging.New(serviceName, version.GetCurrent(), slog.LevelInfo)
 
 	// Load configuration - Python uses environment only
 	cfg, err := config.Load("")
@@ -187,7 +189,7 @@ func main() {
 	if tp != nil {
 		tracer = tp.Tracer()
 	} else {
-		tracer = otel.Tracer("inverter-dashboard-go")
+		tracer = otel.Tracer(serviceName)
 	}
 	server := createServer(mqttClient, haClient, logger, tracer)
 
@@ -239,52 +241,67 @@ func haPoller(haClient *homeassistant.Client, logger *logging.Logger) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Poll tick received, calling FetchStatesOnce()")
-		overlay, err := haClient.FetchStatesOnce()
-		if err != nil {
-			logger.Error(logging.DefaultContext().With("component", "homeassistant"), "HA poll failed", "error", err)
-			continue
+		haPollTick(haClient, logger)
+	}
+}
+
+// haPollTick performs a single Home Assistant poll iteration: fetching the
+// latest overlay state, logging diagnostic details, and updating the client.
+func haPollTick(haClient *homeassistant.Client, logger *logging.Logger) {
+	logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Poll tick received, calling FetchStatesOnce()")
+	overlay, err := haClient.FetchStatesOnce()
+	if err != nil {
+		logger.Error(logging.DefaultContext().With("component", "homeassistant"), "HA poll failed", "error", err)
+		return
+	}
+	logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "FetchStatesOnce() completed",
+		"ha_direct_connected", overlay.HADirectConnected,
+	)
+	if !overlay.HADirectConnected {
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "HADirectConnected=false, ReplaceOverlay NOT called")
+		return
+	}
+
+	logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Successfully fetched entities",
+		"count", len(overlay.AdditionalFields),
+	)
+	logHAEntities(overlay, logger)
+	haClient.ReplaceOverlay(overlay)
+}
+
+// logHAEntities logs diagnostic details about the boolean and additional
+// entities contained in a Home Assistant overlay.
+func logHAEntities(overlay homeassistant.Overlay, logger *logging.Logger) {
+	if len(overlay.AdditionalFields) == 0 {
+		return
+	}
+
+	logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Values", "fields", overlay.AdditionalFields)
+
+	// Log all collected boolean entities with their current states
+	logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Boolean Entities",
+		"configured", len(overlay.Booleans),
+	)
+	for name, state := range overlay.Booleans {
+		status := "OFF"
+		if state {
+			status = "ON"
 		}
-		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "FetchStatesOnce() completed",
-			"ha_direct_connected", overlay.HADirectConnected,
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Boolean entity",
+			"name", name,
+			"status", status,
 		)
-		if overlay.HADirectConnected {
-			logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Successfully fetched entities",
-				"count", len(overlay.AdditionalFields),
-			)
-			if len(overlay.AdditionalFields) > 0 {
-				logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Values", "fields", overlay.AdditionalFields)
+	}
 
-				// Log all collected boolean entities with their current states
-				logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Boolean Entities",
-					"configured", len(overlay.Booleans),
-				)
-				for name, state := range overlay.Booleans {
-					status := "OFF"
-					if state {
-						status = "ON"
-					}
-					logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Boolean entity",
-						"name", name,
-						"status", status,
-					)
-				}
-
-				// Log all entities from overlay.AdditionalFields
-				logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Additional Fields",
-					"entities", len(overlay.AdditionalFields),
-				)
-				for entity, value := range overlay.AdditionalFields {
-					logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Entity value",
-						"entity", entity,
-						"value", value,
-					)
-				}
-			}
-			haClient.ReplaceOverlay(overlay)
-		} else {
-			logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "HADirectConnected=false, ReplaceOverlay NOT called")
-		}
+	// Log all entities from overlay.AdditionalFields
+	logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Additional Fields",
+		"entities", len(overlay.AdditionalFields),
+	)
+	for entity, value := range overlay.AdditionalFields {
+		logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Entity value",
+			"entity", entity,
+			"value", value,
+		)
 	}
 }
 
@@ -296,7 +313,7 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logge
 	// Add tracing middleware before the logging middleware so that trace/span
 	// IDs are already present in the request context when requests are logged.
 	if tracer != nil {
-		router.Use(tracing.GinMiddleware(tracer, "inverter-dashboard-go"))
+		router.Use(tracing.GinMiddleware(tracer, serviceName))
 	}
 	router.Use(logging.NewStructuredMiddleware(logger))
 
