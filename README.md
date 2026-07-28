@@ -12,7 +12,9 @@
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
 
-The original **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** stack is Python/FastAPI (`alvit/inverter-dashboard` on Docker Hub). This repository ships the same front-end assets as a **single binary** and publishes **`alvit/inverter-dashboard-go`**.
+**Recommended for Cerbo GX** — single binary, minimal memory, same UI assets as the Python dashboard.
+
+The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** (`alvit/inverter-dashboard` on Docker Hub) suits NAS/Docker deployments. For a native desktop/mobile app, see **[inverter-desktop](https://github.com/victron-venus/inverter-desktop)**.
 
 ## Architecture
 
@@ -49,6 +51,26 @@ flowchart LR
 - **Dark/light theme** support with local preference storage
 - **Cross-platform** binaries for easy deployment
 - **Chart visualization** with uPlot for power flow history
+
+## Release Channels & CI/CD
+
+This project uses automated GitHub Actions workflows for continuous delivery:
+
+- **Stable Releases**: Tagged as `vX.Y.Z` (e.g., `v1.0.0`). Compiles standalone binaries for macOS (Intel & Apple Silicon), Linux (amd64, arm64, Raspberry Pi ARMv7).
+- **Pre-releases**: Tagged with `vX.Y.Z-rc.N` or `vX.Y.Z-beta.N`. Automatically marked as **Pre-release** on GitHub to prevent accidental deployment to production environments.
+- **Nightly Builds**: Built daily at 02:00 UTC from `main`. Publishes binary artifacts to the rolling **[Nightly Build Release](https://github.com/victron-venus/inverter-dashboard-go/releases/tag/nightly)** and updates the Docker image tag `ghcr.io/victron-venus/inverter-dashboard-go:nightly`.
+
+---
+
+## Completed Features
+
+- ✅ **CI/CD Releases & Nightly Builds**: Multi-arch Go binary builds, Docker `:nightly` images, and pre-release tag matching configured
+- ✅ **Embed Next-Gen Vue UI**: Updated `internal/html/template.go` to use Go `//go:embed` on `internal/html/vue-ui`, serving Vue SPA when available with fallback to Go dashboard
+- ✅ **Prometheus Metrics Endpoint**: Implemented `GET /metrics` exposing Prometheus gauges for `victron_solar_watts`, `victron_battery_soc`, `victron_grid_watts`, and `websocket_active_clients`
+- ✅ **Resilient MQTT Command Buffer**: Implemented thread-safe ring buffer with exponential backoff queue for MQTT commands during temporary broker disconnections (commit 8b2e777)
+- ✅ **OpenTelemetry & Structured Logging**: Migrated logging to Go standard library `log/slog` with JSON output and trace correlation IDs
+
+---
 
 ## Quick Start
 
@@ -389,7 +411,7 @@ This project is part of the Victron Venus OS integration suite:
 | [dbus-tasmota-pv](https://github.com/victron-venus/dbus-tasmota-pv) | Tasmota smart plug integration as a PV inverter on D-Bus |
 | [esphome-jbd-bms-mqtt](https://github.com/victron-venus/esphome-jbd-bms-mqtt) | ESP32 Bluetooth monitor for JBD BMS batteries |
 | [inverter-monitoring](https://github.com/victron-venus/inverter-monitoring) | TIG (Telegraf, InfluxDB, Grafana) monitoring stack |
-| [terraform-github-victron](https://github.com/4alvit/terraform-github-victron) | Infrastructure as Code for the GitHub organization |
+| [terraform-github](https://github.com/4alvit/terraform-github) | Infrastructure as Code for the GitHub organization |
 
 ## Author
 
@@ -412,4 +434,3 @@ For issues and feature requests, please use the GitHub issue tracker.
 ---
 
 **Note:** This is a community project and is not affiliated with Victron Energy.
-y.
