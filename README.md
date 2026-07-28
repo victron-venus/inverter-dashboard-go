@@ -62,6 +62,16 @@ This project uses automated GitHub Actions workflows for continuous delivery:
 
 ---
 
+## Completed Features
+
+- ✅ **CI/CD Releases & Nightly Builds**: Multi-arch Go binary builds, Docker `:nightly` images, and pre-release tag matching configured
+- ✅ **Embed Next-Gen Vue UI**: Updated `internal/html/template.go` to use Go `//go:embed` on `internal/html/vue-ui`, serving Vue SPA when available with fallback to Go dashboard
+- ✅ **Prometheus Metrics Endpoint**: Implemented `GET /metrics` exposing Prometheus gauges for `victron_solar_watts`, `victron_battery_soc`, `victron_grid_watts`, and `websocket_active_clients`
+- ✅ **Resilient MQTT Command Buffer**: Implemented thread-safe ring buffer with exponential backoff queue for MQTT commands during temporary broker disconnections (commit 8b2e777)
+- ✅ **OpenTelemetry & Structured Logging**: Migrated logging to Go standard library `log/slog` with JSON output and trace correlation IDs
+
+---
+
 ## Quick Start
 
 ### Prerequisites
