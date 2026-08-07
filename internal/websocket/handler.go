@@ -50,6 +50,49 @@ var (
 	latestMu      sync.RWMutex
 )
 
+// stateToMap converts State struct to map[string]interface{} using JSON marshaling
+func stateToMap(s *state.State) map[string]interface{} {
+	data, _ := json.Marshal(s)
+	var result map[string]interface{}
+	_ = json.Unmarshal(data, &result)
+	return result
+}
+
+// mergeStates merges MQTT state with HA overlay
+func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedKeys []string) map[string]interface{} {
+	merged := stateToMap(mqttState)
+
+	merged["ha_direct_connected"] = overlay.HADirectConnected
+
+	if overlay.HADirectConnected {
+		if len(overlay.Booleans) > 0 {
+			booleansCopy := make(map[string]bool, len(overlay.Booleans))
+			for k, v := range overlay.Booleans {
+				booleansCopy[k] = v
+			}
+			merged["booleans"] = booleansCopy
+		}
+		if len(overlay.AdditionalFields) > 0 {
+			for k, v := range overlay.AdditionalFields {
+				if v != nil {
+					merged[k] = v
+				}
+			}
+		}
+	} else {
+		if booleans, ok := merged["booleans"].(map[string]interface{}); ok {
+			for key := range booleans {
+				booleans[key] = false
+			}
+		}
+		for _, key := range managedKeys {
+			merged[key] = false
+		}
+	}
+
+	return merged
+}
+
 // HandleWebSocket handles WebSocket connections
 func HandleWebSocket(c *gin.Context, mqttClient *mqtt.Client, haClient *homeassistant.Client) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -363,92 +406,6 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 	}
 
 	return nil
-}
-
-// mergeStates merges MQTT state with HA overlay
-func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedKeys []string) map[string]interface{} {
-	// Start with MQTT state as map
-	merged := stateToMap(mqttState)
-
-	// Set HA connection status
-	merged["ha_direct_connected"] = overlay.HADirectConnected
-
-	// If HA is connected, override with HA values
-	if overlay.HADirectConnected {
-		// Override booleans (create deep copy to prevent concurrent map access)
-		if len(overlay.Booleans) > 0 {
-			booleansCopy := make(map[string]bool, len(overlay.Booleans))
-			for k, v := range overlay.Booleans {
-				booleansCopy[k] = v
-			}
-			merged["booleans"] = booleansCopy
-		}
-
-		// Add other fields from overlay (create deep copy to prevent concurrent map access)
-		if len(overlay.AdditionalFields) > 0 {
-			additionalCopy := make(map[string]interface{}, len(overlay.AdditionalFields))
-			for k, v := range overlay.AdditionalFields {
-				// Only override if value is not nil
-				if v != nil {
-					additionalCopy[k] = v
-				}
-			}
-			for k, v := range additionalCopy {
-				merged[k] = v
-			}
-		}
-	} else {
-		// Reset HA-managed fields to fallback when not connected (matches Python behavior)
-		if booleans, ok := merged["booleans"].(map[string]interface{}); ok {
-			for key := range booleans {
-				booleans[key] = false
-			}
-		}
-		for _, key := range managedKeys {
-			merged[key] = false
-		}
-	}
-
-	return merged
-}
-
-// stateToMap converts State struct to map[string]interface{}
-func stateToMap(s *state.State) map[string]interface{} {
-	return map[string]interface{}{
-		"booleans":            s.Booleans,
-		"features":            safeFeatures(s.Features),
-		"daily_stats":         s.DailyStats,
-		"ess_mode":            s.ESSMode,
-		"solar_total":         s.SolarTotal,
-		"mppt_total":          s.MpptTotal,
-		"pv_total":            s.PVTotal,
-		"solar_sources":       s.SolarSources,
-		"mppt_chargers":       s.MPPTChargers,
-		"mppt_individual":     s.MPPTIndividual,
-		"tasmota_individual":  s.TasmotaIndividual,
-		"batteries":           s.Batteries,
-		"gt":                  s.GT,
-		"g1":                  s.G1,
-		"g2":                  s.G2,
-		"tt":                  s.TT,
-		"t1":                  s.T1,
-		"t2":                  s.T2,
-		"bc":                  s.BC,
-		"bv":                  s.BV,
-		"bp":                  s.BP,
-		"setpoint":            s.Setpoint,
-		"battery_voltage":     s.BatteryVoltage,
-		"battery_current":     s.BatteryCurrent,
-		"battery_power":       s.BatteryPower,
-		"battery_soc":         s.BatterySOC,
-		"inverter_state":      s.InverterState,
-		"uptime":              s.Uptime,
-		"ha_connected":        s.HAConnected,
-		"ha_direct_connected": s.HADirectConnected,
-		"version":             s.Version,
-		"dashboard_version":   s.DashboardVersion,
-		"console":             s.Console,
-	}
 }
 
 // safeFeatures ensures we never return nil for features

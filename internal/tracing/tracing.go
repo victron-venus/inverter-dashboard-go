@@ -41,14 +41,9 @@ func DefaultConfig() Config {
 	}
 }
 
-// Tracer wraps the OpenTelemetry tracer provider
-type Tracer struct {
-	provider *sdktrace.TracerProvider
-	tracer   trace.Tracer
-}
-
-// applyDefaults fills in default values for any unset configuration fields.
-func applyDefaults(cfg Config) Config {
+// InitTracer initializes OpenTelemetry tracing with the given configuration.
+// Returns the TracerProvider (for shutdown) and a Tracer for creating spans.
+func InitTracer(cfg Config) (*sdktrace.TracerProvider, trace.Tracer, error) {
 	if cfg.ServiceName == "" {
 		cfg.ServiceName = "inverter-dashboard-go"
 	}
@@ -61,82 +56,48 @@ func applyDefaults(cfg Config) Config {
 	if cfg.SampleRate < 0 {
 		cfg.SampleRate = 1.0
 	}
-	return cfg
-}
 
-// newOtlpExporter creates an OTLP HTTP span exporter for the given endpoint.
-func newOtlpExporter(cfg Config) (sdktrace.SpanExporter, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var exp sdktrace.SpanExporter
-	var err error
-	if cfg.Insecure {
-		exp, err = otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-			otlptracehttp.WithInsecure(),
-		)
-	} else {
-		exp, err = otlptracehttp.New(ctx,
-			otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-		)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
-	}
-	log.Printf("OpenTelemetry OTLP HTTP exporter enabled: %s", cfg.OtlpEndpoint)
-	return exp, nil
-}
-
-// newStdoutExporter creates a stdout span exporter for debugging.
-func newStdoutExporter() (sdktrace.SpanExporter, error) {
-	exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout exporter: %w", err)
-	}
-	log.Println("OpenTelemetry stdout exporter enabled")
-	return exp, nil
-}
-
-// buildExporters constructs the list of span exporters requested by cfg.
-func buildExporters(cfg Config) ([]sdktrace.SpanExporter, error) {
 	var exporters []sdktrace.SpanExporter
 
 	// OTLP HTTP exporter (for Grafana Tempo, Jaeger, etc.)
 	if cfg.OtlpEndpoint != "" {
-		exp, err := newOtlpExporter(cfg)
-		if err != nil {
-			return nil, err
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var exp sdktrace.SpanExporter
+		var err error
+		if cfg.Insecure {
+			exp, err = otlptracehttp.New(ctx,
+				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
+				otlptracehttp.WithInsecure(),
+			)
+		} else {
+			exp, err = otlptracehttp.New(ctx,
+				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
+			)
 		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
+		}
+		log.Printf("OpenTelemetry OTLP HTTP exporter enabled: %s", cfg.OtlpEndpoint)
 		exporters = append(exporters, exp)
 	}
 
 	// Stdout exporter for debugging
 	if cfg.EnableStdout {
-		exp, err := newStdoutExporter()
+		exp, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 		if err != nil {
-			return nil, err
+			return nil, nil, fmt.Errorf("failed to create stdout exporter: %w", err)
 		}
+		log.Println("OpenTelemetry stdout exporter enabled")
 		exporters = append(exporters, exp)
 	}
 
-	return exporters, nil
-}
-
-// InitTracer initializes OpenTelemetry tracing with the given configuration
-func InitTracer(cfg Config) (*Tracer, error) {
-	cfg = applyDefaults(cfg)
-
-	exporters, err := buildExporters(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	// If no exporters configured, return no-op tracer
+	// If no exporters configured, return no-op tracer provider
 	if len(exporters) == 0 {
-		return &Tracer{
-			tracer: otel.Tracer(cfg.ServiceName),
-		}, nil
+		tp := sdktrace.NewTracerProvider()
+		otel.SetTracerProvider(tp)
+		return tp, tp.Tracer(cfg.ServiceName), nil
 	}
 
 	// Create resource with service metadata
@@ -149,13 +110,13 @@ func InitTracer(cfg Config) (*Tracer, error) {
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return nil, nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	// Configure sampler
 	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.SampleRate))
 
-	// Build tracer provider with first exporter
+	// Build tracer provider
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporters[0]),
 		sdktrace.WithResource(res),
@@ -176,77 +137,15 @@ func InitTracer(cfg Config) (*Tracer, error) {
 		propagation.Baggage{},
 	))
 
-	return &Tracer{
-		provider: tp,
-		tracer:   tp.Tracer(cfg.ServiceName),
-	}, nil
+	return tp, tp.Tracer(cfg.ServiceName), nil
 }
 
 // Shutdown gracefully shuts down the tracer provider
-func Shutdown(ctx context.Context, tp *Tracer) error {
+func Shutdown(ctx context.Context, tp *sdktrace.TracerProvider) error {
 	if tp != nil {
 		return tp.Shutdown(ctx)
 	}
 	return nil
-}
-
-// Tracer returns the underlying OpenTelemetry tracer
-func (t *Tracer) Tracer() trace.Tracer {
-	return t.tracer
-}
-
-// Shutdown gracefully shuts down the tracer provider
-func (t *Tracer) Shutdown(ctx context.Context) error {
-	if t.provider != nil {
-		return t.provider.Shutdown(ctx)
-	}
-	return nil
-}
-
-// StartSpan starts a new span with the given name
-func (t *Tracer) StartSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	if t.tracer == nil {
-		return ctx, trace.SpanFromContext(ctx)
-	}
-	return t.tracer.Start(ctx, name, opts...)
-}
-
-// StartSpanWithAttributes starts a new span with attributes
-func (t *Tracer) StartSpanWithAttributes(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
-	opts := []trace.SpanStartOption{
-		trace.WithAttributes(attrs...),
-	}
-	return t.StartSpan(ctx, name, opts...)
-}
-
-// WrapWithSpan executes a function within a new span
-func (t *Tracer) WrapWithSpan(ctx context.Context, name string, fn func(ctx context.Context) error, attrs ...attribute.KeyValue) error {
-	ctx, span := t.StartSpanWithAttributes(ctx, name, attrs...)
-	defer span.End()
-
-	err := fn(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetAttributes(attribute.Bool("error", true))
-	}
-	return err
-}
-
-// AddSpanAttributes adds attributes to the current span
-func AddSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
-	span := trace.SpanFromContext(ctx)
-	if span.IsRecording() {
-		span.SetAttributes(attrs...)
-	}
-}
-
-// RecordError records an error on the current span
-func RecordError(ctx context.Context, err error, attrs ...attribute.KeyValue) {
-	span := trace.SpanFromContext(ctx)
-	if span.IsRecording() {
-		span.RecordError(err)
-		span.SetAttributes(append(attrs, attribute.Bool("error", true))...)
-	}
 }
 
 // GinMiddleware returns a Gin middleware for HTTP tracing

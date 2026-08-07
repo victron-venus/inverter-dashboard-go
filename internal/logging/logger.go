@@ -2,9 +2,7 @@ package logging
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"runtime"
@@ -186,24 +184,4 @@ func (l *Logger) NewFromContext(ctx Context) *Logger {
 // DefaultContext returns a new empty context
 func DefaultContext() Context {
 	return NewContext()
-}
-
-// JSONEncoder provides a custom JSON encoder for structured logging
-type JSONEncoder struct {
-	writer io.Writer
-}
-
-// NewJSONEncoder creates a new JSON encoder
-func NewJSONEncoder(w io.Writer) *JSONEncoder {
-	return &JSONEncoder{writer: w}
-}
-
-// Encode writes a log entry as JSON
-func (e *JSONEncoder) Encode(entry map[string]any) error {
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	_, err = e.writer.Write(append(data, '\n'))
-	return err
 }
