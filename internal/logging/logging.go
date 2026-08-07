@@ -1,3 +1,4 @@
-// This file has been merged into logger.go
-// Kept as stub to avoid build issues
+// This file has been removed - merged into logger.go
 package logging
+
+const _ = 1

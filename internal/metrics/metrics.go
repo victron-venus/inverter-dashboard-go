@@ -1,4 +1,4 @@
+// This file has been removed - use collector.go instead
 package metrics
 
-// This file is deprecated - use collector.go instead
-const _ = 0
+const _ = 1

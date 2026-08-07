@@ -21,7 +21,6 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/tracing"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"log/slog"
 )
@@ -54,7 +53,7 @@ func main() {
 	// Initialize OpenTelemetry tracing
 	traceCfg := tracing.DefaultConfig()
 	traceCfg.ServiceVersion = version.GetCurrent()
-	tp, err := tracing.InitTracer(traceCfg)
+	tp, tracer, err := tracing.InitTracer(traceCfg)
 	if err != nil {
 		slog.Error("Warning: failed to initialize tracing", "error", err)
 	} else {
@@ -185,12 +184,6 @@ func main() {
 	go checkVersion(cfg.GitHub.RawURL, logger)
 
 	// Create and configure HTTP server with tracing middleware
-	var tracer trace.Tracer
-	if tp != nil {
-		tracer = tp.Tracer()
-	} else {
-		tracer = otel.Tracer(serviceName)
-	}
 	server := createServer(mqttClient, haClient, logger, tracer)
 
 	// Start server in a goroutine
@@ -334,7 +327,6 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logge
 	router.GET("/api/state", apiStateHandler(mqttClient))
 	router.GET("/health", healthHandler(mqttClient))
 	router.POST("/api/check-update", apiCheckUpdateHandler())
-	router.POST("/api/update", apiUpdateHandler())
 
 	return router
 }
@@ -447,29 +439,9 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 
 func apiUpdateHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		slog.Info("Update requested...")
-
-		githubURL := "https://raw.githubusercontent.com/victron-venus/inverter-dashboard-go/main"
-		result := version.UpdateFiles(githubURL)
-
-		if result.Success {
-			// Schedule restart
-			go func() {
-				time.Sleep(1 * time.Second)
-				slog.Info("Restarting after update", "version", result.Version)
-				os.Exit(0)
-			}()
-
-			c.JSON(200, gin.H{
-				"status":  "updated",
-				"version": result.Version,
-				"message": fmt.Sprintf("Updated to v%s, restarting...", result.Version),
-			})
-		} else {
-			c.JSON(500, gin.H{
-				"error": result.Error.Error(),
-			})
-		}
+		c.JSON(501, gin.H{
+			"error": "Auto-update disabled - use container restart or external deployment tool",
+		})
 	}
 }
 
