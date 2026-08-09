@@ -16,6 +16,19 @@ Remote web dashboard for Victron inverter control, rewritten in Go for better pe
 
 The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** (`alvit/inverter-dashboard` on Docker Hub) suits NAS/Docker deployments. For a native desktop/mobile app, see **[inverter-desktop](https://github.com/victron-venus/inverter-desktop)**.
 
+---
+
+## Project Role
+
+**This is the production web dashboard.** Features: real-time MQTT/WebSocket, Docker Hub deployment, Home Assistant integration, multi-arch binaries.
+
+| Use Case | Recommended |
+|----------|-------------|
+| Cerbo GX / embedded | **inverter-dashboard-go** (this) — single binary, minimal footprint |
+| Docker / NAS | [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) — Python/FastAPI (`alvit/inverter-dashboard`) |
+| Native desktop/mobile | [inverter-desktop](https://github.com/victron-venus/inverter-desktop) — Rust/Tauri app with offline support |
+| Building custom dashboards | [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) — shared Vue 3 component library |
+
 ## Architecture
 
 ```mermaid
