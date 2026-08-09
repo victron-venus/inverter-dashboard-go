@@ -10,6 +10,14 @@
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://go.dev/)
 
+[![GitHub Stars](https://img.shields.io/github/stars/victron-venus/inverter-dashboard-go?style=social)](https://github.com/victron-venus/inverter-dashboard-go/stargazers)
+
+---
+
+⭐ **If this project helps you, please star it!** Stars help others discover it and motivate continued development.
+
+---
+
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
 
 **Recommended for Cerbo GX** — single binary, minimal memory, same UI assets as the Python dashboard.
