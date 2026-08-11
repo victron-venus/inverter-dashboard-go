@@ -2,61 +2,25 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
-        with:
-          egress-policy: audit
+  ci:
+    name: CI
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@875762362bb31b4899bf02fdf9e835188dc5eb80
+    with:
+      # go-version: '1.23'  # default from workflow
+      # working-directory: '.'  # default
+      # run-lint: true  # default
+      # run-tests: true  # default
+      # test-args: '-race -coverprofile=coverage.out -covermode=atomic'  # default
+      # coverage-threshold: 70  # default
+      # run-vulncheck: true  # default
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Fetch Vue UI (optional - don't fail CI if not available)
-        run: |
-          mkdir -p internal/html/vue-ui
-
-          # Try to get Vue UI from CI build or latest release
-          if gh release view ci-latest --repo victron-venus/inverter-dashboard-vue &>/dev/null; then
-            echo "Downloading Vue UI from ci-latest..."
-            gh release download ci-latest --repo victron-venus/inverter-dashboard-vue --pattern '*.tar.gz' --dir . || true
-            for f in *.tar.gz; do
-              [ -e "$f" ] || continue
-              tar -xzf "$f" -C internal/html/vue-ui
-              echo "Vue UI downloaded successfully"
-            done
-          fi
-
-          # Create placeholder if no Vue UI
-          if [ ! "$(ls -A internal/html/vue-ui 2>/dev/null)" ]; then
-            echo "No Vue UI available, creating placeholder..."
-            echo '<!DOCTYPE html><html><body><p>Vue UI not embedded (run with full build to include)</p></body></html>' > internal/html/vue-ui/index.html
-            echo "build:without-vue-ui" > internal/html/vue-ui/.no-vue-ui
-          fi
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      - name: Go test
-        run: go test ./...
-
-      - name: Go build
-        run: go build -v .
-
-      - name: Verify Vue UI embedding
-        run: |
-          if [ -f internal/html/vue-ui/index.html ]; then
-            echo "Vue UI status:"
-            head -5 internal/html/vue-ui/index.html
-          fi
