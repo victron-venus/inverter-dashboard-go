@@ -23,4 +23,3 @@ jobs:
       # run-vulncheck: true  # default
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
