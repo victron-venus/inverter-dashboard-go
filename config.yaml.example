@@ -54,6 +54,9 @@ homeassistant:
     dishwasher_duration: "sensor.dishwasher_duration"
     washer_time: "sensor.washer_remaining_time"
     dryer_time: "sensor.dryer_remaining_time"
+  sensor_entities:
+    # Example: gt: "sensor.grid_power"
+    # solar_total: "sensor.solar_power"
 
 # Optional: Add custom UI configuration
 ui:
