@@ -164,6 +164,7 @@ type HomeAssistantConfig struct {
 	EVPowerEntity      string
 	ApplianceEntities  map[string]string
 	VueSensors         map[string]string
+	SensorEntities      map[string]string
 }
 
 // Load reads configuration matching Python config.py behavior exactly
