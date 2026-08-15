@@ -19,6 +19,7 @@ jobs:
       security-events: write
       contents: read
       issues: write
+      pull_requests: write
 
     steps:
     - name: Harden the runner (Audit all outbound calls)
