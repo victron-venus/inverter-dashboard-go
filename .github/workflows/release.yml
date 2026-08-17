@@ -25,24 +25,19 @@ jobs:
           - goos: darwin
             goarch: arm64
             name: macos-silicon
-
           - goos: linux
             goarch: arm64
             name: linux-arm64
-
           - goos: linux
             goarch: arm
             goarm: 7
             name: raspberry-pi3
-
           - goos: linux
             goarch: amd64
             name: linux-amd64
-
           - goos: darwin
             goarch: amd64
             name: macos-intel
-
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -110,7 +105,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -135,13 +129,12 @@ jobs:
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
 
-      # Create release with generated notes and upload all binary assets
-      - name: Release assets
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: victron-venus/venus-os-ci-toolkit/.github/workflows/release.yml@main
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          skip-checkout: true
+          generate-notes: true
           prerelease: ${{ steps.detect.outputs.is_prerelease == 'true' }}
-          generate_release_notes: true
           files: dist/**/*
+        secrets:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
