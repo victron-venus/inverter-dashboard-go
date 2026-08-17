@@ -107,6 +107,7 @@ type Client struct {
 	evPower           string
 	applianceEntities map[string]string
 	vueSensors        map[string]string
+	sensorEntities    map[string]string
 
 	// Runtime state
 	overlay    Overlay
@@ -144,6 +145,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 		booleanButtons:    booleanButtons,
 		applianceEntities: cfg.ApplianceEntities,
 		vueSensors:        cfg.VueSensors,
+		sensorEntities:     cfg.SensorEntities,
 		switchEntities:    switchEntities,
 		configured:        false,
 		overlayMu:         sync.RWMutex{},
@@ -367,6 +369,20 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		log.Printf("[HA DEBUG] evPower entity not configured")
 	}
 
+	// Fetch sensor entities
+	for key, entityID := range c.sensorEntities {
+		state, err := fetchEntityState(entityID)
+		if err != nil {
+			continue
+		}
+		if val, err := strconv.ParseFloat(state, 64); err == nil {
+			result.AdditionalFields[key] = val
+			log.Printf("[HA DEBUG] Sensor %s: %.2f", key, val)
+		} else {
+			log.Printf("[HA DEBUG] Failed to fetch sensor %s: %v", key, err)
+			result.AdditionalFields[key] = nil
+		}
+	}
 	log.Printf("[HA DEBUG] Final AdditionalFields: %+v", result.AdditionalFields)
 	// Fetch appliance entities
 	for key, entityID := range c.applianceEntities {
@@ -679,6 +695,9 @@ func (c *Client) GetManagedKeys() []string {
 		keys = append(keys, "ev_power")
 	}
 	for k := range c.applianceEntities {
+		keys = append(keys, k)
+	}
+	for k := range c.sensorEntities {
 		keys = append(keys, k)
 	}
 	return keys
