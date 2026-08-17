@@ -55,8 +55,17 @@ homeassistant:
     washer_time: "sensor.washer_remaining_time"
     dryer_time: "sensor.dryer_remaining_time"
   sensor_entities:
-    # Example: gt: "sensor.grid_power"
-    # solar_total: "sensor.solar_power"
+    # NOTE: Most fields now come from inverter-control MQTT (D-Bus sourced):
+    #   gt, g1, g2, tt, t1, t2, solar_total, mppt_total, tasmota_total
+    #   battery_soc, battery_power, battery_voltage, battery_current
+    #   setpoint, daily_stats, mppt_chargers, batteries, mppt_individual, tasmota_individual
+    #   loads (Vue circuits via D-Bus acload)
+    # Only configure fields NOT available from inverter-control:
+    #   # ev_charging_kw: "sensor.ev_charging_power"
+    #   # ev_power: "sensor.ev_power"
+    #   # car_soc: "sensor.car_state_of_charge"
+    #   # water_level: "sensor.water_tank_level"
+    #   # gt: "sensor.grid_power"  # if you prefer HA CT meter over Victron
 
 # Optional: Add custom UI configuration
 ui:
