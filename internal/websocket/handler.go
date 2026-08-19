@@ -137,7 +137,9 @@ func HandleWebSocket(c *gin.Context, mqttClient *mqtt.Client, haClient *homeassi
 			broadcastOverlay = haClient.GetOverlay()
 		}
 		// Broadcast updated state to all clients
-		BroadcastState(mqttClient, haClient, broadcastOverlay)
+		if err := BroadcastState(mqttClient, haClient, broadcastOverlay); err != nil {
+			log.Printf("Failed to broadcast state: %v", err)
+		}
 	}
 
 	removeClient(conn)
@@ -237,7 +239,9 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 		if overlay.HADirectConnected {
 			haClient.ReplaceOverlay(overlay)
 			// Broadcast updated state to all clients after toggle
-			BroadcastState(mqttClient, haClient, overlay)
+			if err := BroadcastState(mqttClient, haClient, overlay); err != nil {
+				log.Printf("Failed to broadcast state: %v", err)
+			}
 		}
 		return nil
 	}
@@ -247,7 +251,9 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 	if haClient != nil {
 		broadcastOverlay = haClient.GetOverlay()
 	}
-	BroadcastState(mqttClient, haClient, broadcastOverlay)
+	if err := BroadcastState(mqttClient, haClient, broadcastOverlay); err != nil {
+		log.Printf("Failed to broadcast state: %v", err)
+	}
 
 	// Fall back to MQTT
 	return mqttClient.PublishCommand("toggle", map[string]interface{}{

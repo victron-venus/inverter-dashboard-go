@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -57,7 +58,11 @@ func main() {
 	if err != nil {
 		slog.Error("Warning: failed to initialize tracing", "error", err)
 	} else {
-		defer tracing.Shutdown(context.Background(), tp)
+		defer func() {
+			if err := tracing.Shutdown(context.Background(), tp); err != nil {
+				slog.Error("Failed to shutdown tracing", "error", err)
+			}
+		}()
 	}
 
 	// Initialize structured logger
@@ -169,7 +174,9 @@ func main() {
 		if haClient != nil {
 			broadcastOverlay = haClient.GetOverlay()
 		}
-		websocket.BroadcastState(mqttClient, haClient, broadcastOverlay)
+		if err := websocket.BroadcastState(mqttClient, haClient, broadcastOverlay); err != nil {
+			log.Printf("Failed to broadcast state: %v", err)
+		}
 
 		// Update Prometheus metrics from current state
 		state := mqttClient.GetState()
@@ -433,14 +440,6 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 		c.JSON(200, gin.H{
 			"current": current,
 			"latest":  latest,
-		})
-	}
-}
-
-func apiUpdateHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(501, gin.H{
-			"error": "Auto-update disabled - use container restart or external deployment tool",
 		})
 	}
 }
