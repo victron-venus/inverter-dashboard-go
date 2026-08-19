@@ -1,4 +1,4 @@
-# Fix Summary: Resolved errcheck Errors in Inverter Dashboard Go
+# Fix Summary: Resolved errcheck and gosimple Errors in Inverter Dashboard Go
 
 ## Issues Fixed
 
@@ -83,9 +83,62 @@ if err := BroadcastState(mqttClient, haClient, broadcastOverlay); err != nil {
 }
 ```
 
+### 3. Homeassistant/client.go Errors Fixed (gosimple S1011 and S1017)
+
+#### a) Unnecessary loop for switchEntities (lines 198-200)
+**Before:**
+```go
+buttons := make([]Button, 0, len(c.switchEntities))
+	for _, btn := range c.switchEntities {
+		buttons = append(buttons, btn)
+	}
+```
+
+**After:**
+```go
+buttons := make([]Button, 0, len(c.switchEntities))
+	buttons = append(buttons, c.switchEntities...)
+```
+
+#### b) Unnecessary loop for booleanButtons (lines 657-659)
+**Before:**
+```go
+buttons := make([]Button, 0, len(c.booleanButtons))
+	for _, btn := range c.booleanButtons {
+		buttons = append(buttons, btn)
+	}
+```
+
+**After:**
+```go
+buttons := make([]Button, 0, len(c.booleanButtons))
+	buttons = append(buttons, c.booleanButtons...)
+```
+
+#### c) Unnecessary if statement for home_ prefix (line 233-234)
+**Before:**
+```go
+func generateDefaultLabel(stateKey string) string {
+	s := stateKey
+	if strings.HasPrefix(s, "home_") {
+		s = s[5:]
+	}
+	return strings.ReplaceAll(strings.ToUpper(s), "_", " ")
+}
+```
+
+**After:**
+```go
+func generateDefaultLabel(stateKey string) string {
+	s := stateKey
+	s = strings.TrimPrefix(s, "home_")
+	return strings.ReplaceAll(strings.ToUpper(s), "_", " ")
+}
+```
+
 ## Verification
 
-- All errcheck errors have been resolved
+- All errcheck and gosimple errors have been resolved
 - Application builds successfully: `go build .`
 - Application runs correctly: `./inverter-dashboard-go --version` outputs version
 - No regression in functionality
@@ -94,6 +147,10 @@ if err := BroadcastState(mqttClient, haClient, broadcastOverlay); err != nil {
 
 1. `main.go` - Fixed tracing.Shutdown, websocket.BroadcastState calls, removed unused function, added imports
 2. `internal/websocket/handler.go` - Fixed three BroadcastState calls to check error returns
+3. `internal/homeassistant/client.go` - Applied gosimple suggestions:
+   - Replace loop with append for switchEntities (S1011)
+   - Replace loop with append for booleanButtons (S1011)
+   - Replace if statement with strings.TrimPrefix for home_ prefix (S1017)
 
 ## Testing
 
