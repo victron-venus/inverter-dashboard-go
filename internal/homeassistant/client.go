@@ -181,8 +181,11 @@ func (c *Client) validateConfig() bool {
 		return false
 	}
 
-	_, err := url.Parse(c.httpURL)
-	return err == nil
+	u, err := url.Parse(c.httpURL)
+	if err != nil || !u.IsAbs() {
+		return false
+	}
+	return true
 }
 
 func (c *Client) IsDirectMode() bool {
@@ -253,6 +256,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		log.Printf("[HA CLIENT DEBUG] FetchStatesOnce: IsDirectMode=false, returning empty")
 		return Overlay{Booleans: map[string]bool{}, HADirectConnected: false}, nil
 	}
+	if c.httpClient == nil {
+		return Overlay{}, fmt.Errorf("http client not initialized")
+	}
 
 	result := Overlay{
 		Booleans:          make(map[string]bool),
@@ -270,6 +276,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	}
 
 	// Fetch boolean entities
+	log.Printf("[HA DEBUG] Fetching boolean entities, count: %d", len(c.booleanEntities))
 	for key, entityID := range c.booleanEntities {
 		state, err := fetchEntityState(entityID)
 		if err != nil {
@@ -481,11 +488,13 @@ func parseStateToSeconds(raw string) int {
 
 // getEntityState fetches the current state of a single entity
 func (c *Client) getEntityState(ctx context.Context, entityID string) (string, error) {
+	log.Printf("[HA DEBUG] getEntityState: %s", entityID)
 	if c.httpClient == nil {
 		return "", fmt.Errorf("http client not initialized")
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
 	if err != nil {
+		log.Printf("[HA DEBUG] getEntityState: failed to create request: %v", err)
 		return "", err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
@@ -493,19 +502,23 @@ func (c *Client) getEntityState(ctx context.Context, entityID string) (string, e
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		log.Printf("[HA DEBUG] getEntityState: failed to do request: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[HA DEBUG] getEntityState: unexpected status code: %d", resp.StatusCode)
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	var entity EntityState
 	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
+		log.Printf("[HA DEBUG] getEntityState: failed to decode response: %v", err)
 		return "", err
 	}
 
+	log.Printf("[HA DEBUG] getEntityState: returning state: %s", entity.State)
 	return entity.State, nil
 }
 

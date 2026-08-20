@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -82,9 +83,7 @@ func convertMapToBooleanEntitySlice(input map[string]interface{}) []BooleanEntit
 
 // defaultLabel creates a default label from a state key by stripping "HOME_" prefix and converting underscores to spaces
 func defaultLabel(key string) string {
-	s := strings.ToUpper(key)
-	s = strings.TrimPrefix(s, "HOME_")
-	return strings.ReplaceAll(s, "_", " ")
+	return strings.ToUpper(key)
 }
 
 // convertMapToEntitySlice converts a map[string]interface{} from YAML to []EntityConfig
@@ -99,8 +98,7 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 		switch v := value.(type) {
 		case string:
 			btn.Entity = v
-			btn.Label = defaultLabel(key)
-
+			// Label will be set to default later if empty
 		case []interface{}:
 			if len(v) > 0 {
 				if entityID, ok := v[0].(string); ok {
@@ -111,27 +109,36 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 						btn.Label = label
 					}
 				}
+				if len(v) > 2 {
+					if order, ok := v[2].(int); ok {
+						btn.Order = order
+					} else if order, ok := v[2].(float64); ok {
+						btn.Order = int(order)
+					}
+				}
 			}
-
 		case []string:
 			if len(v) > 0 {
 				btn.Entity = v[0]
 				if len(v) > 1 && v[1] != "" {
 					btn.Label = v[1]
 				}
+				if len(v) > 2 {
+					if order, err := strconv.Atoi(v[2]); err == nil {
+						btn.Order = order
+					} else if order, err := strconv.ParseFloat(v[2], 64); err == nil {
+						btn.Order = int(order)
+					}
+				}
 			}
-
 		case map[string]interface{}:
 			if entityID, ok := v["entity"].(string); ok {
 				btn.Entity = entityID
 			}
 			if label, ok := v["label"].(string); ok && label != "" {
 				btn.Label = label
-			} else if label, ok := v["short"].(string); ok && label != "" {
-				btn.Label = label
-			} else if label, ok := v["name"].(string); ok && label != "" {
-				btn.Label = label
 			}
+			// Ignore short and name for label
 			if order, ok := v["order"].(int); ok {
 				btn.Order = order
 			} else if order, ok := v["order"].(float64); ok {
@@ -189,7 +196,12 @@ func Load(configPath string) (*Config, error) {
 
 	// Load HomeAssistant configuration from config.yaml if present
 	if err := loadConfigYAML(cfg); err != nil {
-		log.Printf("[CONFIG] No config.yaml found or invalid: %v (continuing with MQTT-only mode)", err)
+		// If the file does not exist, we can continue with default config.
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("[CONFIG] No config.yaml found (continuing with defaults)")
+		} else {
+			return nil, fmt.Errorf("load config: %w", err)
+		}
 	} else if cfg.HomeAssistant != nil {
 		log.Printf("[CONFIG] HomeAssistant configuration loaded successfully")
 		logHomeAssistantConfig(cfg.HomeAssistant)
