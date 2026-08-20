@@ -65,13 +65,6 @@ func (m *mockHAClient) FetchStatesOnce() (homeassistant.Overlay, error) {
 		HADirectConnected: true,
 	}, nil
 }
-func (m *mockHAClient) GetOverlay() homeassistant.Overlay {
-	return homeassistant.Overlay{
-		Booleans: map[string]bool{"test": true},
-		AdditionalFields: map[string]interface{}{"field": "value"},
-		HADirectConnected: true,
-	}
-}
 func (m *mockHAClient) ReplaceOverlay(overlay homeassistant.Overlay) {}
 
 // End mocks
@@ -300,7 +293,14 @@ func TestCollectCommandBufferMetrics(t *testing.T) {
 	// Create a real mqtt client for this test
 	mqttClient := mqtt.NewClient("test.mqtt", 1883)
 	defer mqttClient.Disconnect()
-	// Call the function; it should not panic
-	collectCommandBufferMetrics(mqttClient)
-	// No assertions needed for coverage
+	done := make(chan bool)
+	go func() {
+		collectCommandBufferMetrics(mqttClient)
+		done <- true
+	}()
+	select {
+	case <-done:
+		t.Error("collectCommandBufferMetrics returned immediately (unexpected)")
+	case <-time.After(100 * time.Millisecond):
+	}
 }
