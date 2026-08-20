@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,8 +40,33 @@ func NewClient(broker string, port int) *Client {
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
 	opts.SetClientID("inverter-dashboard")
 	opts.SetCleanSession(true)
-	opts.SetAutoReconnect(true)
-	opts.SetConnectRetry(true)
+
+	// Allow overriding connection timeout via environment variable for testing
+	connectTimeout := 5 * time.Second
+	if v := os.Getenv("MQTT_CONNECT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			connectTimeout = d
+		}
+	}
+	opts.SetConnectTimeout(connectTimeout)
+
+	// Allow overriding auto reconnect via environment variable for testing
+	autoReconnect := true
+	if v := os.Getenv("MQTT_AUTORECONNECT"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			autoReconnect = b
+		}
+	}
+	opts.SetAutoReconnect(autoReconnect)
+
+	// Allow overriding connect retry via environment variable for testing
+	connectRetry := true
+	if v := os.Getenv("MQTT_CONNECTRETRY"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			connectRetry = b
+		}
+	}
+	opts.SetConnectRetry(connectRetry)
 	opts.SetConnectRetryInterval(5)
 
 	client := &Client{
