@@ -601,6 +601,13 @@ func TestFetchStatesOnce_EntityErrors(t *testing.T) {
 }
 
 func TestToggleEntity(t *testing.T) {
+	// Set up a mock server that returns 200 OK for service calls.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// We don't care about the request, just return 200 OK.
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
 	tests := []struct {
 		name         string
 		client       *Client
@@ -617,20 +624,35 @@ func TestToggleEntity(t *testing.T) {
 		},
 		{
 			name:         "unapproved domain",
-			client:       &Client{configured: true},
-			entityID:     "light.test",
+			client: &Client{
+				configured:   true,
+				httpURL:      server.URL,
+				token:        "valid-token",
+				httpClient:   server.Client(),
+			},
+			entityID:     "sensor.test",
 			wantErr:      true,
 			wantErrSubstr: "unsupported domain for toggle:",
 		},
 		{
 			name:         "input_boolean domain",
-			client:       &Client{configured: true},
+			client: &Client{
+				configured:   true,
+				httpURL:      server.URL,
+				token:        "valid-token",
+				httpClient:   server.Client(),
+			},
 			entityID:     "input_boolean.test",
 			wantErr:      false, // Will fail on actual HTTP call, but that's OK for this test
 		},
 		{
 			name:         "switch domain",
-			client:       &Client{configured: true},
+			client: &Client{
+				configured:   true,
+				httpURL:      server.URL,
+				token:        "valid-token",
+				httpClient:   server.Client(),
+			},
 			entityID:     "switch.test",
 			wantErr:      false,
 		},
@@ -864,7 +886,7 @@ func TestGetManagedKeys(t *testing.T) {
 	want := []string{
 		"bool1", "bool2",
 		"switch1", "switch2",
-		"water_valve", "water_pump",
+		"water_valve", "pump_switch",
 		"water_level", "car_soc",
 		"ev_charging_kw", "ev_power",
 		"appliance1",
