@@ -28,6 +28,14 @@ import (
 
 const serviceName = "inverter-dashboard-go"
 
+// HAClient defines the interface for Home Assistant client used by the poller.
+type HAClient interface {
+	IsDirectMode() bool
+	GetPollInterval() time.Duration
+	FetchStatesOnce() (homeassistant.Overlay, error)
+	ReplaceOverlay(homeassistant.Overlay)
+}
+
 var (
 	// Version is set during build
 	Version string = "dev"
@@ -233,7 +241,7 @@ func startMQTT(client *mqtt.Client) error {
 	return nil
 }
 
-func haPoller(haClient *homeassistant.Client, logger *logging.Logger) {
+func haPoller(haClient HAClient, logger *logging.Logger) {
 	logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Starting Home Assistant poller")
 	defer logger.Info(logging.DefaultContext().With("component", "homeassistant"), "Home Assistant poller stopped")
 
@@ -247,7 +255,7 @@ func haPoller(haClient *homeassistant.Client, logger *logging.Logger) {
 
 // haPollTick performs a single Home Assistant poll iteration: fetching the
 // latest overlay state, logging diagnostic details, and updating the client.
-func haPollTick(haClient *homeassistant.Client, logger *logging.Logger) {
+func haPollTick(haClient HAClient, logger *logging.Logger) {
 	logger.Debug(logging.DefaultContext().With("component", "homeassistant"), "Poll tick received, calling FetchStatesOnce()")
 	overlay, err := haClient.FetchStatesOnce()
 	if err != nil {

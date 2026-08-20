@@ -11,7 +11,7 @@ import (
 
 func TestGetCurrent(t *testing.T) {
 	// GetCurrent should return a non-empty string (either from VERSION or "dev")
-	if got := GetCurrent(); got == "" {
+	if GetCurrent() == "" {
 		t.Error("GetCurrent() returned empty string")
 	}
 }
