@@ -145,7 +145,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 		booleanButtons:    booleanButtons,
 		applianceEntities: cfg.ApplianceEntities,
 		vueSensors:        cfg.VueSensors,
-		sensorEntities:     cfg.SensorEntities,
+		sensorEntities:    cfg.SensorEntities,
 		switchEntities:    switchEntities,
 		configured:        false,
 		overlayMu:         sync.RWMutex{},
@@ -194,10 +194,8 @@ func (c *Client) GetUIConfig() map[string]interface{} {
 		return map[string]interface{}{}
 	}
 
-	buttons := make([]Button, 0, len(c.switchEntities))
-	for _, btn := range c.switchEntities {
-		buttons = append(buttons, btn)
-	}
+	buttons := make([]Button, len(c.switchEntities))
+	copy(buttons, c.switchEntities)
 
 	// Sort buttons by order to prevent shuffle
 	sort.Slice(buttons, func(i, j int) bool {
@@ -231,10 +229,7 @@ func (c *Client) IsToggleAllowed(entityID string) bool {
 
 // generateDefaultLabel creates a default label from state key (matches Python's _default_switch_label)
 func generateDefaultLabel(stateKey string) string {
-	s := stateKey
-	if strings.HasPrefix(s, "home_") {
-		s = s[5:]
-	}
+	s := strings.TrimPrefix(stateKey, "home_")
 	return strings.ReplaceAll(strings.ToUpper(s), "_", " ")
 }
 
@@ -655,10 +650,8 @@ func (c *Client) GetBooleanButtons() []Button {
 		return []Button{}
 	}
 
-	buttons := make([]Button, 0, len(c.booleanButtons))
-	for _, btn := range c.booleanButtons {
-		buttons = append(buttons, btn)
-	}
+	buttons := make([]Button, len(c.booleanButtons))
+	copy(buttons, c.booleanButtons)
 	// Sort buttons by order to prevent shuffle
 	sort.Slice(buttons, func(i, j int) bool {
 		return buttons[i].Order < buttons[j].Order
