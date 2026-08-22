@@ -145,7 +145,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 		booleanButtons:    booleanButtons,
 		applianceEntities: cfg.ApplianceEntities,
 		vueSensors:        cfg.VueSensors,
-		sensorEntities:     cfg.SensorEntities,
+		sensorEntities:    cfg.SensorEntities,
 		switchEntities:    switchEntities,
 		configured:        false,
 		overlayMu:         sync.RWMutex{},
