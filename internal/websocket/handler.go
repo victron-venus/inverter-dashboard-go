@@ -137,7 +137,7 @@ func HandleWebSocket(c *gin.Context, mqttClient *mqtt.Client, haClient *homeassi
 			broadcastOverlay = haClient.GetOverlay()
 		}
 		// Broadcast updated state to all clients
-		BroadcastState(mqttClient, haClient, broadcastOverlay)
+		_ = BroadcastState(mqttClient, haClient, broadcastOverlay) // best-effort: state already logged inside
 	}
 
 	removeClient(conn)
@@ -237,7 +237,7 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 		if overlay.HADirectConnected {
 			haClient.ReplaceOverlay(overlay)
 			// Broadcast updated state to all clients after toggle
-			BroadcastState(mqttClient, haClient, overlay)
+			_ = BroadcastState(mqttClient, haClient, overlay) // best-effort: state already logged inside
 		}
 		return nil
 	}
@@ -247,7 +247,7 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 	if haClient != nil {
 		broadcastOverlay = haClient.GetOverlay()
 	}
-	BroadcastState(mqttClient, haClient, broadcastOverlay)
+	_ = BroadcastState(mqttClient, haClient, broadcastOverlay) // best-effort: state already logged inside
 
 	// Fall back to MQTT
 	return mqttClient.PublishCommand("toggle", map[string]interface{}{

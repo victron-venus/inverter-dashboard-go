@@ -169,7 +169,7 @@ func main() {
 		if haClient != nil {
 			broadcastOverlay = haClient.GetOverlay()
 		}
-		websocket.BroadcastState(mqttClient, haClient, broadcastOverlay)
+		_ = websocket.BroadcastState(mqttClient, haClient, broadcastOverlay) // best-effort: state already logged inside
 
 		// Update Prometheus metrics from current state
 		state := mqttClient.GetState()
