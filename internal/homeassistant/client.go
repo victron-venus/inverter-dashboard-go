@@ -194,10 +194,8 @@ func (c *Client) GetUIConfig() map[string]interface{} {
 		return map[string]interface{}{}
 	}
 
-	buttons := make([]Button, 0, len(c.switchEntities))
-	for _, btn := range c.switchEntities {
-		buttons = append(buttons, btn)
-	}
+	buttons := make([]Button, len(c.switchEntities))
+	copy(buttons, c.switchEntities)
 
 	// Sort buttons by order to prevent shuffle
 	sort.Slice(buttons, func(i, j int) bool {

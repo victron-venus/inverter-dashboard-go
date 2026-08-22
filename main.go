@@ -57,7 +57,7 @@ func main() {
 	if err != nil {
 		slog.Error("Warning: failed to initialize tracing", "error", err)
 	} else {
-		defer tracing.Shutdown(context.Background(), tp)
+		defer func() { _ = tracing.Shutdown(context.Background(), tp) }()
 	}
 
 	// Initialize structured logger
@@ -433,14 +433,6 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 		c.JSON(200, gin.H{
 			"current": current,
 			"latest":  latest,
-		})
-	}
-}
-
-func apiUpdateHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.JSON(501, gin.H{
-			"error": "Auto-update disabled - use container restart or external deployment tool",
 		})
 	}
 }
