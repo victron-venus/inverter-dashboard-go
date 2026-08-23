@@ -40,7 +40,7 @@ The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverte
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph Venus["Venus OS (Cerbo GX)"]
         INV["inverter-control"]
         MQTT["MQTT Broker"]
