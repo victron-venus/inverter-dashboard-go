@@ -42,6 +42,9 @@ type Client struct {
 	// Victron alarm tracking (N/<portal>/.../Alarms/<name> -> last value)
 	alarmValues map[string]int
 	alarmsMu    sync.Mutex
+
+	// camera events (optional Frigate topic; empty disables)
+	cameraTopic string
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -136,6 +139,11 @@ func (c *Client) Connect() error {
 
 // SetWaterConfig selects the dbus-pump water topics to subscribe
 // (N/<portal>/tank/<tank>/Level, N/<portal>/pump/<N>/State).
+// SetCameraTopic enables camera event subscription on the given MQTT filter.
+func (c *Client) SetCameraTopic(topic string) {
+	c.cameraTopic = topic
+}
+
 func (c *Client) SetWaterConfig(portalID string, tank, pump, valve int) {
 	c.portalID = portalID
 	c.tankInstance = tank
@@ -182,6 +190,13 @@ func (c *Client) Subscribe() error {
 			log.Printf("Warning: failed to subscribe to pump state topic: %v", token.Error())
 		}
 		log.Printf("Subscribed to Cerbo water topics (portal %s)", c.portalID)
+	}
+	if c.cameraTopic != "" {
+		if token := c.client.Subscribe(c.cameraTopic, 0, c.onCameraMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to %s: %v", c.cameraTopic, token.Error())
+		} else {
+			log.Printf("Subscribed to camera events on %s", c.cameraTopic)
+		}
 	}
 	log.Printf("Subscribed to MQTT topics")
 	return nil

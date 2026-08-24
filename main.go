@@ -121,6 +121,9 @@ func main() {
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
+	if cfg.CameraTopic != "" {
+		mqttClient.SetCameraTopic(cfg.CameraTopic)
+	}
 
 	// Create Home Assistant client (optional)
 	var haClient *homeassistant.Client

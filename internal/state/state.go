@@ -69,6 +69,14 @@ type Notification struct {
 	Ts     string `json:"ts,omitempty"`
 }
 
+// CameraEvent is the latest camera event from the optional Frigate topic
+// (desktop CameraEvent contract: {agent_name, video_url, timestamp}).
+type CameraEvent struct {
+	Camera string `json:"camera"`
+	URL    string `json:"url"`
+	Ts     string `json:"ts,omitempty"`
+}
+
 // Charger represents MPPT charger data
 type Charger struct {
 	Name      string  `json:"name"`
@@ -112,6 +120,9 @@ type State struct {
 	DashboardVersion  string         `json:"dashboard_version,omitempty"`
 	Console           []string       `json:"console,omitempty"`
 	Notifications     []Notification `json:"notifications,omitempty"`
+
+	// Latest camera event (Frigate), nil until one arrives.
+	CameraEvent *CameraEvent `json:"camera_event,omitempty"`
 
 	// Arrays for detailed data
 	Batteries         []Battery     `json:"batteries,omitempty"`

@@ -18,6 +18,7 @@ type Config struct {
 	Cerbo             CerboConfig
 	DashboardSecret   string
 	SelfUpdateEnabled bool
+	CameraTopic       string
 	HomeAssistant     *HomeAssistantConfig
 }
 
@@ -214,6 +215,7 @@ func Load(configPath string) (*Config, error) {
 		},
 		DashboardSecret:   getEnvDefault("DASHBOARD_SECRET", ""),
 		SelfUpdateEnabled: getEnvDefault("SELF_UPDATE_ENABLED", "") == "true",
+		CameraTopic:       getEnvDefault("CAMERA_TOPIC", ""),
 	}
 
 	// Load HomeAssistant configuration from config.yaml if present
