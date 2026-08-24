@@ -302,7 +302,7 @@ func loadConfigYAML(cfg *Config) error {
 			URL:                top.HomeAssistant.URL,
 			Token:              top.HomeAssistant.Token,
 			DirectControls:     directControls,
-			PollInterval:       top.HomeAssistant.PollIntervalSeconds,
+			PollInterval:       pollOrDefault(top.HomeAssistant.PollIntervalSeconds),
 			BooleanEntities:    convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
 			SwitchEntities:     convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
 			CarSOCEntity:       top.HomeAssistant.CarSOCEntity,
@@ -315,6 +315,15 @@ func loadConfigYAML(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// pollOrDefault guards against a zero/absent poll interval: haPoller would
+// panic in time.NewTicker and crash the whole process.
+func pollOrDefault(v float64) float64 {
+	if v <= 0 {
+		return 12.0 // matches the Python dashboard default
+	}
+	return v
 }
 
 // logHomeAssistantConfig logs all HomeAssistant configuration values
