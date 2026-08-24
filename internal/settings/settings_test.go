@@ -21,7 +21,7 @@ func withTempDir(t *testing.T) {
 
 func TestDefaultsAndRoundtrip(t *testing.T) {
 	withTempDir(t)
-	Init("frigate/+/events")
+	Init("frigate/+/events", "Cerbo", 1883)
 
 	got := Get()
 	if got["camera_topic"] != "frigate/+/events" || got["show_ev"] != true {
@@ -36,7 +36,7 @@ func TestDefaultsAndRoundtrip(t *testing.T) {
 	}
 
 	// Reload from disk in a fresh Init — persisted values win over defaults
-	Init("")
+	Init("", "Cerbo", 1883)
 	if Get()["show_ev"] != false || Get()["camera_topic"] != "frigate/+/events" {
 		t.Fatalf("persistence roundtrip failed: %v", Get())
 	}
@@ -44,7 +44,7 @@ func TestDefaultsAndRoundtrip(t *testing.T) {
 
 func TestApplyRejectsUnknownAndWrongType(t *testing.T) {
 	withTempDir(t)
-	Init("")
+	Init("", "Cerbo", 1883)
 
 	if err := Apply(map[string]interface{}{"mqtt_password": "x"}); err == nil {
 		t.Fatal("unknown key must be rejected")
@@ -59,7 +59,7 @@ func TestApplyRejectsUnknownAndWrongType(t *testing.T) {
 
 func TestEmptyStringClearsSetting(t *testing.T) {
 	withTempDir(t)
-	Init("cam")
+	Init("cam", "Cerbo", 1883)
 
 	if err := Apply(map[string]interface{}{"camera_topic": ""}); err != nil {
 		t.Fatalf("empty string must be allowed: %v", err)
@@ -74,9 +74,51 @@ func TestCorruptFileIgnored(t *testing.T) {
 	if err := os.WriteFile(settingsFile, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	Init("")
+	Init("", "Cerbo", 1883)
 	if Get()["show_ev"] != true {
 		t.Fatal("corrupt file must fall back to defaults")
 	}
 	_ = filepath.Join
+}
+
+func TestConnectionOverridesAndMasking(t *testing.T) {
+	withTempDir(t)
+	Init("", "Cerbo", 1883)
+
+	if err := Apply(map[string]interface{}{"ha_token": "tok", "mqtt_host": "broker.local", "mqtt_port": float64(8883)}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	ov := Overrides()
+	if ov["ha_token"] != "tok" || ov["mqtt_host"] != "broker.local" || ov["mqtt_port"].(float64) != 8883 {
+		t.Fatalf("unexpected overrides: %v", ov)
+	}
+	// env-default values are not overrides
+	if err := Apply(map[string]interface{}{"mqtt_host": "Cerbo"}); err != nil {
+		t.Fatalf("apply default: %v", err)
+	}
+	if _, ok := Overrides()["mqtt_host"]; ok {
+		t.Fatal("env-equal value must not be an override")
+	}
+
+	masked := Masked()
+	if masked["ha_token"] != "***" {
+		t.Fatalf("token not masked: %v", masked["ha_token"])
+	}
+	if Get()["ha_token"] != "tok" {
+		t.Fatal("Get must stay unmasked")
+	}
+}
+
+func TestPortFloatAndIntAccepted(t *testing.T) {
+	withTempDir(t)
+	Init("", "Cerbo", 1883)
+	if err := Apply(map[string]interface{}{"mqtt_port": float64(1884)}); err != nil {
+		t.Fatalf("float64 port rejected: %v", err)
+	}
+	if Get()["mqtt_port"].(float64) != 1884 {
+		t.Fatal("port not applied")
+	}
+	if err := Apply(map[string]interface{}{"mqtt_port": "x"}); err == nil {
+		t.Fatal("string port must be rejected")
+	}
 }
