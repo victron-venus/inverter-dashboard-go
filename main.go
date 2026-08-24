@@ -50,6 +50,21 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Docker HEALTHCHECK mode: the runtime image ships no wget/curl, so the
+	// container probes itself with this subcommand instead.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		port := os.Getenv("WEB_PORT")
+		if port == "" {
+			port = "8080"
+		}
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%s/health", port))
+		if err != nil || resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		_ = resp.Body.Close() // best-effort; status already checked
+		os.Exit(0)
+	}
+
 	// Initialize OpenTelemetry tracing
 	traceCfg := tracing.DefaultConfig()
 	traceCfg.ServiceVersion = version.GetCurrent()
