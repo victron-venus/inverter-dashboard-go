@@ -105,6 +105,7 @@ type Client struct {
 	applianceEntities map[string]string
 	vueSensors        map[string]string
 	sensorEntities    map[string]string
+	filteredEntities  *FilteredEntityConfig
 
 	// Runtime state
 	overlay    Overlay
@@ -143,6 +144,7 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 		applianceEntities: cfg.ApplianceEntities,
 		vueSensors:        cfg.VueSensors,
 		sensorEntities:    cfg.SensorEntities,
+		filteredEntities:  cfg.FilteredEntities,
 		switchEntities:    switchEntities,
 		configured:        false,
 		overlayMu:         sync.RWMutex{},
@@ -369,10 +371,50 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		result.AdditionalFields["loads"] = loads
 	}
 
+	// Rich display entities (covers/media_players/scenes/numbers/sensors/weather)
+	if !filteredEmpty(c.filteredEntities) {
+		docs := make(map[string]*EntityState, len(filteredAll(c.filteredEntities)))
+		for _, id := range filteredAll(c.filteredEntities) {
+			if doc, err := c.getEntityDoc(ctx, id); err == nil && doc != nil {
+				docs[id] = doc
+			}
+		}
+		result.AdditionalFields["ha_filtered"] = BuildFilteredDisplays(docs, c.filteredEntities)
+	}
+
 	log.Printf("[HA CLIENT DEBUG] FetchStatesOnce completed, setting HADirectConnected=true")
 	result.HADirectConnected = true
 	log.Printf("[HA CLIENT DEBUG] Final AdditionalFields: %+v", result.AdditionalFields)
 	return result, nil
+}
+
+// getEntityDoc fetches the full state document (state + attributes) of an entity.
+func (c *Client) getEntityDoc(ctx context.Context, entityID string) (*EntityState, error) {
+	if c.httpClient == nil {
+		return nil, fmt.Errorf("http client not initialized")
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }() // read errors already handled below
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var entity EntityState
+	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
+		return nil, err
+	}
+	return &entity, nil
 }
 
 // isOn converts a Home Assistant state string to a boolean
