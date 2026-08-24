@@ -131,7 +131,7 @@ func (c *Client) Connect() error {
 }
 
 // SetWaterConfig selects the dbus-pump water topics to subscribe
-// (N/<portal>/tank/<tank>/Level, N/<portal>/pump/startstop<N>/State).
+// (N/<portal>/tank/<tank>/Level, N/<portal>/pump/<N>/State).
 func (c *Client) SetWaterConfig(portalID string, tank, pump, valve int) {
 	c.portalID = portalID
 	c.tankInstance = tank
@@ -179,7 +179,7 @@ func (c *Client) Subscribe() error {
 
 // onWaterMessage decodes dbus-pump water topics into the shared state.
 // Topic shapes: N/<portal>/tank/<instance>/Level and
-// N/<portal>/pump/startstop<instance>/State, payload {"value": <num>}.
+// N/<portal>/pump/<instance>/State, payload {"value": <num>}.
 func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
 	if c.portalID == "" {
 		return
@@ -204,9 +204,10 @@ func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
 	switch {
 	case parts[2] == "tank" && parts[3] == strconv.Itoa(c.tankInstance) && parts[4] == "Level":
 		st.WaterLevel = num
-	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == fmt.Sprintf("startstop%d", c.valveInstance):
+	// Venus bridges pump.startstop services as N/<portal>/pump/<instance>/State
+	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.valveInstance):
 		st.WaterValve = num != 0
-	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == fmt.Sprintf("startstop%d", c.pumpInstance):
+	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.pumpInstance):
 		st.PumpSwitch = num != 0
 	default:
 		c.stateMu.Unlock()

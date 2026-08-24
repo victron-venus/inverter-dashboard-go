@@ -35,8 +35,8 @@ func TestOnWaterMessageMapsTopicsToState(t *testing.T) {
 	c.SetWaterConfig("p1", 21, 1, 2)
 
 	c.onWaterMessage(nil, waterMsg("N/p1/tank/21/Level", 66.5))
-	c.onWaterMessage(nil, waterMsg("N/p1/pump/startstop2/State", 1))
-	c.onWaterMessage(nil, waterMsg("N/p1/pump/startstop1/State", 0))
+	c.onWaterMessage(nil, waterMsg("N/p1/pump/2/State", 1))
+	c.onWaterMessage(nil, waterMsg("N/p1/pump/1/State", 0))
 
 	st := c.GetState()
 	if st.WaterLevel != 66.5 {
@@ -56,7 +56,7 @@ func TestOnWaterMessageIgnoresForeignTopics(t *testing.T) {
 
 	c.onWaterMessage(nil, waterMsg("N/other/tank/21/Level", 10))
 	c.onWaterMessage(nil, waterMsg("N/p1/tank/9/Level", 10))
-	c.onWaterMessage(nil, waterMsg("N/p1/pump/startstop3/State", 1))
+	c.onWaterMessage(nil, waterMsg("N/p1/pump/3/State", 1))
 	c.onWaterMessage(nil, waterMsg(fmt.Sprintf("N/p1/tank/%d/Capacity", c.tankInstance), 200))
 
 	st := c.GetState()

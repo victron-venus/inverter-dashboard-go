@@ -51,7 +51,7 @@ flowchart TD
     end
 
     INV -->|"inverter/state"| MQTT
-    DP -.->|"N/&lt;portal&gt;/tank/21/Level<br/>N/&lt;portal&gt;/pump/startstop*/State"| MQTT
+    DP -.->|"N/&lt;portal&gt;/tank/21/Level<br/>N/&lt;portal&gt;/pump/*/State"| MQTT
     MQTT -->|"subscribe"| MQTT_SUB
     MQTT_SUB --> WS
     WS --> BROWSER["Browser"]
