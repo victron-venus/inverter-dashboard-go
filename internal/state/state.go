@@ -48,6 +48,15 @@ type ESSMode struct {
 	ModeName         string `json:"mode_name"`
 }
 
+// SolarForecast is computed upstream by inverter-control and passed through
+// to clients inside the state payload.
+type SolarForecast struct {
+	Date        string  `json:"date,omitempty"`
+	GeneratedAt string  `json:"generated_at,omitempty"`
+	TodayKWh    float64 `json:"today_kwh,omitempty"`
+	TomorrowKWh float64 `json:"tomorrow_kwh,omitempty"`
+}
+
 // Charger represents MPPT charger data
 type Charger struct {
 	Name      string  `json:"name"`
@@ -59,10 +68,11 @@ type Charger struct {
 // State represents complete dashboard state
 type State struct {
 	// Using interface for booleans to match reference
-	Booleans   map[string]interface{} `json:"booleans"`
-	Features   map[string]interface{} `json:"features"`
-	DailyStats DailyStats             `json:"daily_stats"`
-	ESSMode    ESSMode                `json:"ess_mode"`
+	Booleans      map[string]interface{} `json:"booleans"`
+	Features      map[string]interface{} `json:"features"`
+	DailyStats    DailyStats             `json:"daily_stats"`
+	ESSMode       ESSMode                `json:"ess_mode"`
+	SolarForecast *SolarForecast         `json:"solar_forecast,omitempty"`
 
 	// Core metrics
 	SolarTotal        float64  `json:"solar_total,omitempty"`
