@@ -12,11 +12,12 @@ import (
 
 // Config holds application configuration matching Python exactly
 type Config struct {
-	MQTT          MQTTConfig
-	Web           WebConfig
-	GitHub        GitHubConfig
-	Cerbo         CerboConfig
-	HomeAssistant *HomeAssistantConfig
+	MQTT            MQTTConfig
+	Web             WebConfig
+	GitHub          GitHubConfig
+	Cerbo           CerboConfig
+	DashboardSecret string
+	HomeAssistant   *HomeAssistantConfig
 }
 
 // CerboConfig selects the dbus-pump water topics on the Cerbo MQTT broker.
@@ -198,6 +199,7 @@ func Load(configPath string) (*Config, error) {
 			PumpInstance:  getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
 			ValveInstance: getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
 		},
+		DashboardSecret: getEnvDefault("DASHBOARD_SECRET", ""),
 	}
 
 	// Load HomeAssistant configuration from config.yaml if present
