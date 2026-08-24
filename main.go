@@ -19,6 +19,7 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/logging"
 	"github.com/victron-venus/inverter-dashboard-go/internal/metrics"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
+	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/tracing"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket"
@@ -118,6 +119,7 @@ func main() {
 	}
 
 	// Create MQTT client
+	settings.Init(cfg.CameraTopic)
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
@@ -357,6 +359,8 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	router.GET("/health", healthHandler(mqttClient))
 	router.POST("/api/check-update", apiCheckUpdateHandler())
 	router.POST("/api/update", apiUpdateHandler(cfg.SelfUpdateEnabled))
+	router.GET("/api/settings", apiSettingsGetHandler())
+	router.POST("/api/settings", apiSettingsPostHandler())
 
 	return router
 }
@@ -496,6 +500,29 @@ func apiUpdateHandler(enabled bool) gin.HandlerFunc {
 			time.Sleep(500 * time.Millisecond)
 			os.Exit(0)
 		}()
+	}
+}
+
+// apiSettingsGetHandler returns the current dashboard settings.
+func apiSettingsGetHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true, "settings": settings.Get()})
+	}
+}
+
+// apiSettingsPostHandler validates and persists a settings patch.
+func apiSettingsPostHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var patch map[string]interface{}
+		if err := c.ShouldBindJSON(&patch); err != nil {
+			c.JSON(400, gin.H{"error": "body must be a JSON object"})
+			return
+		}
+		if err := settings.Apply(patch); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"ok": true, "settings": settings.Get()})
 	}
 }
 

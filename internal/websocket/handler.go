@@ -12,18 +12,20 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
+	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 )
 
 // Message represents a WebSocket message from client
 type Message struct {
-	Action   string      `json:"action"`
-	Entity   string      `json:"entity,omitempty"`
-	Value    interface{} `json:"value,omitempty"`
-	Min      float64     `json:"min,omitempty"`
-	Max      float64     `json:"max,omitempty"`
-	Interval float64     `json:"interval,omitempty"`
+	Action   string                 `json:"action"`
+	Entity   string                 `json:"entity,omitempty"`
+	Value    interface{}            `json:"value,omitempty"`
+	Min      float64                `json:"min,omitempty"`
+	Max      float64                `json:"max,omitempty"`
+	Interval float64                `json:"interval,omitempty"`
+	Settings map[string]interface{} `json:"settings,omitempty"`
 }
 
 // State represents the complete state sent to clients
@@ -175,6 +177,10 @@ func sendInitialState(conn *websocket.Conn, mqttClient *mqtt.Client, haClient *h
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
+	if uiConfig == nil {
+		uiConfig = map[string]interface{}{}
+	}
+	uiConfig["settings"] = settings.Get()
 	payload["ui_config"] = uiConfig
 
 	// Limit console to last 20 lines
@@ -211,6 +217,18 @@ func handleMessage(msg Message, mqttClient *mqtt.Client, haClient *homeassistant
 		return mqttClient.PublishCommand("loop_interval", map[string]interface{}{
 			"interval": interval,
 		})
+	case "set_settings":
+		if msg.Settings == nil {
+			return fmt.Errorf("settings required")
+		}
+		if err := settings.Apply(msg.Settings); err != nil {
+			return err
+		}
+		var so homeassistant.Overlay
+		if haClient != nil {
+			so = haClient.GetOverlay()
+		}
+		return BroadcastState(mqttClient, haClient, so)
 	default:
 		return fmt.Errorf("unknown action: %s", msg.Action)
 	}
@@ -353,6 +371,10 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
+	if uiConfig == nil {
+		uiConfig = map[string]interface{}{}
+	}
+	uiConfig["settings"] = settings.Get()
 	payload["ui_config"] = uiConfig
 	payload["ha_direct_connected"] = haDirectConnected
 
