@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/victron-venus/inverter-dashboard-go/internal/auth"
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/html"
@@ -96,6 +97,10 @@ func main() {
 		"web_host", cfg.Web.Host,
 		"web_port", cfg.Web.Port,
 	)
+	if cfg.DashboardSecret == "" {
+		logger.Warn(logging.DefaultContext(), "DASHBOARD_SECRET is not set — dashboard is unprotected. "+
+			"Set DASHBOARD_SECRET env var for production use.")
+	}
 
 	// Create MQTT client
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
@@ -185,7 +190,7 @@ func main() {
 	go checkVersion(cfg.GitHub.RawURL, logger)
 
 	// Create and configure HTTP server with tracing middleware
-	server := createServer(mqttClient, haClient, logger, tracer)
+	server := createServer(mqttClient, haClient, cfg, logger, tracer)
 
 	// Start server in a goroutine
 	go startServer(server, cfg, *sslCert, *sslKey, logger)
@@ -299,7 +304,7 @@ func logHAEntities(overlay homeassistant.Overlay, logger *logging.Logger) {
 	}
 }
 
-func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logger *logging.Logger, tracer trace.Tracer) *gin.Engine {
+func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *config.Config, logger *logging.Logger, tracer trace.Tracer) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -310,6 +315,11 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, logge
 		router.Use(tracing.GinMiddleware(tracer, serviceName))
 	}
 	router.Use(logging.NewStructuredMiddleware(logger))
+
+	// Bearer-token auth for the dashboard page, WebSocket and API routes.
+	// No-op while DASHBOARD_SECRET is unset. /health and /metrics stay open
+	// for Docker healthchecks and Prometheus scraping.
+	router.Use(auth.Middleware(cfg.DashboardSecret))
 
 	// Serve Vue UI static assets (JS/CSS) from dist directory
 	distDir := "internal/html/dist"
