@@ -38,6 +38,10 @@ type Client struct {
 	tankInstance  int
 	pumpInstance  int
 	valveInstance int
+
+	// Victron alarm tracking (N/<portal>/.../Alarms/<name> -> last value)
+	alarmValues map[string]int
+	alarmsMu    sync.Mutex
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -164,7 +168,13 @@ func (c *Client) Subscribe() error {
 	if token := c.client.Subscribe("inverter/console", 0, c.onConsoleMessage); token.Wait() && token.Error() != nil {
 		log.Printf("Warning: failed to subscribe to inverter/console: %v", token.Error())
 	}
+	if token := c.client.Subscribe("inverter/notifications", 0, c.onNotificationMessage); token.Wait() && token.Error() != nil {
+		log.Printf("Warning: failed to subscribe to inverter/notifications: %v", token.Error())
+	}
 	if c.portalID != "" {
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/+/Alarms/#", c.portalID), 0, c.onAlarmMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to Victron alarm topics: %v", token.Error())
+		}
 		if token := c.client.Subscribe(fmt.Sprintf("N/%s/tank/+/Level", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
 			log.Printf("Warning: failed to subscribe to water level topic: %v", token.Error())
 		}
