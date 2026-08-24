@@ -174,6 +174,18 @@ type HomeAssistantConfig struct {
 	ApplianceEntities  map[string]string
 	VueSensors         map[string]string
 	SensorEntities     map[string]string
+	FilteredEntities   *FilteredEntityConfig
+}
+
+// FilteredEntityConfig selects rich display entities (config.yaml
+// homeassistant.filtered_entities), matching Python's HA_FILTERED_ENTITIES.
+type FilteredEntityConfig struct {
+	Covers       []string `yaml:"covers"`
+	MediaPlayers []string `yaml:"media_players"`
+	Scenes       []string `yaml:"scenes"`
+	Numbers      []string `yaml:"numbers"`
+	Sensors      []string `yaml:"sensors"`
+	Weather      string   `yaml:"weather"`
 }
 
 // Load reads configuration matching Python config.py behavior exactly
@@ -254,6 +266,14 @@ func loadConfigYAML(cfg *Config) error {
 			EVPowerEntity       string                 `yaml:"ev_power_entity"`
 			ApplianceEntities   map[string]string      `yaml:"appliance_entities"`
 			VueSensors          map[string]string      `yaml:"vue_sensors"`
+			FilteredEntities    *struct {
+				Covers       []string `yaml:"covers"`
+				MediaPlayers []string `yaml:"media_players"`
+				Scenes       []string `yaml:"scenes"`
+				Numbers      []string `yaml:"numbers"`
+				Sensors      []string `yaml:"sensors"`
+				Weather      string   `yaml:"weather"`
+			} `yaml:"filtered_entities"`
 		} `yaml:"homeassistant"`
 	}
 
@@ -314,6 +334,16 @@ func loadConfigYAML(cfg *Config) error {
 			EVPowerEntity:      top.HomeAssistant.EVPowerEntity,
 			ApplianceEntities:  top.HomeAssistant.ApplianceEntities,
 			VueSensors:         top.HomeAssistant.VueSensors,
+		}
+		if fe := top.HomeAssistant.FilteredEntities; fe != nil {
+			ha.FilteredEntities = &FilteredEntityConfig{
+				Covers:       fe.Covers,
+				MediaPlayers: fe.MediaPlayers,
+				Scenes:       fe.Scenes,
+				Numbers:      fe.Numbers,
+				Sensors:      fe.Sensors,
+				Weather:      fe.Weather,
+			}
 		}
 		cfg.HomeAssistant = ha
 	}
