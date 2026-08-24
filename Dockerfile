@@ -44,9 +44,10 @@ USER app
 # Expose port
 EXPOSE 8080
 
-# Healthcheck - matches Python docker_healthcheck.py
+# Healthcheck - the runtime image has no wget/curl, so probe via the binary's
+# built-in "healthcheck" subcommand (GET /health, honors WEB_PORT).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/state || exit 1
+  CMD ["/app/inverter-dashboard", "healthcheck"]
 
 # Default environment variables (match Python)
 ENV MQTT_HOST=192.168.160.150
