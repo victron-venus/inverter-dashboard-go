@@ -181,6 +181,18 @@ func (c *Client) validateConfig() bool {
 	return err == nil
 }
 
+// OverrideCredentials applies settings-file HA URL/token on top of config.yaml
+// (startup only; wins over the yaml values).
+func (c *Client) OverrideCredentials(url, token string) {
+	if url != "" {
+		c.httpURL = url
+	}
+	if token != "" {
+		c.token = token
+	}
+	c.configured = c.validateConfig()
+}
+
 func (c *Client) IsDirectMode() bool {
 	return c.configured && c.directMode
 }

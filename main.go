@@ -119,7 +119,18 @@ func main() {
 	}
 
 	// Create MQTT client
-	settings.Init(cfg.CameraTopic)
+	settings.Init(cfg.CameraTopic, cfg.MQTT.Host, cfg.MQTT.Port)
+	// Stored connection overrides win over env/config.yaml (restart to apply).
+	if ov := settings.Overrides(); len(ov) > 0 {
+		if v, ok := ov["mqtt_host"].(string); ok {
+			cfg.MQTT.Host = v
+		}
+		if v, ok := ov["mqtt_port"].(float64); ok {
+			cfg.MQTT.Port = int(v)
+		} else if v, ok := ov["mqtt_port"].(int); ok {
+			cfg.MQTT.Port = v
+		}
+	}
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
@@ -142,6 +153,12 @@ func main() {
 		)
 
 		haClient = homeassistant.NewClient(cfg.HomeAssistant)
+		if ov := settings.Overrides(); haClient != nil && len(ov) > 0 {
+			haClient.OverrideCredentials(
+				strVal(ov["ha_url"]),
+				strVal(ov["ha_token"]),
+			)
+		}
 		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA client created",
 			"configured", haClient != nil && haClient.IsDirectMode(),
 			"direct_mode", haClient.IsDirectMode(),
@@ -506,8 +523,14 @@ func apiUpdateHandler(enabled bool) gin.HandlerFunc {
 // apiSettingsGetHandler returns the current dashboard settings.
 func apiSettingsGetHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.JSON(200, gin.H{"ok": true, "settings": settings.Get()})
+		c.JSON(200, gin.H{"ok": true, "settings": settings.Masked()})
 	}
+}
+
+// strVal extracts a string from an interface{} override value.
+func strVal(v interface{}) string {
+	s, _ := v.(string)
+	return s
 }
 
 // apiSettingsPostHandler validates and persists a settings patch.
