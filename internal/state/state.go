@@ -102,10 +102,12 @@ type State struct {
 
 	// EV data - always shown
 
-	// Water data - dbus-pump via Cerbo MQTT (level %, valve/pump running)
-	WaterLevel float64 `json:"water_level,omitempty"`
-	WaterValve bool    `json:"water_valve,omitempty"`
-	PumpSwitch bool    `json:"pump_switch,omitempty"`
+	// Water data - dbus-pump via Cerbo MQTT (level %, valve/pump running).
+	// No omitempty: a closed valve / empty tank are valid states that must
+	// reach the UI instead of being dropped as "missing".
+	WaterLevel float64 `json:"water_level"`
+	WaterValve bool    `json:"water_valve"`
+	PumpSwitch bool    `json:"pump_switch"`
 
 	// Appliance data - shown when running
 	DishwasherRunning  bool    `json:"dishwasher_running,omitempty"`
