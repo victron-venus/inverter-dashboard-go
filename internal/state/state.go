@@ -57,6 +57,18 @@ type SolarForecast struct {
 	TomorrowKWh float64 `json:"tomorrow_kwh,omitempty"`
 }
 
+// Notification is a dashboard banner notification: either pushed by
+// inverter-control on inverter/notifications or synthesized from Victron
+// alarm transitions (N/<portal>/<service>/Alarms/<Name>, value 0/1/2).
+type Notification struct {
+	ID     string `json:"id"`
+	Level  string `json:"level"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+	Source string `json:"source"`
+	Ts     string `json:"ts,omitempty"`
+}
+
 // Charger represents MPPT charger data
 type Charger struct {
 	Name      string  `json:"name"`
@@ -75,30 +87,31 @@ type State struct {
 	SolarForecast *SolarForecast         `json:"solar_forecast,omitempty"`
 
 	// Core metrics
-	SolarTotal        float64  `json:"solar_total,omitempty"`
-	MpptTotal         float64  `json:"mppt_total,omitempty"`
-	PVTotal           float64  `json:"pv_total,omitempty"`
-	GT                float64  `json:"gt,omitempty"`
-	G1                float64  `json:"g1,omitempty"`
-	G2                float64  `json:"g2,omitempty"`
-	TT                float64  `json:"tt,omitempty"`
-	T1                float64  `json:"t1,omitempty"`
-	T2                float64  `json:"t2,omitempty"`
-	BC                float64  `json:"bc,omitempty"`
-	BV                float64  `json:"bv,omitempty"`
-	BP                float64  `json:"bp,omitempty"`
-	Setpoint          float64  `json:"setpoint,omitempty"`
-	BatteryVoltage    float64  `json:"battery_voltage,omitempty"`
-	BatteryCurrent    float64  `json:"battery_current,omitempty"`
-	BatteryPower      float64  `json:"battery_power,omitempty"`
-	BatterySOC        float64  `json:"battery_soc,omitempty"`
-	InverterState     string   `json:"inverter_state,omitempty"`
-	Uptime            float64  `json:"uptime,omitempty"`
-	HAConnected       bool     `json:"ha_connected,omitempty"`
-	HADirectConnected bool     `json:"ha_direct_connected,omitempty"`
-	Version           string   `json:"version,omitempty"`
-	DashboardVersion  string   `json:"dashboard_version,omitempty"`
-	Console           []string `json:"console,omitempty"`
+	SolarTotal        float64        `json:"solar_total,omitempty"`
+	MpptTotal         float64        `json:"mppt_total,omitempty"`
+	PVTotal           float64        `json:"pv_total,omitempty"`
+	GT                float64        `json:"gt,omitempty"`
+	G1                float64        `json:"g1,omitempty"`
+	G2                float64        `json:"g2,omitempty"`
+	TT                float64        `json:"tt,omitempty"`
+	T1                float64        `json:"t1,omitempty"`
+	T2                float64        `json:"t2,omitempty"`
+	BC                float64        `json:"bc,omitempty"`
+	BV                float64        `json:"bv,omitempty"`
+	BP                float64        `json:"bp,omitempty"`
+	Setpoint          float64        `json:"setpoint,omitempty"`
+	BatteryVoltage    float64        `json:"battery_voltage,omitempty"`
+	BatteryCurrent    float64        `json:"battery_current,omitempty"`
+	BatteryPower      float64        `json:"battery_power,omitempty"`
+	BatterySOC        float64        `json:"battery_soc,omitempty"`
+	InverterState     string         `json:"inverter_state,omitempty"`
+	Uptime            float64        `json:"uptime,omitempty"`
+	HAConnected       bool           `json:"ha_connected,omitempty"`
+	HADirectConnected bool           `json:"ha_direct_connected,omitempty"`
+	Version           string         `json:"version,omitempty"`
+	DashboardVersion  string         `json:"dashboard_version,omitempty"`
+	Console           []string       `json:"console,omitempty"`
+	Notifications     []Notification `json:"notifications,omitempty"`
 
 	// Arrays for detailed data
 	Batteries         []Battery     `json:"batteries,omitempty"`
