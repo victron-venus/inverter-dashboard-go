@@ -353,6 +353,7 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	router.GET("/api/state", apiStateHandler(mqttClient))
 	router.GET("/health", healthHandler(mqttClient))
 	router.POST("/api/check-update", apiCheckUpdateHandler())
+	router.POST("/api/update", apiUpdateHandler(cfg.SelfUpdateEnabled))
 
 	return router
 }
@@ -460,6 +461,38 @@ func apiCheckUpdateHandler() gin.HandlerFunc {
 			"current": current,
 			"latest":  latest,
 		})
+	}
+}
+
+// apiUpdateHandler downloads and swaps in the latest release binary, then
+// exits so the container restart policy brings the new version up.
+// Opt-in via SELF_UPDATE_ENABLED=true.
+func apiUpdateHandler(enabled bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !enabled {
+			c.JSON(403, gin.H{"error": "self-update is disabled (set SELF_UPDATE_ENABLED=true)"})
+			return
+		}
+		githubURL := "https://raw.githubusercontent.com/victron-venus/inverter-dashboard-go/main"
+		latest, err := version.CheckLatest(githubURL)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		if latest != "" && latest == version.GetCurrent() {
+			c.JSON(200, gin.H{"status": "up-to-date", "version": latest})
+			return
+		}
+		if err := version.SelfUpdate(); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "updated", "version": latest})
+		// Flush the response, then exit; restart: unless-stopped restarts us into the new binary.
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			os.Exit(0)
+		}()
 	}
 }
 
