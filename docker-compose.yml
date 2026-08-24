@@ -10,6 +10,7 @@ services:
       - MQTT_HOST=192.168.160.150
       - MQTT_PORT=1883
       - WEB_PORT=8080
+      - CERBO_PORTAL_ID= # VRM portal ID of your Cerbo GX - enables water topics
     volumes:
       # Mount config directory for config.yaml (read-only)
       - /volume1/docker/inverter-dashboard/config:/app/config:ro

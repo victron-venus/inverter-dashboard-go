@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,12 @@ type Client struct {
 	lastStateTime   time.Time
 	lastStateMu     sync.RWMutex
 	cmdBuffer       *CommandBuffer
+
+	// dbus-pump water topics (Cerbo MQTT); empty portal disables
+	portalID      string
+	tankInstance  int
+	pumpInstance  int
+	valveInstance int
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -122,6 +130,15 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// SetWaterConfig selects the dbus-pump water topics to subscribe
+// (N/<portal>/tank/<tank>/Level, N/<portal>/pump/<N>/State).
+func (c *Client) SetWaterConfig(portalID string, tank, pump, valve int) {
+	c.portalID = portalID
+	c.tankInstance = tank
+	c.pumpInstance = pump
+	c.valveInstance = valve
+}
+
 func (c *Client) SetMessageHandler(handler MessageHandler) {
 	c.handlerMu.Lock()
 	defer c.handlerMu.Unlock()
@@ -147,8 +164,73 @@ func (c *Client) Subscribe() error {
 	if token := c.client.Subscribe("inverter/console", 0, c.onConsoleMessage); token.Wait() && token.Error() != nil {
 		log.Printf("Warning: failed to subscribe to inverter/console: %v", token.Error())
 	}
+	if c.portalID != "" {
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/tank/+/Level", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to water level topic: %v", token.Error())
+		}
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/pump/+/State", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to pump state topic: %v", token.Error())
+		}
+		log.Printf("Subscribed to Cerbo water topics (portal %s)", c.portalID)
+	}
 	log.Printf("Subscribed to MQTT topics")
 	return nil
+}
+
+// onWaterMessage decodes dbus-pump water topics into the shared state.
+// Topic shapes: N/<portal>/tank/<instance>/Level and
+// N/<portal>/pump/<instance>/State, payload {"value": <num>}.
+func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
+	if c.portalID == "" {
+		return
+	}
+	parts := strings.Split(msg.Topic(), "/")
+	if len(parts) < 5 || parts[0] != "N" || parts[1] != c.portalID {
+		return
+	}
+	var payload struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return
+	}
+	num, ok := toFloat(payload.Value)
+	if !ok {
+		return
+	}
+
+	c.stateMu.Lock()
+	st := c.state
+	switch {
+	case parts[2] == "tank" && parts[3] == strconv.Itoa(c.tankInstance) && parts[4] == "Level":
+		st.WaterLevel = num
+	// Venus bridges pump.startstop services as N/<portal>/pump/<instance>/State
+	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.valveInstance):
+		st.WaterValve = num != 0
+	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.pumpInstance):
+		st.PumpSwitch = num != 0
+	default:
+		c.stateMu.Unlock()
+		return
+	}
+	c.stateMu.Unlock()
+	c.triggerHandler()
+}
+
+func toFloat(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case bool:
+		if n {
+			return 1, true
+		}
+		return 0, true
+	default:
+		return 0, false
+	}
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {

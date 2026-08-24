@@ -15,7 +15,17 @@ type Config struct {
 	MQTT          MQTTConfig
 	Web           WebConfig
 	GitHub        GitHubConfig
+	Cerbo         CerboConfig
 	HomeAssistant *HomeAssistantConfig
+}
+
+// CerboConfig selects the dbus-pump water topics on the Cerbo MQTT broker.
+// Empty PortalID disables water.
+type CerboConfig struct {
+	PortalID      string
+	TankInstance  int
+	PumpInstance  int
+	ValveInstance int
 }
 
 // MQTTConfig from environment with Python defaults
@@ -156,15 +166,12 @@ type HomeAssistantConfig struct {
 	PollInterval       float64
 	BooleanEntities    []BooleanEntityConfig
 	SwitchEntities     []EntityConfig
-	WaterValveEntity   string
-	WaterLevelEntity   string
-	PumpSwitchEntity   string
 	CarSOCEntity       string
 	EVChargingKWEntity string
 	EVPowerEntity      string
 	ApplianceEntities  map[string]string
 	VueSensors         map[string]string
-	SensorEntities      map[string]string
+	SensorEntities     map[string]string
 }
 
 // Load reads configuration matching Python config.py behavior exactly
@@ -184,6 +191,12 @@ func Load(configPath string) (*Config, error) {
 		GitHub: GitHubConfig{
 			Repository: "victron-venus/inverter-dashboard-go",
 			RawURL:     "https://raw.githubusercontent.com/victron-venus/inverter-dashboard-go/main",
+		},
+		Cerbo: CerboConfig{
+			PortalID:      getEnvDefault("CERBO_PORTAL_ID", ""),
+			TankInstance:  getEnvIntDefault("WATER_TANK_INSTANCE", 21),
+			PumpInstance:  getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
+			ValveInstance: getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
 		},
 	}
 
@@ -215,9 +228,16 @@ func loadConfigYAML(cfg *Config) error {
 		Host string `yaml:"host"`
 		Port int    `yaml:"port"`
 	}
+	type yamlCerbo struct {
+		PortalID      string `yaml:"portal_id"`
+		TankInstance  *int   `yaml:"tank_instance"`
+		PumpInstance  *int   `yaml:"pump_instance"`
+		ValveInstance *int   `yaml:"valve_instance"`
+	}
 	type yamlTop struct {
-		MQTT          *yamlMQTT `yaml:"mqtt"`
-		Web           *yamlWeb  `yaml:"web"`
+		MQTT          *yamlMQTT  `yaml:"mqtt"`
+		Web           *yamlWeb   `yaml:"web"`
+		Cerbo         *yamlCerbo `yaml:"cerbo"`
 		HomeAssistant *struct {
 			URL                 string                 `yaml:"url"`
 			Token               string                 `yaml:"token"`
@@ -225,9 +245,6 @@ func loadConfigYAML(cfg *Config) error {
 			PollIntervalSeconds float64                `yaml:"poll_interval_seconds"`
 			BooleanEntities     map[string]interface{} `yaml:"boolean_entities"`
 			SwitchEntities      map[string]interface{} `yaml:"switch_entities"`
-			WaterValveEntity    string                 `yaml:"water_valve_entity"`
-			WaterLevelEntity    string                 `yaml:"water_level_entity"`
-			PumpSwitchEntity    string                 `yaml:"pump_switch_entity"`
 			CarSOCEntity        string                 `yaml:"car_soc_entity"`
 			EVChargingKWEntity  string                 `yaml:"ev_charging_kw_entity"`
 			EVPowerEntity       string                 `yaml:"ev_power_entity"`
@@ -248,6 +265,21 @@ func loadConfigYAML(cfg *Config) error {
 		}
 		if top.MQTT.Port > 0 {
 			cfg.MQTT.Port = top.MQTT.Port
+		}
+	}
+
+	if top.Cerbo != nil {
+		if top.Cerbo.PortalID != "" {
+			cfg.Cerbo.PortalID = top.Cerbo.PortalID
+		}
+		if top.Cerbo.TankInstance != nil {
+			cfg.Cerbo.TankInstance = *top.Cerbo.TankInstance
+		}
+		if top.Cerbo.PumpInstance != nil {
+			cfg.Cerbo.PumpInstance = *top.Cerbo.PumpInstance
+		}
+		if top.Cerbo.ValveInstance != nil {
+			cfg.Cerbo.ValveInstance = *top.Cerbo.ValveInstance
 		}
 	}
 
@@ -273,9 +305,6 @@ func loadConfigYAML(cfg *Config) error {
 			PollInterval:       top.HomeAssistant.PollIntervalSeconds,
 			BooleanEntities:    convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
 			SwitchEntities:     convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
-			WaterValveEntity:   top.HomeAssistant.WaterValveEntity,
-			WaterLevelEntity:   top.HomeAssistant.WaterLevelEntity,
-			PumpSwitchEntity:   top.HomeAssistant.PumpSwitchEntity,
 			CarSOCEntity:       top.HomeAssistant.CarSOCEntity,
 			EVChargingKWEntity: top.HomeAssistant.EVChargingKWEntity,
 			EVPowerEntity:      top.HomeAssistant.EVPowerEntity,
@@ -298,9 +327,6 @@ func logHomeAssistantConfig(cfg *HomeAssistantConfig) {
 	log.Printf("Token: %s...%s (truncated)", cfg.Token[:10], cfg.Token[len(cfg.Token)-5:])
 	log.Printf("Direct Controls: %v", cfg.DirectControls)
 	log.Printf("Poll Interval: %.1f seconds", cfg.PollInterval)
-	log.Printf("Water Valve Entity: %s", cfg.WaterValveEntity)
-	log.Printf("Water Level Entity: %s", cfg.WaterLevelEntity)
-	log.Printf("Pump Switch Entity: %s", cfg.PumpSwitchEntity)
 	log.Printf("Car SoC Entity: %s", cfg.CarSOCEntity)
 	log.Printf("EV Charging KW Entity: %s", cfg.EVChargingKWEntity)
 	log.Printf("EV Power Entity: %s", cfg.EVPowerEntity)
