@@ -344,10 +344,6 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 
 	// Merge MQTT state with HA overlay
 	mergedState := mergeStates(state, overlay, managedKeys)
-	log.Printf("[BROADCAST DEBUG] Merged state keys: %+v", getKeys(mergedState))
-	log.Printf("[BROADCAST DEBUG] Merged state water_level: %v", mergedState["water_level"])
-	log.Printf("[BROADCAST DEBUG] Merged state car_soc: %v", mergedState["car_soc"])
-	log.Printf("[BROADCAST DEBUG] Merged state ev_charging_kw: %v", mergedState["ev_charging_kw"])
 
 	// Flatten merged state into payload (like Python's flat format)
 	payload := make(map[string]interface{}, len(mergedState)+6)
@@ -365,9 +361,6 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 		payload["console"] = console[len(console)-20:]
 	}
 
-	// Log full payload keys
-	log.Printf("[BROADCAST DEBUG] Full payload keys: %+v", getKeys(payload))
-
 	// Broadcast to all clients with per-client exception handling (matches Python)
 	// Use write lock to prevent concurrent websocket writes
 	clientsMu.Lock()
@@ -376,22 +369,6 @@ func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, ove
 	message, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	// Debug: log message content
-	var payloadDebug map[string]interface{}
-	if err := json.Unmarshal(message, &payloadDebug); err == nil {
-		log.Printf("[BROADCAST DEBUG] Payload being sent: keys=%+v", getKeys(payloadDebug))
-		if waterLevel, ok := payloadDebug["water_level"]; ok {
-			log.Printf("[BROADCAST DEBUG] Payload contains water_level: %v", waterLevel)
-		} else {
-			log.Printf("[BROADCAST DEBUG] Payload does NOT contain water_level")
-		}
-		if carSOC, ok := payloadDebug["car_soc"]; ok {
-			log.Printf("[BROADCAST DEBUG] Payload contains car_soc: %v", carSOC)
-		} else {
-			log.Printf("[BROADCAST DEBUG] Payload does NOT contain car_soc")
-		}
 	}
 
 	log.Printf("Broadcasting to %d clients", len(clients))

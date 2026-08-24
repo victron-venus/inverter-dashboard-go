@@ -102,9 +102,10 @@ type State struct {
 
 	// EV data - always shown
 
-	// Water data - always shown
-	WaterValve bool `json:"water_valve,omitempty"`
-	PumpSwitch bool `json:"pump_switch,omitempty"`
+	// Water data - dbus-pump via Cerbo MQTT (level %, valve/pump running)
+	WaterLevel float64 `json:"water_level,omitempty"`
+	WaterValve bool    `json:"water_valve,omitempty"`
+	PumpSwitch bool    `json:"pump_switch,omitempty"`
 
 	// Appliance data - shown when running
 	DishwasherRunning  bool    `json:"dishwasher_running,omitempty"`

@@ -40,6 +40,7 @@ The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverte
 flowchart TD
     subgraph Venus["Venus OS (Cerbo GX)"]
         INV["inverter-control"]
+        DP["dbus-pump (water)"]
         MQTT["MQTT Broker"]
     end
 
@@ -50,6 +51,7 @@ flowchart TD
     end
 
     INV -->|"inverter/state"| MQTT
+    DP -.->|"N/&lt;portal&gt;/tank/21/Level<br/>N/&lt;portal&gt;/pump/startstop*/State"| MQTT
     MQTT -->|"subscribe"| MQTT_SUB
     MQTT_SUB --> WS
     WS --> BROWSER["Browser"]
@@ -58,13 +60,21 @@ flowchart TD
     style WS fill:#00ADD8,color:#fff
 ```
 
+### Water system
+
+Water data comes **exclusively** from [dbus-pump](https://github.com/victron-venus/dbus-pump)
+via Cerbo MQTT — no Home Assistant involved. Enable it in the `cerbo:` section of `config.yaml`
+(or `CERBO_PORTAL_ID` env); instances (`tank_instance` / `pump_instance` / `valve_instance`,
+defaults 21/1/2) must match dbus-pump's `local_config.py`. Valve/pump automation lives in
+dbus-pump; the dashboard is read-only.
+
 ## Features
 
 - **Real-time monitoring** of solar, grid, battery, and consumption
 - **WebSocket-based live updates** with automatic reconnection
 - **MQTT integration** for communication with Victron Cerbo GX
 - **Optional Home Assistant** direct integration for enhanced control
-- **Multiple device support**: batteries, EV charging, water management
+- **Multiple device support**: batteries, EV charging, water management (dbus-pump via Cerbo MQTT)
 - **Appliance monitoring**: washer, dryer, dishwasher status
 - **Dark/light theme** support with local preference storage
 - **Cross-platform** binaries for easy deployment

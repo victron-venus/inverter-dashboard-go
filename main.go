@@ -99,6 +99,8 @@ func main() {
 
 	// Create MQTT client
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
+	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
+	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
 
 	// Create Home Assistant client (optional)
 	var haClient *homeassistant.Client
@@ -108,7 +110,6 @@ func main() {
 		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA Entities configured",
 			"boolean_entities", len(cfg.HomeAssistant.BooleanEntities),
 			"switch_entities", len(cfg.HomeAssistant.SwitchEntities),
-			"water_level_entity", cfg.HomeAssistant.WaterLevelEntity,
 			"car_soc_entity", cfg.HomeAssistant.CarSOCEntity,
 			"ev_charging_kw_entity", cfg.HomeAssistant.EVChargingKWEntity,
 			"ev_power_entity", cfg.HomeAssistant.EVPowerEntity,

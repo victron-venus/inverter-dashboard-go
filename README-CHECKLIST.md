@@ -7,7 +7,7 @@ This document tracks the verification that the Go version matches the Python ver
 ### 1. Configuration System (COMPLETE)
 - Python uses: `MQTT_HOST`, `MQTT_PORT`, `WEB_PORT` environment variables
 - Go NOW uses: Same environment variables, same defaults
-- Python reads: `ha_secrets.py` from multiple paths  
+- Python reads: `ha_secrets.py` from multiple paths
 - Go NOW reads: `config.yaml` from config directory
 - Python config: Simple and flat
 - Go config: Simplified to match exactly
@@ -34,7 +34,7 @@ This document tracks the verification that the Go version matches the Python ver
 - Go: **NOW IDENTICAL** (12.0 seconds, not configurable)
 - Python: Reads `ha_secrets.py` for entities
 - Go: **NOW USES config.yaml**
-- Python: Entity ID patterns like `switch.pump_switch`
+- Python: Entity ID patterns for booleans/switches (water entities removed — water comes from dbus-pump via Cerbo MQTT)
 - Go: **IDENTICAL**
 
 **Verification**: Check entity parsing in both versions
@@ -124,7 +124,7 @@ This document tracks the verification that the Go version matches the Python ver
 - [ ] Charts display same data
 - [ ] Features section appears correctly
 - [ ] EV section appears correctly
-- [ ] Water section appears correctly
+- [ ] Water section appears correctly (dbus-pump publishing; `cerbo.portal_id` configured)
 - [ ] Appliance sections show when running
 - [ ] Update button works and shows version
 

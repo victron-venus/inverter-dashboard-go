@@ -99,9 +99,6 @@ type Client struct {
 	booleanEntities   map[string]string
 	booleanButtons    []Button
 	switchEntities    []Button
-	waterValve        string
-	waterPump         string
-	waterLevel        string
 	carSOC            string
 	evChargingKW      string
 	evPower           string
@@ -154,9 +151,6 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 			HADirectConnected: true,
 		},
 	}
-	client.waterValve = cfg.WaterValveEntity
-	client.waterLevel = cfg.WaterLevelEntity
-	client.waterPump = cfg.PumpSwitchEntity
 	client.carSOC = cfg.CarSOCEntity
 	client.evChargingKW = cfg.EVChargingKWEntity
 	client.evPower = cfg.EVPowerEntity
@@ -224,7 +218,7 @@ func (c *Client) IsToggleAllowed(entityID string) bool {
 		}
 	}
 
-	return entityID == c.waterValve || entityID == c.waterPump
+	return false
 }
 
 // generateDefaultLabel creates a default label from state key (matches Python's _default_switch_label)
@@ -286,35 +280,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		result.AdditionalFields[btn.StateKey] = isOn(state)
 	}
 
-	// Fetch water valve and pump
-	if c.waterValve != "" {
-		state, err := fetchEntityState(c.waterValve)
-		if err == nil {
-			result.AdditionalFields["water_valve"] = isOn(state)
-		}
-	}
-	if c.waterPump != "" {
-		state, err := fetchEntityState(c.waterPump)
-		if err == nil {
-			result.AdditionalFields["pump_switch"] = isOn(state)
-		}
-	}
-
-	// Fetch water level
-	log.Printf("[HA DEBUG] Fetching water_level from entity: %s", c.waterLevel)
-	if c.waterLevel != "" {
-		state, err := fetchEntityState(c.waterLevel)
-		if err == nil {
-			if val, err := strconv.ParseFloat(state, 64); err == nil {
-				result.AdditionalFields["water_level"] = val
-				log.Printf("[HA DEBUG] water_level fetched successfully: %v cm", val)
-			}
-		} else {
-			log.Printf("[HA DEBUG] Failed to fetch water_level: %v", err)
-		}
-	} else {
-		log.Printf("[HA DEBUG] waterLevel entity not configured")
-	}
+	// Water (level/valve/pump) comes from dbus-pump via Cerbo MQTT - not HA.
 
 	// Fetch car SOC
 	log.Printf("[HA DEBUG] Fetching car_soc from entity: %s", c.carSOC)
@@ -668,15 +634,6 @@ func (c *Client) GetManagedKeys() []string {
 	}
 	for _, btn := range c.switchEntities {
 		keys = append(keys, btn.StateKey)
-	}
-	if c.waterValve != "" {
-		keys = append(keys, "water_valve")
-	}
-	if c.waterPump != "" {
-		keys = append(keys, "pump_switch")
-	}
-	if c.waterLevel != "" {
-		keys = append(keys, "water_level")
 	}
 	if c.carSOC != "" {
 		keys = append(keys, "car_soc")

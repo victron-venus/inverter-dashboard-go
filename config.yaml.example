@@ -17,6 +17,15 @@ logging:
   level: "info"            # Log level: debug, info, warn, error
   format: "json"           # Format: json or text
 
+# Cerbo GX / Water Configuration (dbus-pump via Cerbo MQTT)
+# Water comes exclusively from the dbus-pump services - no HA entities.
+# Set portal_id (or CERBO_PORTAL_ID env) to enable; leave empty to disable.
+cerbo:
+  portal_id: ""              # VRM portal ID of your Cerbo GX
+  tank_instance: 21          # com.victronenergy.tank.ha_tank<N>
+  pump_instance: 1           # com.victronenergy.pump.startstop<N> (Water pump)
+  valve_instance: 2          # com.victronenergy.pump.startstop<N> (City valve)
+
 # Home Assistant Configuration (Optional)
 # Configure to enable direct Home Assistant integration
 homeassistant:
@@ -43,10 +52,6 @@ homeassistant:
     garage_light: ["light.garage", "Garage light"]
     heater: ["switch.heater_l", "Heater"]
 
-  # Water valve and pump entities
-  water_valve_entity: "switch.shutoff_valve"
-  pump_switch_entity: "switch.pump_switch"
-
   # Appliance entities for timers and power monitoring
   # These are polled from HA instead of MQTT when configured
   appliance_entities:
@@ -64,7 +69,7 @@ homeassistant:
     #   # ev_charging_kw: "sensor.ev_charging_power"
     #   # ev_power: "sensor.ev_power"
     #   # car_soc: "sensor.car_state_of_charge"
-    #   # water_level: "sensor.water_tank_level"
+    #   (water_level/valve/pump come from dbus-pump via cerbo: - never from HA)
     #   # gt: "sensor.grid_power"  # if you prefer HA CT meter over Victron
 
 # Optional: Add custom UI configuration
