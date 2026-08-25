@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,7 +52,9 @@ type Client struct {
 func NewClient(broker string, port int) *Client {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", broker, port))
-	opts.SetClientID("inverter-dashboard")
+	// Random suffix keeps the client ID unique so a second instance or a
+	// stale broker session cannot kick this client off the broker.
+	opts.SetClientID(fmt.Sprintf("inverter-dashboard-%06x", rand.Uint64()&(1<<24-1)))
 	opts.SetCleanSession(true)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
