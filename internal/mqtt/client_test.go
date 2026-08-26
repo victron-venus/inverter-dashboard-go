@@ -80,3 +80,28 @@ func TestOnWaterMessageBadPayload(t *testing.T) {
 
 // compile-time interface check
 var _ mqtt.Message = (*fakeMessage)(nil)
+
+func TestOnPvInverterMessageCollectsDevices(t *testing.T) {
+	c := NewClient("localhost", 1883)
+
+	c.onPvInverterMessage(nil, waterMsg("N/p1/pvinverter/9895/Ac/Power", 181))
+	c.onPvInverterMessage(nil, waterMsg("N/p1/pvinverter/369/Ac/Power", 163))
+	c.onPvInverterMessage(nil, waterMsg("N/p1/pvinverter/369/Ac/L1/Voltage", 126.0))
+	c.onPvInverterMessage(nil, waterMsg("N/p1/pvinverter/369/Ac/L1/Current", 1.29))
+	c.onPvInverterMessage(nil, waterMsg("N/p1/pvinverter/369/ProductName", "Tasmota PV 1"))
+	// Foreign service and bad payload are ignored.
+	c.onPvInverterMessage(nil, waterMsg("N/p1/solarcharger/290/Yield/Power", 100))
+	c.onPvInverterMessage(nil, &fakeMessage{topic: "N/p1/pvinverter/369/Ac/Power", payload: []byte("junk")})
+
+	st := c.GetState()
+	if len(st.PvInverters) != 2 {
+		t.Fatalf("PvInverters len = %d, want 2", len(st.PvInverters))
+	}
+	first := st.PvInverters[0]
+	if first.Power != 163 || first.PVVoltage != 126 || first.Current != 1.29 || first.Name != "Tasmota PV 1" {
+		t.Errorf("first inverter = %+v, want V=126 I=1.29 P=163 named", first)
+	}
+	if st.PvInverters[0].Power > st.PvInverters[1].Power {
+		t.Error("inverters not sorted by instance")
+	}
+}

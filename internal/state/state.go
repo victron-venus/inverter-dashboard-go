@@ -130,6 +130,8 @@ type State struct {
 	MPPTChargers      []Charger     `json:"mppt_chargers,omitempty"`
 	MPPTIndividual    []float64     `json:"mppt_individual,omitempty"`
 	TasmotaIndividual []float64     `json:"tasmota_individual,omitempty"`
+	// AC PV inverters of any vendor: [{name?, pv_voltage, current, power}]
+	PvInverters []Charger `json:"pv_inverters,omitempty"`
 
 	// Loads
 	Loads map[string]float64 `json:"loads,omitempty"`
