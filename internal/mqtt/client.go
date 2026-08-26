@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,10 @@ type Client struct {
 	alarmValues map[string]int
 	alarmsMu    sync.Mutex
 
+	// AC PV inverters of any vendor discovered on the GX broker
+	// (N/<portal>/pvinverter/<instance>/<path>), keyed by instance.
+	pvInverters map[int]*state.Charger
+
 	// camera events (optional Frigate topic; empty disables)
 	cameraTopic string
 }
@@ -75,6 +80,7 @@ func NewClient(broker string, port int) *Client {
 		},
 		consoleLines:    make([]string, 0),
 		maxConsoleLines: 50,
+		pvInverters:     make(map[int]*state.Charger),
 	}
 
 	// Initialize command buffer with capacity of 1000 commands
@@ -182,6 +188,13 @@ func (c *Client) Subscribe() error {
 	if token := c.client.Subscribe("inverter/notifications", 0, c.onNotificationMessage); token.Wait() && token.Error() != nil {
 		log.Printf("Warning: failed to subscribe to inverter/notifications: %v", token.Error())
 	}
+
+	// AC PV inverters of any vendor (Tasmota, ESPHome, ...) published on the
+	// GX broker — tiles stay alive even when inverter-control is down.
+	if token := c.client.Subscribe("N/+/pvinverter/+/#", 0, c.onPvInverterMessage); token.Wait() && token.Error() != nil {
+		log.Printf("Warning: failed to subscribe to N/+/pvinverter topics: %v", token.Error())
+	}
+
 	if c.portalID != "" {
 		if token := c.client.Subscribe(fmt.Sprintf("N/%s/+/Alarms/#", c.portalID), 0, c.onAlarmMessage); token.Wait() && token.Error() != nil {
 			log.Printf("Warning: failed to subscribe to Victron alarm topics: %v", token.Error())
@@ -259,6 +272,75 @@ func toFloat(v interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// onPvInverterMessage decodes GX PV-inverter topics into the shared state.
+// Topic shape: N/<portal>/pvinverter/<instance>/<path...>, payload
+// {"value": <num|str>}. Works with any vendor's dbus publisher.
+func (c *Client) onPvInverterMessage(client mqtt.Client, msg mqtt.Message) {
+	parts := strings.Split(msg.Topic(), "/")
+	if len(parts) < 5 || parts[0] != "N" || parts[2] != "pvinverter" {
+		return
+	}
+	inst, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return
+	}
+	path := strings.Join(parts[4:], "/")
+
+	var payload struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return
+	}
+
+	c.stateMu.Lock()
+	entry, ok := c.pvInverters[inst]
+	if !ok {
+		entry = &state.Charger{}
+		c.pvInverters[inst] = entry
+	}
+	changed := false
+	switch path {
+	case "Ac/Power", "Ac/L1/Power":
+		if num, okNum := toFloat(payload.Value); okNum && entry.Power != num {
+			entry.Power = num
+			changed = true
+		}
+	case "Ac/L1/Voltage":
+		if num, okNum := toFloat(payload.Value); okNum && entry.PVVoltage != num {
+			entry.PVVoltage = num
+			changed = true
+		}
+	case "Ac/L1/Current":
+		if num, okNum := toFloat(payload.Value); okNum && entry.Current != num {
+			entry.Current = num
+			changed = true
+		}
+	case "ProductName":
+		if name, okStr := payload.Value.(string); okStr && name != "" && entry.Name != name {
+			entry.Name = name
+			changed = true
+		}
+	}
+	if changed {
+		instances := make([]int, 0, len(c.pvInverters))
+		for i := range c.pvInverters {
+			instances = append(instances, i)
+		}
+		sort.Ints(instances)
+		list := make([]state.Charger, 0, len(instances))
+		for _, i := range instances {
+			list = append(list, *c.pvInverters[i])
+		}
+		st := c.state
+		st.PvInverters = list
+		c.stateMu.Unlock()
+		c.triggerHandler()
+		return
+	}
+	c.stateMu.Unlock()
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {
