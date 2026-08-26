@@ -16,7 +16,6 @@ type DailyStats struct {
 	BatteryOut          float64   `json:"battery_out,omitempty"`
 	BatteryInYesterday  float64   `json:"battery_in_yesterday,omitempty"`
 	BatteryOutYesterday float64   `json:"battery_out_yesterday,omitempty"`
-	TasmotaDaily        []float64 `json:"tasmota_daily,omitempty"`
 	MpptDaily           []float64 `json:"mppt_daily,omitempty"`
 	PVTotalDaily        float64   `json:"pv_total_daily,omitempty"`
 }
@@ -125,11 +124,10 @@ type State struct {
 	CameraEvent *CameraEvent `json:"camera_event,omitempty"`
 
 	// Arrays for detailed data
-	Batteries         []Battery     `json:"batteries,omitempty"`
-	SolarSources      []SolarSource `json:"solar_sources,omitempty"`
-	MPPTChargers      []Charger     `json:"mppt_chargers,omitempty"`
-	MPPTIndividual    []float64     `json:"mppt_individual,omitempty"`
-	TasmotaIndividual []float64     `json:"tasmota_individual,omitempty"`
+	Batteries      []Battery     `json:"batteries,omitempty"`
+	SolarSources   []SolarSource `json:"solar_sources,omitempty"`
+	MPPTChargers   []Charger     `json:"mppt_chargers,omitempty"`
+	MPPTIndividual []float64     `json:"mppt_individual,omitempty"`
 	// AC PV inverters of any vendor: [{name?, pv_voltage, current, power}]
 	PvInverters []Charger `json:"pv_inverters,omitempty"`
 
