@@ -135,6 +135,11 @@ type State struct {
 	Loads map[string]float64 `json:"loads,omitempty"`
 
 	// EV data - always shown
+	// Sourced from Cerbo MQTT (N/<portal>/ev/<i>/... and
+	// N/<portal>/evcharger/<i>/...), never from Home Assistant.
+	CarSOC        float64 `json:"car_soc"`
+	EVChargingKW  float64 `json:"ev_charging_kw,omitempty"`
+	EVPower       float64 `json:"ev_power,omitempty"`
 
 	// Water data - dbus-pump via Cerbo MQTT (level %, valve/pump running).
 	// No omitempty: a closed valve / empty tank are valid states that must

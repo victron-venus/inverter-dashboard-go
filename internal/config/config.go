@@ -23,12 +23,16 @@ type Config struct {
 }
 
 // CerboConfig selects the dbus-pump water topics on the Cerbo MQTT broker.
-// Empty PortalID disables water.
+// Empty PortalID disables water and EV extras.
 type CerboConfig struct {
 	PortalID      string
 	TankInstance  int
 	PumpInstance  int
 	ValveInstance int
+	// EV instance for vehicle topics (N/<portal>/ev/<instance>/...)
+	EVInstance    int
+	// EVCharger instance for charger topics (N/<portal>/evcharger/<instance>/...)
+	EVChargerInstance int
 }
 
 // MQTTConfig from environment with Python defaults
@@ -168,11 +172,8 @@ type HomeAssistantConfig struct {
 	DirectControls     bool
 	PollInterval       float64
 	BooleanEntities    []BooleanEntityConfig
-	SwitchEntities     []EntityConfig
-	CarSOCEntity       string
-	EVChargingKWEntity string
-	EVPowerEntity      string
-	ApplianceEntities  map[string]string
+	SwitchEntities    []EntityConfig
+	ApplianceEntities map[string]string
 	VueSensors         map[string]string
 	SensorEntities     map[string]string
 	FilteredEntities   *FilteredEntityConfig
@@ -212,6 +213,8 @@ func Load(configPath string) (*Config, error) {
 			TankInstance:  getEnvIntDefault("WATER_TANK_INSTANCE", 21),
 			PumpInstance:  getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
 			ValveInstance: getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
+			EVInstance:    getEnvIntDefault("EV_INSTANCE", 22),
+			EVChargerInstance: getEnvIntDefault("EVCHARGER_INSTANCE", 40),
 		},
 		DashboardSecret:   getEnvDefault("DASHBOARD_SECRET", ""),
 		SelfUpdateEnabled: getEnvDefault("SELF_UPDATE_ENABLED", "") == "true",
@@ -247,10 +250,12 @@ func loadConfigYAML(cfg *Config) error {
 		Port int    `yaml:"port"`
 	}
 	type yamlCerbo struct {
-		PortalID      string `yaml:"portal_id"`
-		TankInstance  *int   `yaml:"tank_instance"`
-		PumpInstance  *int   `yaml:"pump_instance"`
-		ValveInstance *int   `yaml:"valve_instance"`
+		PortalID               string `yaml:"portal_id"`
+		TankInstance           *int   `yaml:"tank_instance"`
+		PumpInstance           *int   `yaml:"pump_instance"`
+		ValveInstance          *int   `yaml:"valve_instance"`
+		EVInstance             *int   `yaml:"ev_instance"`
+		EVChargerInstance      *int   `yaml:"evcharger_instance"`
 	}
 	type yamlTop struct {
 		MQTT          *yamlMQTT  `yaml:"mqtt"`
@@ -263,9 +268,6 @@ func loadConfigYAML(cfg *Config) error {
 			PollIntervalSeconds float64                `yaml:"poll_interval_seconds"`
 			BooleanEntities     map[string]interface{} `yaml:"boolean_entities"`
 			SwitchEntities      map[string]interface{} `yaml:"switch_entities"`
-			CarSOCEntity        string                 `yaml:"car_soc_entity"`
-			EVChargingKWEntity  string                 `yaml:"ev_charging_kw_entity"`
-			EVPowerEntity       string                 `yaml:"ev_power_entity"`
 			ApplianceEntities   map[string]string      `yaml:"appliance_entities"`
 			VueSensors          map[string]string      `yaml:"vue_sensors"`
 			FilteredEntities    *struct {
@@ -307,6 +309,12 @@ func loadConfigYAML(cfg *Config) error {
 		if top.Cerbo.ValveInstance != nil {
 			cfg.Cerbo.ValveInstance = *top.Cerbo.ValveInstance
 		}
+		if top.Cerbo.EVInstance != nil {
+			cfg.Cerbo.EVInstance = *top.Cerbo.EVInstance
+		}
+		if top.Cerbo.EVChargerInstance != nil {
+			cfg.Cerbo.EVChargerInstance = *top.Cerbo.EVChargerInstance
+		}
 	}
 
 	if top.Web != nil {
@@ -331,9 +339,6 @@ func loadConfigYAML(cfg *Config) error {
 			PollInterval:       pollOrDefault(top.HomeAssistant.PollIntervalSeconds),
 			BooleanEntities:    convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
 			SwitchEntities:     convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
-			CarSOCEntity:       top.HomeAssistant.CarSOCEntity,
-			EVChargingKWEntity: top.HomeAssistant.EVChargingKWEntity,
-			EVPowerEntity:      top.HomeAssistant.EVPowerEntity,
 			ApplianceEntities:  top.HomeAssistant.ApplianceEntities,
 			VueSensors:         top.HomeAssistant.VueSensors,
 		}
@@ -372,9 +377,6 @@ func logHomeAssistantConfig(cfg *HomeAssistantConfig) {
 	log.Printf("Token: %s...%s (truncated)", cfg.Token[:10], cfg.Token[len(cfg.Token)-5:])
 	log.Printf("Direct Controls: %v", cfg.DirectControls)
 	log.Printf("Poll Interval: %.1f seconds", cfg.PollInterval)
-	log.Printf("Car SoC Entity: %s", cfg.CarSOCEntity)
-	log.Printf("EV Charging KW Entity: %s", cfg.EVChargingKWEntity)
-	log.Printf("EV Power Entity: %s", cfg.EVPowerEntity)
 	log.Printf("Boolean Entities: %d entries", len(cfg.BooleanEntities))
 	for _, entity := range cfg.BooleanEntities {
 		log.Printf(" - %s: %s", entity.Key, entity.Entity)

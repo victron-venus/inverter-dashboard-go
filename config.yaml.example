@@ -17,14 +17,16 @@ logging:
   level: "info"            # Log level: debug, info, warn, error
   format: "json"           # Format: json or text
 
-# Cerbo GX / Water Configuration (dbus-pump via Cerbo MQTT)
-# Water comes exclusively from the dbus-pump services - no HA entities.
+# Cerbo GX / Water / EV Configuration (dbus-pump, dbus-ev, dbus-evcharger via Cerbo MQTT)
+# Water and EV data come exclusively from the dbus-* services - no HA entities.
 # Set portal_id (or CERBO_PORTAL_ID env) to enable; leave empty to disable.
 cerbo:
   portal_id: ""              # VRM portal ID of your Cerbo GX
   tank_instance: 21          # com.victronenergy.tank.ha_tank<N>
   pump_instance: 1           # com.victronenergy.pump.startstop<N> (Water pump)
   valve_instance: 2          # com.victronenergy.pump.startstop<N> (City valve)
+  ev_instance: 22            # com.victronenergy.evcharger<N> (vehicle SOC, charging power)
+  evcharger_instance: 40     # com.victronenergy.evcharger<N> (wallbox power)
 
 # Home Assistant Configuration (Optional)
 # Configure to enable direct Home Assistant integration
@@ -66,10 +68,7 @@ homeassistant:
     #   setpoint, daily_stats, mppt_chargers, batteries, mppt_individual, tasmota_individual
     #   loads (Vue circuits via D-Bus acload)
     # Only configure fields NOT available from inverter-control:
-    #   # ev_charging_kw: "sensor.ev_charging_power"
-    #   # ev_power: "sensor.ev_power"
-    #   # car_soc: "sensor.car_state_of_charge"
-    #   (water_level/valve/pump come from dbus-pump via cerbo: - never from HA)
+    #   (car_soc/ev_charging_kw/ev_power come from dbus-ev/dbus-evcharger via cerbo: - never from HA)
     #   # gt: "sensor.grid_power"  # if you prefer HA CT meter over Victron
 
 # Optional: Add custom UI configuration

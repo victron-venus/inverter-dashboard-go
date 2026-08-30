@@ -68,13 +68,30 @@ via Cerbo MQTT — no Home Assistant involved. Enable it in the `cerbo:` section
 defaults 21/1/2) must match dbus-pump's `local_config.py`. Valve/pump automation lives in
 dbus-pump; the dashboard is read-only.
 
+### EV data
+
+EV data comes **exclusively** from [dbus-ev](https://github.com/victron-venus/dbus-ev) (vehicle) and
+[dbus-evcharger](https://github.com/victron-venus/dbus-evcharger) (charger) via Cerbo MQTT — no Home Assistant involved.
+Enable it in the `cerbo:` section of `config.yaml` (or `CERBO_PORTAL_ID` env); instances
+(`ev_instance` / `evcharger_instance`, defaults 22/40) must match dbus-ev and dbus-evcharger's
+`local_config.py`.
+
+| Dashboard field | MQTT topic |
+|---|---|
+| `car_soc` | `N/<portal>/ev/<i>/Soc` |
+| `ev_charging_kw` | `N/<portal>/ev/<i>/Ac/Power` (W → kW) |
+| `ev_power` | `N/<portal>/evcharger/<i>/Ac/Power` (W → kW) |
+
+Car status (SOC, charging power) comes from dbus-ev; wallbox power from dbus-evcharger.
+The dashboard is read-only.
+
 ## Features
 
 - **Real-time monitoring** of solar, grid, battery, and consumption
 - **WebSocket-based live updates** with automatic reconnection
 - **MQTT integration** for communication with Victron Cerbo GX
 - **Optional Home Assistant** direct integration for enhanced control
-- **Multiple device support**: batteries, EV charging, water management (dbus-pump via Cerbo MQTT)
+- **Multiple device support**: batteries, EV charging (dbus-ev via Cerbo MQTT), water management (dbus-pump via Cerbo MQTT)
 - **Appliance monitoring**: washer, dryer, dishwasher status
 - **Dark/light theme** support with local preference storage
 - **Cross-platform** binaries for easy deployment
