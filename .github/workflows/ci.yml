@@ -19,7 +19,14 @@ jobs:
       # run-lint: true  # default
       # run-tests: true  # default
       # test-args: '-race -coverprofile=coverage.out -covermode=atomic'  # default
-      # Test coverage is ~10% (state/websocket only); the default 70% gate
-      # fails. Re-enable once core packages have tests.
-      coverage-threshold: 0
+      # Core packages (state, settings, websocket, mqtt, auth) have tests;
+      # gate set to 20% to prevent regression while allowing incremental coverage.
+      coverage-threshold: 20
       # run-vulncheck: true  # default
+
+  integration:
+    name: Integration Tests
+    uses: victron-venus/integration-tests/.github/workflows/integration.yml@442f474e5620100ae953235e8674eda24b44d387
+    # Run on PRs only; the integration-tests repo also runs this workflow
+    # directly on its own main/push/schedule triggers.
+    if: github.event_name == 'pull_request'

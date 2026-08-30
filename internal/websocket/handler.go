@@ -11,11 +11,33 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
-	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
 	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 )
+
+// MQTTCommander is the subset of *mqtt.Client used by the WS handler.
+// Letting tests substitute mocks. The real *mqtt.Client satisfies it.
+type MQTTCommander interface {
+	GetState() *state.State
+	GetConsole() []string
+	PublishCommand(action string, payload interface{}) error
+}
+
+// HAClient is the subset of *homeassistant.Client used by the WS handler.
+// The real *homeassistant.Client satisfies it.
+type HAClient interface {
+	IsDirectMode() bool
+	IsToggleAllowed(entityID string) bool
+	GetOverlay() homeassistant.Overlay
+	GetUIConfig() map[string]interface{}
+	GetBooleanButtons() []homeassistant.Button
+	GetManagedKeys() []string
+	ToggleEntity(entityID string) error
+	PressButton(entityID string) error
+	FetchStatesOnce() (homeassistant.Overlay, error)
+	ReplaceOverlay(o homeassistant.Overlay)
+}
 
 // Message represents a WebSocket message from client
 type Message struct {
@@ -96,7 +118,7 @@ func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedK
 }
 
 // HandleWebSocket handles WebSocket connections
-func HandleWebSocket(c *gin.Context, mqttClient *mqtt.Client, haClient *homeassistant.Client) {
+func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade connection: %v", err)
@@ -146,7 +168,7 @@ func HandleWebSocket(c *gin.Context, mqttClient *mqtt.Client, haClient *homeassi
 }
 
 // sendInitialState sends the complete state to a newly connected client
-func sendInitialState(conn *websocket.Conn, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
+func sendInitialState(conn *websocket.Conn, mqttClient MQTTCommander, haClient HAClient) error {
 	state := mqttClient.GetState()
 	console := mqttClient.GetConsole()
 
@@ -192,7 +214,7 @@ func sendInitialState(conn *websocket.Conn, mqttClient *mqtt.Client, haClient *h
 }
 
 // handleMessage processes incoming WebSocket messages
-func handleMessage(msg Message, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
+func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) error {
 	switch msg.Action {
 	case "toggle":
 		return handleToggle(msg.Entity, mqttClient, haClient)
@@ -235,7 +257,7 @@ func handleMessage(msg Message, mqttClient *mqtt.Client, haClient *homeassistant
 }
 
 // handleToggle handles toggle actions
-func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
+func handleToggle(entityID string, mqttClient MQTTCommander, haClient HAClient) error {
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for toggle")
 	}
@@ -274,7 +296,7 @@ func handleToggle(entityID string, mqttClient *mqtt.Client, haClient *homeassist
 }
 
 // handlePress handles button press actions
-func handlePress(entityID string, mqttClient *mqtt.Client, haClient *homeassistant.Client) error {
+func handlePress(entityID string, mqttClient MQTTCommander, haClient HAClient) error {
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for press")
 	}
@@ -330,7 +352,7 @@ func getKeys(m map[string]interface{}) []string {
 }
 
 // BroadcastState sends the current state to all connected clients
-func BroadcastState(mqttClient *mqtt.Client, haClient *homeassistant.Client, overlay homeassistant.Overlay) error {
+func BroadcastState(mqttClient MQTTCommander, haClient HAClient, overlay homeassistant.Overlay) error {
 	state := mqttClient.GetState()
 	console := mqttClient.GetConsole()
 
