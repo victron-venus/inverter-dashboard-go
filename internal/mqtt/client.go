@@ -241,25 +241,35 @@ func (c *Client) Subscribe() error {
 // onWaterMessage decodes dbus-pump water topics into the shared state.
 // Topic shapes: N/<portal>/tank/<instance>/Level and
 // N/<portal>/pump/<instance>/State, payload {"value": <num>}.
-func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
+// cerboMsg parses a Cerbo MQTT message payload. Returns topic parts and the
+// float value on success; skips if the topic does not match the portal or has
+// too few segments.
+func (c *Client) cerboMsg(msg mqtt.Message) (parts []string, num float64, ok bool) {
 	if c.portalID == "" {
-		return
+		return nil, 0, false
 	}
-	parts := strings.Split(msg.Topic(), "/")
+	parts = strings.Split(msg.Topic(), "/")
 	if len(parts) < 5 || parts[0] != "N" || parts[1] != c.portalID {
-		return
+		return nil, 0, false
 	}
 	var payload struct {
 		Value interface{} `json:"value"`
 	}
 	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return
+		return nil, 0, false
 	}
-	num, ok := toFloat(payload.Value)
+	num, ok = toFloat(payload.Value)
+	if !ok {
+		return nil, 0, false
+	}
+	return parts, num, true
+}
+
+func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
+	parts, num, ok := c.cerboMsg(msg)
 	if !ok {
 		return
 	}
-
 	c.stateMu.Lock()
 	st := c.state
 	switch {
@@ -280,27 +290,12 @@ func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
 
 // onEVMessage decodes Cerbo EV/EV-charger topics into shared state.
 // Topics: N/<portal>/ev/<i>/Soc, N/<portal>/ev/<i>/Ac/Power,
-// N/<portal>/evcharger/<i>/Ac/Power (W → kW),
-// N/<portal>/evcharger/<i>/Status.
+// N/<portal>/evcharger/<i>/Ac/Power (W → kW).
 func (c *Client) onEVMessage(client mqtt.Client, msg mqtt.Message) {
-	if c.portalID == "" {
-		return
-	}
-	parts := strings.Split(msg.Topic(), "/")
-	if len(parts) < 5 || parts[0] != "N" || parts[1] != c.portalID {
-		return
-	}
-	var payload struct {
-		Value interface{} `json:"value"`
-	}
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return
-	}
-	num, ok := toFloat(payload.Value)
+	parts, num, ok := c.cerboMsg(msg)
 	if !ok {
 		return
 	}
-
 	c.stateMu.Lock()
 	st := c.state
 	evInst := strconv.Itoa(c.evInstance)
