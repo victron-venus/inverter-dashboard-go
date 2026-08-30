@@ -303,15 +303,21 @@ func (c *Client) onEVMessage(client mqtt.Client, msg mqtt.Message) {
 
 	c.stateMu.Lock()
 	st := c.state
+	evInst := strconv.Itoa(c.evInstance)
+	evChargerInst := strconv.Itoa(c.evchargerInstance)
 	switch {
-	// 5-part topics: N/<portal>/ev/<i>/Soc
-	case len(parts) == 5 && parts[2] == "ev" && parts[4] == "Soc" && parts[3] == strconv.Itoa(c.evInstance):
+	case len(parts) == 5 && parts[2] == "ev" && parts[3] == evInst && parts[4] == "Soc":
 		st.CarSOC = num
-	// 6-part topics: N/<portal>/ev/<i>/Ac/Power and N/<portal>/evcharger/<i>/Ac/Power
-	case len(parts) == 6 && parts[2] == "ev" && parts[4] == "Ac" && parts[5] == "Power" && parts[3] == strconv.Itoa(c.evInstance):
-		st.EVChargingKW = num / 1000.0
-	case len(parts) == 6 && parts[2] == "evcharger" && parts[4] == "Ac" && parts[5] == "Power" && parts[3] == strconv.Itoa(c.evchargerInstance):
-		st.EVPower = num / 1000.0
+	case len(parts) == 6 && parts[4] == "Ac" && parts[5] == "Power":
+		switch parts[2] + "/" + parts[3] {
+		case "ev/" + evInst:
+			st.EVChargingKW = num / 1000.0
+		case "evcharger/" + evChargerInst:
+			st.EVPower = num / 1000.0
+		default:
+			c.stateMu.Unlock()
+			return
+		}
 	default:
 		c.stateMu.Unlock()
 		return
