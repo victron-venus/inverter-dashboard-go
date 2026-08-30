@@ -134,6 +134,8 @@ func main() {
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
+	// EV data (vehicle + charger) from Cerbo MQTT; empty portal ID disables
+	mqttClient.SetEVConfig(cfg.Cerbo.EVInstance, cfg.Cerbo.EVChargerInstance)
 	if cfg.CameraTopic != "" {
 		mqttClient.SetCameraTopic(cfg.CameraTopic)
 	}
@@ -146,9 +148,6 @@ func main() {
 		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA Entities configured",
 			"boolean_entities", len(cfg.HomeAssistant.BooleanEntities),
 			"switch_entities", len(cfg.HomeAssistant.SwitchEntities),
-			"car_soc_entity", cfg.HomeAssistant.CarSOCEntity,
-			"ev_charging_kw_entity", cfg.HomeAssistant.EVChargingKWEntity,
-			"ev_power_entity", cfg.HomeAssistant.EVPowerEntity,
 			"appliance_entities", len(cfg.HomeAssistant.ApplianceEntities),
 		)
 

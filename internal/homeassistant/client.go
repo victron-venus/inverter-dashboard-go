@@ -99,9 +99,6 @@ type Client struct {
 	booleanEntities   map[string]string
 	booleanButtons    []Button
 	switchEntities    []Button
-	carSOC            string
-	evChargingKW      string
-	evPower           string
 	applianceEntities map[string]string
 	vueSensors        map[string]string
 	sensorEntities    map[string]string
@@ -153,10 +150,6 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 			HADirectConnected: true,
 		},
 	}
-	client.carSOC = cfg.CarSOCEntity
-	client.evChargingKW = cfg.EVChargingKWEntity
-	client.evPower = cfg.EVPowerEntity
-
 	// Initialize HTTP client with timeout
 	client.httpClient = &http.Client{
 		Timeout: 20 * time.Second,
@@ -294,55 +287,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		result.AdditionalFields[btn.StateKey] = isOn(state)
 	}
 
-	// Water (level/valve/pump) comes from dbus-pump via Cerbo MQTT - not HA.
-
-	// Fetch car SOC
-	log.Printf("[HA DEBUG] Fetching car_soc from entity: %s", c.carSOC)
-	if c.carSOC != "" {
-		state, err := fetchEntityState(c.carSOC)
-		if err == nil {
-			if val, err := strconv.ParseFloat(state, 64); err == nil {
-				result.AdditionalFields["car_soc"] = val
-				log.Printf("[HA DEBUG] car_soc fetched successfully: %v%%", val)
-			}
-		} else {
-			log.Printf("[HA DEBUG] Failed to fetch car_soc: %v", err)
-		}
-	} else {
-		log.Printf("[HA DEBUG] carSOC entity not configured")
-	}
-
-	// Fetch EV charging power
-	log.Printf("[HA DEBUG] Fetching ev_charging_kw from entity: %s", c.evChargingKW)
-	if c.evChargingKW != "" {
-		state, err := fetchEntityState(c.evChargingKW)
-		if err == nil {
-			if val, err := strconv.ParseFloat(state, 64); err == nil {
-				result.AdditionalFields["ev_charging_kw"] = val
-				log.Printf("[HA DEBUG] ev_charging_kw fetched successfully: %v kW", val)
-			}
-		} else {
-			log.Printf("[HA DEBUG] Failed to fetch ev_charging_kw: %v", err)
-		}
-	} else {
-		log.Printf("[HA DEBUG] evChargingKW entity not configured")
-	}
-
-	// Fetch EV power
-	log.Printf("[HA DEBUG] Fetching ev_power from entity: %s", c.evPower)
-	if c.evPower != "" {
-		state, err := fetchEntityState(c.evPower)
-		if err == nil {
-			if val, err := strconv.ParseFloat(state, 64); err == nil {
-				result.AdditionalFields["ev_power"] = val
-				log.Printf("[HA DEBUG] ev_power fetched successfully: %v", val)
-			}
-		} else {
-			log.Printf("[HA DEBUG] Failed to fetch ev_power: %v", err)
-		}
-	} else {
-		log.Printf("[HA DEBUG] evPower entity not configured")
-	}
+	// Water (level/valve/pump) and EV data come from Cerbo MQTT - not HA.
 
 	// Fetch sensor entities
 	for key, entityID := range c.sensorEntities {
@@ -688,15 +633,6 @@ func (c *Client) GetManagedKeys() []string {
 	}
 	for _, btn := range c.switchEntities {
 		keys = append(keys, btn.StateKey)
-	}
-	if c.carSOC != "" {
-		keys = append(keys, "car_soc")
-	}
-	if c.evChargingKW != "" {
-		keys = append(keys, "ev_charging_kw")
-	}
-	if c.evPower != "" {
-		keys = append(keys, "ev_power")
 	}
 	for k := range c.applianceEntities {
 		keys = append(keys, k)

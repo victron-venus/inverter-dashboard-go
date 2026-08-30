@@ -69,7 +69,6 @@ homeassistant:
       entity: "switch.recliner"
       label: "Recliner"
       order: 1
-  car_soc_entity: "sensor.car_soc"
   appliance_entities:
     dishwasher_running: "binary_sensor.dishwasher_running"
   vue_sensors:

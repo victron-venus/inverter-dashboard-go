@@ -41,6 +41,11 @@ type Client struct {
 	pumpInstance  int
 	valveInstance int
 
+	// EV topics (Cerbo MQTT). Empty portal disables both vehicle
+	// (N/<portal>/ev/<ev>/...) and charger (N/<portal>/evcharger/<evcharger>/...).
+	evInstance       int
+	evchargerInstance int
+
 	// Victron alarm tracking (N/<portal>/.../Alarms/<name> -> last value)
 	alarmValues map[string]int
 	alarmsMu    sync.Mutex
@@ -77,6 +82,7 @@ func NewClient(broker string, port int) *Client {
 			DashboardVersion: "dev",
 			Version:          "0.0.0",
 			Console:          make([]string, 0),
+			CarSOC:           0,
 		},
 		consoleLines:    make([]string, 0),
 		maxConsoleLines: 50,
@@ -160,6 +166,11 @@ func (c *Client) SetWaterConfig(portalID string, tank, pump, valve int) {
 	c.valveInstance = valve
 }
 
+func (c *Client) SetEVConfig(ev, evcharger int) {
+	c.evInstance = ev
+	c.evchargerInstance = evcharger
+}
+
 func (c *Client) SetMessageHandler(handler MessageHandler) {
 	c.handlerMu.Lock()
 	defer c.handlerMu.Unlock()
@@ -205,7 +216,16 @@ func (c *Client) Subscribe() error {
 		if token := c.client.Subscribe(fmt.Sprintf("N/%s/pump/+/State", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
 			log.Printf("Warning: failed to subscribe to pump state topic: %v", token.Error())
 		}
-		log.Printf("Subscribed to Cerbo water topics (portal %s)", c.portalID)
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/ev/%d/Soc", c.portalID, c.evInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to EV Soc topic: %v", token.Error())
+		}
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/ev/%d/Ac/Power", c.portalID, c.evInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to EV Ac/Power topic: %v", token.Error())
+		}
+		if token := c.client.Subscribe(fmt.Sprintf("N/%s/evcharger/%d/Ac/Power", c.portalID, c.evchargerInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to EVCharger Ac/Power topic: %v", token.Error())
+		}
+		log.Printf("Subscribed to Cerbo water+EV topics (portal %s)", c.portalID)
 	}
 	if c.cameraTopic != "" {
 		if token := c.client.Subscribe(c.cameraTopic, 0, c.onCameraMessage); token.Wait() && token.Error() != nil {
@@ -250,6 +270,48 @@ func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
 		st.WaterValve = num != 0
 	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.pumpInstance):
 		st.PumpSwitch = num != 0
+	default:
+		c.stateMu.Unlock()
+		return
+	}
+	c.stateMu.Unlock()
+	c.triggerHandler()
+}
+
+// onEVMessage decodes Cerbo EV/EV-charger topics into shared state.
+// Topics: N/<portal>/ev/<i>/Soc, N/<portal>/ev/<i>/Ac/Power,
+// N/<portal>/evcharger/<i>/Ac/Power (W → kW),
+// N/<portal>/evcharger/<i>/Status.
+func (c *Client) onEVMessage(client mqtt.Client, msg mqtt.Message) {
+	if c.portalID == "" {
+		return
+	}
+	parts := strings.Split(msg.Topic(), "/")
+	if len(parts) < 5 || parts[0] != "N" || parts[1] != c.portalID {
+		return
+	}
+	var payload struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return
+	}
+	num, ok := toFloat(payload.Value)
+	if !ok {
+		return
+	}
+
+	c.stateMu.Lock()
+	st := c.state
+	switch {
+	// 5-part topics: N/<portal>/ev/<i>/Soc
+	case len(parts) == 5 && parts[2] == "ev" && parts[4] == "Soc" && parts[3] == strconv.Itoa(c.evInstance):
+		st.CarSOC = num
+	// 6-part topics: N/<portal>/ev/<i>/Ac/Power and N/<portal>/evcharger/<i>/Ac/Power
+	case len(parts) == 6 && parts[2] == "ev" && parts[4] == "Ac" && parts[5] == "Power" && parts[3] == strconv.Itoa(c.evInstance):
+		st.EVChargingKW = num / 1000.0
+	case len(parts) == 6 && parts[2] == "evcharger" && parts[4] == "Ac" && parts[5] == "Power" && parts[3] == strconv.Itoa(c.evchargerInstance):
+		st.EVPower = num / 1000.0
 	default:
 		c.stateMu.Unlock()
 		return

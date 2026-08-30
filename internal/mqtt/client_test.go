@@ -78,6 +78,57 @@ func TestOnWaterMessageBadPayload(t *testing.T) {
 	}
 }
 
+func TestOnEVMessageMapsTopicsToState(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.SetWaterConfig("p1", 0, 0, 0)
+	c.SetEVConfig(22, 40)
+
+	c.onEVMessage(nil, waterMsg("N/p1/ev/22/Soc", 75))
+	c.onEVMessage(nil, waterMsg("N/p1/ev/22/Ac/Power", 7300))
+	c.onEVMessage(nil, waterMsg("N/p1/evcharger/40/Ac/Power", 7200))
+
+	st := c.GetState()
+	if st.CarSOC != 75 {
+		t.Errorf("CarSOC = %v, want 75", st.CarSOC)
+	}
+	if st.EVChargingKW != 7.3 {
+		t.Errorf("EVChargingKW = %v, want 7.3", st.EVChargingKW)
+	}
+	if st.EVPower != 7.2 {
+		t.Errorf("EVPower = %v, want 7.2", st.EVPower)
+	}
+}
+
+func TestOnEVMessageIgnoresForeignTopics(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.SetWaterConfig("p1", 0, 0, 0)
+	c.SetEVConfig(22, 40)
+
+	c.onEVMessage(nil, waterMsg("N/other/ev/22/Soc", 50))
+	c.onEVMessage(nil, waterMsg("N/p1/ev/9/Soc", 50))
+	c.onEVMessage(nil, waterMsg("N/p1/ev/22/VIN", "ABC123"))
+	c.onEVMessage(nil, waterMsg("N/p1/evcharger/9/Ac/Power", 3000))
+
+	st := c.GetState()
+	if st.CarSOC != 0 || st.EVChargingKW != 0 || st.EVPower != 0 {
+		t.Errorf("unexpected state from foreign topics: CarSOC=%v, EVChargingKW=%v, EVPower=%v", st.CarSOC, st.EVChargingKW, st.EVPower)
+	}
+}
+
+func TestOnEVMessageBadPayload(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.SetWaterConfig("p1", 0, 0, 0)
+	c.SetEVConfig(22, 40)
+
+	c.onEVMessage(nil, &fakeMessage{topic: "N/p1/ev/22/Soc", payload: []byte("junk")})
+	c.onEVMessage(nil, waterMsg("N/p1/ev/22/Ac/Power", "not-a-number"))
+
+	st := c.GetState()
+	if st.CarSOC != 0 || st.EVChargingKW != 0 {
+		t.Errorf("unexpected state from bad payload: CarSOC=%v, EVChargingKW=%v", st.CarSOC, st.EVChargingKW)
+	}
+}
+
 // compile-time interface check
 var _ mqtt.Message = (*fakeMessage)(nil)
 
