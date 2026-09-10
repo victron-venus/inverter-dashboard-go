@@ -132,7 +132,8 @@ type State struct {
 	PvInverters []Charger `json:"pv_inverters,omitempty"`
 
 	// Loads
-	Loads map[string]float64 `json:"loads,omitempty"`
+	Loads     map[string]float64 `json:"loads,omitempty"`
+	LoadNames map[string]string  `json:"load_names,omitempty"`
 
 	// EV data - always shown
 	// Sourced from Cerbo MQTT (N/<portal>/ev/<i>/... and

@@ -2,7 +2,9 @@ package html
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
+	"io/fs"
+	"net/http"
 	"strings"
 )
 
@@ -20,21 +22,33 @@ var dashboardCSS string
 //go:embed static/js/dashboard.js
 var dashboardJS string
 
-// Vue UI files (extracted from inverter-dashboard-vue release)
-//go:embed vue-ui/index.html
-var vueIndexHTML []byte
+// Vue UI (index + hashed assets) — single-binary Docker/deploy.
+//
+//go:embed all:vue-ui
+var vueUIFS embed.FS
 
 // GetVueUIHTML returns Vue UI index.html if available
 func GetVueUIHTML() ([]byte, bool) {
-	if len(vueIndexHTML) == 0 || bytes.Contains(vueIndexHTML, []byte("Vue UI not")) || bytes.Contains(vueIndexHTML, []byte("Dev placeholder")) {
+	b, err := vueUIFS.ReadFile("vue-ui/index.html")
+	if err != nil || len(b) == 0 || bytes.Contains(b, []byte("Vue UI not")) || bytes.Contains(b, []byte("Dev placeholder")) {
 		return nil, false
 	}
-	return vueIndexHTML, true
+	return b, true
 }
 
 // HasVueUI returns true if Vue UI is embedded
 func HasVueUI() bool {
-	return len(vueIndexHTML) > 0
+	_, ok := GetVueUIHTML()
+	return ok
+}
+
+// VueAssetsFS returns an http.FileSystem rooted at vue-ui/assets for /assets/*.
+func VueAssetsFS() (http.FileSystem, error) {
+	sub, err := fs.Sub(vueUIFS, "vue-ui/assets")
+	if err != nil {
+		return nil, err
+	}
+	return http.FS(sub), nil
 }
 
 // GetDashboardHTML returns combined HTML with embedded CSS and JS

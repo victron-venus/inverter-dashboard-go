@@ -29,7 +29,7 @@ RUN groupadd -r app && useradd -r -g app app
 
 WORKDIR /app
 
-# Copy binary from builder
+# Copy binary from builder (Vue UI + /assets are go:embed inside the binary)
 COPY --from=builder /build/inverter-dashboard /app/inverter-dashboard
 
 # Copy VERSION file

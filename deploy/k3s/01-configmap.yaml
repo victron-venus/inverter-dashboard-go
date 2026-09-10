@@ -10,5 +10,5 @@ data:
   MQTT_PORT: "1883"
   WEB_PORT: "8080"
   WEB_HOST: "0.0.0.0"
-  # Optional — set Cerbo VRM portal ID only if water/EV topics are needed
-  CERBO_PORTAL_ID: ""
+  # Cerbo VRM portal ID — required for keepalive + water/EV/alarms
+  CERBO_PORTAL_ID: "b827ebea1ece"
