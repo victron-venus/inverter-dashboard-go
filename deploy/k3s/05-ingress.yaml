@@ -1,0 +1,23 @@
+# Dedicated Traefik on mp (IngressClass traefik-mp) + OpenWRT:
+#   address=/mp.2560801.xyz/192.168.151.107
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inverter-dashboard-go
+  labels:
+    app: inverter-dashboard-go
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik-mp
+  rules:
+    - host: inverter-dashboard-go.mp.2560801.xyz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inverter-dashboard-go
+                port:
+                  number: 8080

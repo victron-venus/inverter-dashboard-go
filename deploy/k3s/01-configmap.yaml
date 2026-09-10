@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inverter-dashboard-go
+  labels:
+    app: inverter-dashboard-go
+data:
+  # Cerbo LAN MQTT (do NOT use in-cluster mosquitto — Python dash flaps on that path)
+  MQTT_HOST: "192.168.160.150"
+  MQTT_PORT: "1883"
+  WEB_PORT: "8080"
+  WEB_HOST: "0.0.0.0"
+  # Optional — set Cerbo VRM portal ID only if water/EV topics are needed
+  CERBO_PORTAL_ID: ""

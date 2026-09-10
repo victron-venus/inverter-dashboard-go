@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inverter-dashboard-go
+  labels:
+    app: inverter-dashboard-go
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inverter-dashboard-go
+  template:
+    metadata:
+      labels:
+        app: inverter-dashboard-go
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: mp
+      containers:
+        - name: dashboard
+          image: alvit/inverter-dashboard-go:latest
+          imagePullPolicy: Always
+          args:
+            - --mqtt-host
+            - "192.168.160.150"
+            - --mqtt-port
+            - "1883"
+            - --port
+            - "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: inverter-dashboard-go
+          env:
+            # Image defaults WEB_PORT=8080; host defaults to 0.0.0.0 in config.Load
+            - name: WEB_HOST
+              value: "0.0.0.0"
+          volumeMounts:
+            # Optional example Secret — comment out until a real config Secret exists
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          secret:
+            secretName: inverter-dashboard-go-config
+            optional: true
