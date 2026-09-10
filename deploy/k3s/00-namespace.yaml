@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: inverter-dashboard-go
+  labels:
+    app.kubernetes.io/name: inverter-dashboard-go
+    app.kubernetes.io/part-of: victron-home
