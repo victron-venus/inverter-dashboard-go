@@ -357,11 +357,12 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	// for Docker healthchecks and Prometheus scraping.
 	router.Use(auth.Middleware(cfg.DashboardSecret))
 
-	// Serve Vue UI static assets (JS/CSS) from dist directory
-	distDir := "internal/html/dist"
-	if _, err := os.Stat(distDir); err == nil {
-		router.Static("/assets", distDir+"/assets")
-		logger.Info(logging.DefaultContext().With("component", "http"), "Serving Vue UI assets", "dir", distDir)
+	// Serve Vue UI static assets (JS/CSS) from go:embed (works in Docker single-binary)
+	if assetsFS, err := html.VueAssetsFS(); err == nil {
+		router.StaticFS("/assets", assetsFS)
+		logger.Info(logging.DefaultContext().With("component", "http"), "Serving embedded Vue UI assets at /assets")
+	} else {
+		logger.Warn(logging.DefaultContext().With("component", "http"), "Vue UI assets not embedded", "error", err)
 	}
 
 	// Prometheus metrics endpoint
@@ -447,12 +448,19 @@ func websocketHandler(mqttClient *mqtt.Client, haClient *homeassistant.Client) g
 
 func apiStateHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		state := mqttClient.GetState()
+		st := mqttClient.GetState()
 
-		has_mqtt_state := state != nil
+		has_mqtt_state := st != nil
 		controlVersion := ""
-		if state != nil {
-			controlVersion = state.Version
+		solarTotal, gt, tt, batterySOC := 0.0, 0.0, 0.0, 0.0
+		inverterState := ""
+		if st != nil {
+			controlVersion = st.Version
+			solarTotal = st.SolarTotal
+			gt = st.GT
+			tt = st.TT
+			batterySOC = st.BatterySOC
+			inverterState = st.InverterState
 		}
 
 		c.JSON(200, gin.H{
@@ -460,6 +468,13 @@ func apiStateHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 			"dashboard_version": version.GetCurrent(),
 			"control_version":   controlVersion,
 			"has_mqtt_state":    has_mqtt_state,
+			"portal_id":         mqttClient.PortalID(),
+			// Live Cerbo tiles (ops / curl verification)
+			"solar_total":    solarTotal,
+			"gt":             gt,
+			"tt":             tt,
+			"battery_soc":    batterySOC,
+			"inverter_state": inverterState,
 		})
 	}
 }

@@ -8,6 +8,9 @@ Image: `alvit/inverter-dashboard-go:latest` (Docker Hub).
 
 Uses **Cerbo LAN MQTT** `192.168.160.150:1883` (args + ConfigMap).
 
+ConfigMap sets `CERBO_PORTAL_ID=b827ebea1ece` for keepalive + water/EV/alarms.
+Live tiles (grid/battery/solar/loads) come from Cerbo MQTT wildcards; slim `inverter/state` only supplies daemon extras.
+
 Do **not** point this deploy at in-cluster Mosquitto
 (`mosquitto.homeassistant.svc.cluster.local`) — the Python
 `inverter-dashboard` path already flaps on that broker.

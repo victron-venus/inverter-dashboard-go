@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,7 +12,6 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
-	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 )
 
 // MessageHandler is a function type for handling state updates
@@ -56,6 +54,16 @@ type Client struct {
 
 	// camera events (optional Frigate topic; empty disables)
 	cameraTopic string
+
+	// Cerbo live-tile device maps (system/battery/mppt/vebus/acload)
+	batteries map[string]*cerboBattery
+	chargers  map[string]*cerboCharger
+	system    map[string]*cerboSystem
+	vebus     map[string]*cerboVebus
+	acloads   map[string]*cerboACLoad
+
+	// stop channel for Cerbo keepalive goroutine
+	keepaliveStop chan struct{}
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -87,6 +95,11 @@ func NewClient(broker string, port int) *Client {
 		consoleLines:    make([]string, 0),
 		maxConsoleLines: 50,
 		pvInverters:     make(map[int]*state.Charger),
+		batteries:       make(map[string]*cerboBattery),
+		chargers:        make(map[string]*cerboCharger),
+		system:          make(map[string]*cerboSystem),
+		vebus:           make(map[string]*cerboVebus),
+		acloads:         make(map[string]*cerboACLoad),
 	}
 
 	// Initialize command buffer with capacity of 1000 commands
@@ -199,33 +212,30 @@ func (c *Client) Subscribe() error {
 	if token := c.client.Subscribe("inverter/notifications", 0, c.onNotificationMessage); token.Wait() && token.Error() != nil {
 		log.Printf("Warning: failed to subscribe to inverter/notifications: %v", token.Error())
 	}
+	if token := c.client.Subscribe("inverter/portal", 0, c.onPortalMessage); token.Wait() && token.Error() != nil {
+		log.Printf("Warning: failed to subscribe to inverter/portal: %v", token.Error())
+	}
 
-	// AC PV inverters of any vendor (Tasmota, ESPHome, ...) published on the
-	// GX broker — tiles stay alive even when inverter-control is down.
-	if token := c.client.Subscribe("N/+/pvinverter/+/#", 0, c.onPvInverterMessage); token.Wait() && token.Error() != nil {
-		log.Printf("Warning: failed to subscribe to N/+/pvinverter topics: %v", token.Error())
+	// Wildcard Cerbo live tiles — work even before portal ID is known.
+	for _, filt := range []string{
+		"N/+/acload/+/#",
+		"N/+/pvinverter/+/#",
+		"N/+/system/+/#",
+		"N/+/battery/+/#",
+		"N/+/solarcharger/+/#",
+		"N/+/vebus/+/#",
+	} {
+		handler := c.onCerboLiveMessage
+		if strings.Contains(filt, "pvinverter") {
+			handler = c.onPvInverterMessage
+		}
+		if token := c.client.Subscribe(filt, 0, handler); token.Wait() && token.Error() != nil {
+			log.Printf("Warning: failed to subscribe to %s: %v", filt, token.Error())
+		}
 	}
 
 	if c.portalID != "" {
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/+/Alarms/#", c.portalID), 0, c.onAlarmMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to Victron alarm topics: %v", token.Error())
-		}
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/tank/+/Level", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to water level topic: %v", token.Error())
-		}
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/pump/+/State", c.portalID), 0, c.onWaterMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to pump state topic: %v", token.Error())
-		}
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/ev/%d/Soc", c.portalID, c.evInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to EV Soc topic: %v", token.Error())
-		}
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/ev/%d/Ac/Power", c.portalID, c.evInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to EV Ac/Power topic: %v", token.Error())
-		}
-		if token := c.client.Subscribe(fmt.Sprintf("N/%s/evcharger/%d/Ac/Power", c.portalID, c.evchargerInstance), 0, c.onEVMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to EVCharger Ac/Power topic: %v", token.Error())
-		}
-		log.Printf("Subscribed to Cerbo water+EV topics (portal %s)", c.portalID)
+		c.subscribePortalTopics(c.portalID)
 	}
 	if c.cameraTopic != "" {
 		if token := c.client.Subscribe(c.cameraTopic, 0, c.onCameraMessage); token.Wait() && token.Error() != nil {
@@ -234,6 +244,7 @@ func (c *Client) Subscribe() error {
 			log.Printf("Subscribed to camera events on %s", c.cameraTopic)
 		}
 	}
+	c.startKeepalive()
 	log.Printf("Subscribed to MQTT topics")
 	return nil
 }
@@ -388,17 +399,7 @@ func (c *Client) onPvInverterMessage(client mqtt.Client, msg mqtt.Message) {
 		}
 	}
 	if changed {
-		instances := make([]int, 0, len(c.pvInverters))
-		for i := range c.pvInverters {
-			instances = append(instances, i)
-		}
-		sort.Ints(instances)
-		list := make([]state.Charger, 0, len(instances))
-		for _, i := range instances {
-			list = append(list, *c.pvInverters[i])
-		}
-		st := c.state
-		st.PvInverters = list
+		c.applyCerboOverlays()
 		c.stateMu.Unlock()
 		c.triggerHandler()
 		return
@@ -433,6 +434,8 @@ func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
 }
 
 func (c *Client) Disconnect() {
+	c.stopKeepalive()
+
 	// Stop command buffer worker
 	if c.cmdBuffer != nil {
 		c.cmdBuffer.Stop()
@@ -456,20 +459,8 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 	c.lastStateMu.Unlock()
 
 	c.stateMu.Lock()
+	c.mergeDaemonState(data)
 	st := c.state
-
-	// Set version info
-	st.DashboardVersion = version.GetCurrent()
-	if ver, ok := data["version"].(string); ok {
-		st.Version = ver
-	}
-
-	// Unmarshal directly into State struct - JSON tags match field names
-	// Re-marshal data to JSON then unmarshal into struct to handle type conversions
-	dataJSON, _ := json.Marshal(data)
-	if err := json.Unmarshal(dataJSON, st); err != nil {
-		log.Printf("Failed to unmarshal state into struct: %v", err)
-	}
 	c.stateMu.Unlock()
 
 	// Log values
@@ -479,7 +470,6 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 	// Trigger handler asynchronously (matches Python's asyncio pattern)
 	c.triggerHandler()
 }
-
 func (c *Client) onConsoleMessage(client mqtt.Client, msg mqtt.Message) {
 	line := string(msg.Payload())
 	c.consoleMu.Lock()
