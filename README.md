@@ -229,7 +229,7 @@ Enable direct Home Assistant integration for enhanced control:
 
 ```yaml
 homeassistant:
-  url: "http://192.168.151.21:8123"  # Your HA URL
+  url: "http://10.0.0.58:8123"  # Your HA URL
   token: "YOUR_LONG_LIVED_TOKEN"     # From HA Profile > Long-Lived Tokens
   direct_controls: true               # Use HA instead of MQTT
   poll_interval_seconds: 12           # How often to poll HA
@@ -414,7 +414,7 @@ Test HA API manually:
 
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" \
-     http://192.168.151.21:8123/api/states/input_boolean.only_charging
+     http://10.0.0.58:8123/api/states/input_boolean.only_charging
 ```
 
 ### Checking Logs
