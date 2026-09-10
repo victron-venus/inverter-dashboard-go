@@ -314,15 +314,23 @@ func (c *Client) applyCerboOverlays() {
 		if s.HasT2 {
 			st.T2 = s.T2
 		}
-		if s.HasG1 && s.HasG2 {
-			st.GT = s.G1 + s.G2
+		if s.HasG1 || s.HasG2 {
+			st.GT = 0
+			if s.HasG1 {
+				st.GT += s.G1
+			}
+			if s.HasG2 {
+				st.GT += s.G2
+			}
 		}
-		if s.HasT1 && s.HasT2 {
-			st.TT = s.T1 + s.T2
-		} else if s.HasT1 {
-			st.TT = s.T1
-		} else if s.HasT2 {
-			st.TT = s.T2
+		if s.HasT1 || s.HasT2 {
+			st.TT = 0
+			if s.HasT1 {
+				st.TT += s.T1
+			}
+			if s.HasT2 {
+				st.TT += s.T2
+			}
 		}
 	}
 
@@ -640,9 +648,24 @@ func (c *Client) subscribePortalTopics(portal string) {
 	log.Printf("Subscribed to Cerbo water/EV/alarm topics for portal %s", portal)
 }
 
+func (c *Client) publishKeepalive() {
+	c.stateMu.RLock()
+	portal := c.portalID
+	c.stateMu.RUnlock()
+	if portal == "" || c.client == nil || !c.client.IsConnected() {
+		return
+	}
+	topic := fmt.Sprintf("R/%s/keepalive", portal)
+	if token := c.client.Publish(topic, 0, false, ""); token.Wait() && token.Error() != nil {
+		log.Printf("Cerbo keepalive publish failed: %v", token.Error())
+	}
+}
+
 func (c *Client) startKeepalive() {
 	c.stopKeepalive()
 	c.keepaliveStop = make(chan struct{})
+	// Immediate keepalive so Venus starts streaming N/ topics without waiting 45s.
+	c.publishKeepalive()
 	go func() {
 		ticker := time.NewTicker(keepaliveInterval)
 		defer ticker.Stop()
@@ -651,16 +674,7 @@ func (c *Client) startKeepalive() {
 			case <-c.keepaliveStop:
 				return
 			case <-ticker.C:
-				c.stateMu.RLock()
-				portal := c.portalID
-				c.stateMu.RUnlock()
-				if portal == "" || c.client == nil || !c.client.IsConnected() {
-					continue
-				}
-				topic := fmt.Sprintf("R/%s/keepalive", portal)
-				if token := c.client.Publish(topic, 0, false, ""); token.Wait() && token.Error() != nil {
-					log.Printf("Cerbo keepalive publish failed: %v", token.Error())
-				}
+				c.publishKeepalive()
 			}
 		}
 	}()
