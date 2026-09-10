@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -25,6 +26,7 @@ type Client struct {
 	state           *state.State
 	handler         MessageHandler
 	handlerMu       sync.RWMutex
+	broadcastPending int32
 	stateMu         sync.RWMutex
 	consoleLines    []string
 	consoleMu       sync.RWMutex
@@ -121,7 +123,7 @@ func (c *Client) LastStateTime() time.Time {
 func (c *Client) GetState() *state.State {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
-	return c.state
+	return c.state.Clone()
 }
 
 // GetCmdBufferStats returns command buffer statistics
@@ -196,10 +198,17 @@ func (c *Client) triggerHandler() {
 	handler := c.handler
 	c.handlerMu.RUnlock()
 
-	if handler != nil {
-		// Execute in goroutine to match Python's async callback pattern
-		go handler()
+	if handler == nil {
+		return
 	}
+	// Coalesce concurrent MQTT bursts into one in-flight broadcast.
+	if !atomic.CompareAndSwapInt32(&c.broadcastPending, 0, 1) {
+		return
+	}
+	go func() {
+		defer atomic.StoreInt32(&c.broadcastPending, 0)
+		handler()
+	}()
 }
 
 func (c *Client) Subscribe() error {
