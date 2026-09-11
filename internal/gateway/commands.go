@@ -27,6 +27,9 @@ func MapDashboardAction(action string) (string, bool) {
 	switch action {
 	case "silence_alarm", "acknowledge_all_notifications":
 		return action, true
+	case "dismiss_banner", "acknowledge_victron_banner":
+		// Desktop/UI aliases — IGW only exposes AcknowledgeAll.
+		return "acknowledge_all_notifications", true
 	default:
 		return "", false
 	}

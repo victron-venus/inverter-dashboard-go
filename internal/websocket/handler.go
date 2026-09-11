@@ -43,6 +43,7 @@ type HAClient interface {
 type Message struct {
 	Action   string                 `json:"action"`
 	Entity   string                 `json:"entity,omitempty"`
+	ID       string                 `json:"id,omitempty"`
 	Value    interface{}            `json:"value,omitempty"`
 	Min      float64                `json:"min,omitempty"`
 	Max      float64                `json:"max,omitempty"`
@@ -251,6 +252,16 @@ func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) err
 			so = haClient.GetOverlay()
 		}
 		return BroadcastState(mqttClient, haClient, so)
+	case "acknowledge_all_notifications", "silence_alarm",
+		"dismiss_banner", "acknowledge_victron_banner":
+		// Banner X / ack — IGW whitelist or Cerbo W/ publish via mqtt client.
+		payload := map[string]interface{}{}
+		if id := msg.ID; id != "" {
+			payload["id"] = id
+		} else if msg.Entity != "" {
+			payload["id"] = msg.Entity
+		}
+		return mqttClient.PublishCommand(msg.Action, payload)
 	default:
 		return fmt.Errorf("unknown action: %s", msg.Action)
 	}
