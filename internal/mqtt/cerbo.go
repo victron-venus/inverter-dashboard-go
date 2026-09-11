@@ -19,7 +19,7 @@ var cerboOwnedKeys = map[string]struct{}{
 	"g1": {}, "g2": {}, "gt": {}, "t1": {}, "t2": {}, "tt": {},
 	"bv": {}, "bc": {}, "bp": {},
 	"battery_soc": {}, "battery_power": {}, "battery_voltage": {}, "battery_current": {},
-	"batteries": {},
+	"batteries":   {},
 	"solar_total": {}, "pv_total": {}, "mppt_total": {},
 	"mppt_data": {}, "mppt_individual": {}, "mppt_chargers": {},
 	"pv_inverter_total": {}, "pv_inverter_individual": {}, "pv_inverter_powers": {}, "pv_inverters": {},
@@ -36,9 +36,9 @@ var inverterStates = map[int]string{
 }
 
 const (
-	vSocMin             = 40.0
-	vSocMax             = 54.4
-	keepaliveInterval   = 45 * time.Second
+	vSocMin           = 40.0
+	vSocMax           = 54.4
+	keepaliveInterval = 45 * time.Second
 )
 
 // VoltageSOC maps pack voltage to 0–100% SoC (absorption at 54.4 V).
@@ -98,13 +98,13 @@ type cerboCharger struct {
 }
 
 type cerboSystem struct {
-	G1, G2, T1, T2 float64
+	G1, G2, T1, T2             float64
 	HasG1, HasG2, HasT1, HasT2 bool
 }
 
 type cerboVebus struct {
-	L1Power, L2Power, ACPower, Setpoint float64
-	InverterState                       string
+	L1Power, L2Power, ACPower, Setpoint  float64
+	InverterState                        string
 	HasL1, HasL2, HasAC, HasSP, HasState bool
 }
 
@@ -634,6 +634,8 @@ func (c *Client) subscribePortalTopics(portal string) {
 	}{
 		{fmt.Sprintf("N/%s/+/Alarms/#", portal), c.onAlarmMessage},
 		{fmt.Sprintf("N/%s/+/+/Alarms/#", portal), c.onAlarmMessage},
+		// Venus GUIv2 notification slots (preferred over raw Alarms/* once seen).
+		{fmt.Sprintf("N/%s/platform/+/Notifications/#", portal), c.onPlatformNotificationMessage},
 		{fmt.Sprintf("N/%s/tank/+/Level", portal), c.onWaterMessage},
 		{fmt.Sprintf("N/%s/pump/+/State", portal), c.onWaterMessage},
 		{fmt.Sprintf("N/%s/ev/%d/Soc", portal, c.evInstance), c.onEVMessage},
@@ -645,7 +647,7 @@ func (c *Client) subscribePortalTopics(portal string) {
 			log.Printf("Warning: failed to subscribe to %s: %v", s.topic, token.Error())
 		}
 	}
-	log.Printf("Subscribed to Cerbo water/EV/alarm topics for portal %s", portal)
+	log.Printf("Subscribed to Cerbo water/EV/alarm/platform topics for portal %s", portal)
 }
 
 func (c *Client) publishKeepalive() {

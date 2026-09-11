@@ -179,15 +179,11 @@ func main() {
 	}
 
 	var gwClient *gateway.Client
-	useIGW := igwConfigured && !mqttConfigured
-	if mqttConfigured && igwConfigured {
-		logger.Info(logging.DefaultContext().With("component", "gateway"),
-			"Both MQTT and IGW configured — using Cerbo MQTT (set mqtt.host empty for IGW-only)")
-	}
+	dualPath := mqttConfigured && igwConfigured
+	mqttReachable := false
 
 	if mqttConfigured {
-		// Start MQTT connection (retry on failure instead of fatal)
-		var mqttConnected bool
+		// Prefer Cerbo MQTT when host is set and the broker answers (desktop policy).
 		for attempt := 1; attempt <= 10; attempt++ {
 			if err := startMQTT(mqttClient); err != nil {
 				logger.Warn(logging.DefaultContext().With("component", "mqtt"), "MQTT connection attempt failed",
@@ -198,23 +194,32 @@ func main() {
 					time.Sleep(5 * time.Second)
 				}
 			} else {
-				mqttConnected = true
+				mqttReachable = true
 				break
 			}
 		}
-		if !mqttConnected {
-			if igwConfigured {
-				logger.Warn(logging.DefaultContext().With("component", "mqtt"),
-					"MQTT connection failed after 10 attempts — falling back to IGW")
-				useIGW = true
-			} else {
-				logger.Error(logging.DefaultContext().With("component", "mqtt"), "MQTT connection failed after 10 attempts")
-				os.Exit(1)
-			}
-		} else {
+		if !mqttReachable && !igwConfigured {
+			logger.Error(logging.DefaultContext().With("component", "mqtt"), "MQTT connection failed after 10 attempts")
+			os.Exit(1)
+		}
+		if mqttReachable {
 			defer mqttClient.Disconnect()
+		} else if dualPath {
+			logger.Warn(logging.DefaultContext().With("component", "mqtt"),
+				"MQTT unreachable — failover to IGW (will probe MQTT periodically)")
 		}
 	}
+
+	source := config.ChooseStartupSource(mqttConfigured, igwConfigured, mqttReachable)
+	useIGW := source == config.DataSourceIGW
+	logger.Info(logging.DefaultContext().With("component", "telemetry"),
+		"Telemetry source selected",
+		"source", string(source),
+		"mqtt_configured", mqttConfigured,
+		"igw_configured", igwConfigured,
+		"mqtt_reachable", mqttReachable,
+		"dual_path", dualPath,
+	)
 
 	if useIGW {
 		mqttClient.EnableGatewayMode()
@@ -256,11 +261,22 @@ func main() {
 		})
 		gwClient.Start()
 		defer gwClient.Stop()
+		mode := "IGW-only"
+		if dualPath {
+			mode = "IGW failover (MQTT preferred when reachable)"
+		}
 		logger.Info(logging.DefaultContext().With("component", "gateway"),
-			"IGW-only mode: polling /v1/snapshot (Cerbo MQTT not dialed)",
+			"Polling IGW /v1/snapshot",
+			"mode", mode,
 			"url", cfg.Gateway.URL,
 			"poll_interval_sec", int(interval.Seconds()),
 		)
+
+		// Dual-path recovery: while on IGW after MQTT failure, probe Cerbo
+		// periodically and switch back when the broker answers (desktop parity).
+		if dualPath && !mqttReachable {
+			go mqttRecoveryProbe(mqttClient, gwClient, logger)
+		}
 	}
 
 	// Start HA polling if configured
@@ -325,6 +341,31 @@ func checkVersion(rawURL string, logger *logging.Logger) {
 		logger.Info(logging.DefaultContext().With("component", "version"), "Latest version found", "latest", latest)
 	} else {
 		logger.Info(logging.DefaultContext().With("component", "version"), "Already on latest version")
+	}
+}
+
+// mqttRecoveryProbe periodically tries Cerbo MQTT while running on IGW after
+// dual-path failover. On success it stops IGW polling and resumes MQTT as the
+// exclusive live source (desktop connectionPolicy recovery probe).
+func mqttRecoveryProbe(mqttClient *mqtt.Client, gwClient *gateway.Client, logger *logging.Logger) {
+	ticker := time.NewTicker(config.MQTTRecoveryProbeInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		logger.Info(logging.DefaultContext().With("component", "mqtt"),
+			"Dual-path recovery probe: trying Cerbo MQTT")
+		if err := startMQTT(mqttClient); err != nil {
+			logger.Debug(logging.DefaultContext().With("component", "mqtt"),
+				"MQTT recovery probe failed", "error", err)
+			continue
+		}
+		logger.Info(logging.DefaultContext().With("component", "mqtt"),
+			"MQTT recovered — switching off IGW failover")
+		if gwClient != nil {
+			gwClient.Stop()
+		}
+		mqttClient.SetGatewayPublisher(nil)
+		mqttClient.DisableGatewayMode()
+		return
 	}
 }
 

@@ -50,6 +50,12 @@ type Client struct {
 	alarmValues map[string]int
 	alarmsMu    sync.Mutex
 
+	// Venus-platform notification slots (GUIv2). Once any platform message
+	// arrives, raw Alarms/* banners are suppressed (desktop parity).
+	platformMu         sync.Mutex
+	platformSlots      map[string]*platformSlotState
+	platformNotifsSeen bool
+
 	// AC PV inverters of any vendor discovered on the GX broker
 	// (N/<portal>/pvinverter/<instance>/<path>), keyed by instance.
 	pvInverters map[int]*state.Charger
@@ -136,7 +142,16 @@ func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Unlock()
 }
 
-// SetGatewayConnected updates health for IGW-only mode.
+// DisableGatewayMode returns the client to Cerbo MQTT health semantics
+// (used when dual-path recovery probes succeed and IGW is stopped).
+func (c *Client) DisableGatewayMode() {
+	c.gatewayMu.Lock()
+	c.gatewayMode = false
+	c.gatewayConnected = false
+	c.gatewayMu.Unlock()
+}
+
+// SetGatewayConnected updates health for IGW mode.
 func (c *Client) SetGatewayConnected(v bool) {
 	c.gatewayMu.Lock()
 	c.gatewayConnected = v
@@ -144,6 +159,7 @@ func (c *Client) SetGatewayConnected(v bool) {
 }
 
 // SetGatewayPublisher routes PublishCommand to IGW when set.
+// Pass nil to clear (MQTT W/ / inverter/cmd path resumes).
 func (c *Client) SetGatewayPublisher(fn func(action string, payload interface{}) error) {
 	c.gatewayMu.Lock()
 	c.gatewayPublish = fn

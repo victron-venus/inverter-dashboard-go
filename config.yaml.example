@@ -2,17 +2,22 @@
 # Copy this file to config.yaml and update with your values
 # DO NOT commit config.yaml to version control (it's excluded by .gitignore)
 
-# MQTT Configuration - Connection to your Victron Cerbo GX or MQTT broker
-# For IGW-only mode leave host empty (and enable gateway below) so this
-# process does NOT dial Cerbo MQTT / publish keepalive.
+# Telemetry transport (desktop connectionPolicy parity):
+# 1) mqtt.host set + broker reachable → Cerbo MQTT (preferred)
+# 2) mqtt.host set but unreachable + gateway enabled → IGW failover
+#    (probes MQTT every ~60s and switches back when broker answers)
+# 3) mqtt.host empty + gateway enabled → IGW-only (no Cerbo dial)
+# 4) neither → startup error
+#
+# Alert banner ack/X works on both: MQTT uses W/.../AcknowledgeAll + SilenceAlarm;
+# IGW uses POST /v1/commands/{acknowledge_all_notifications|silence_alarm}.
 mqtt:
-  host: "192.168.160.150"  # Your MQTT broker IP address ("" to skip MQTT)
+  host: "192.168.160.150"  # Cerbo/LAN broker ("" to skip MQTT / force IGW when gateway on)
   port: 1883               # MQTT port (usually 1883; 0 when unused)
 
-# Remote inverter-gateway (HTTPS). Prefer this when Cerbo MQTT client slots
-# are scarce (desktop + IGW already connected). Polls GET /v1/snapshot.
-# Commands: only IGW whitelist (silence_alarm, acknowledge_all_notifications);
-# inverter/cmd/* is NOT on IGW yet (telemetry-first).
+# Remote inverter-gateway (HTTPS). Used when MQTT is unset or unreachable.
+# Polls GET /v1/snapshot. Commands: IGW whitelist only
+# (silence_alarm, acknowledge_all_notifications); inverter/cmd/* not on IGW yet.
 gateway:
   enabled: false
   url: "https://victron.2560801.xyz"
