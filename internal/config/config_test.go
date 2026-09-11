@@ -173,3 +173,42 @@ func TestConvertMapToBooleanEntitySlice(t *testing.T) {
 		}
 	}
 }
+
+
+func TestGatewayConfigFromEnv(t *testing.T) {
+	t.Setenv("GATEWAY_ENABLED", "true")
+	t.Setenv("GATEWAY_URL", "https://victron.example")
+	t.Setenv("GATEWAY_ACCESS_CLIENT_ID", "id.access")
+	t.Setenv("GATEWAY_ACCESS_CLIENT_SECRET", "secret")
+	t.Setenv("GATEWAY_API_TOKEN", "tok")
+	t.Setenv("MQTT_HOST", "")
+
+	// Avoid picking up a local config.yaml MQTT host during this test.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp, err := os.MkdirTemp("", "cfg-igw-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmp) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.GatewayConfigured() {
+		t.Fatalf("expected gateway configured: %+v", cfg.Gateway)
+	}
+	if cfg.MQTTConfigured() {
+		t.Fatalf("expected mqtt skipped when GATEWAY_ENABLED, host=%q", cfg.MQTT.Host)
+	}
+	if cfg.Gateway.PollIntervalSec != 2 {
+		t.Fatalf("poll interval = %d", cfg.Gateway.PollIntervalSec)
+	}
+}

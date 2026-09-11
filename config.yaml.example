@@ -3,9 +3,23 @@
 # DO NOT commit config.yaml to version control (it's excluded by .gitignore)
 
 # MQTT Configuration - Connection to your Victron Cerbo GX or MQTT broker
+# For IGW-only mode leave host empty (and enable gateway below) so this
+# process does NOT dial Cerbo MQTT / publish keepalive.
 mqtt:
-  host: "192.168.160.150"  # Your MQTT broker IP address
-  port: 1883               # MQTT port (usually 1883)
+  host: "192.168.160.150"  # Your MQTT broker IP address ("" to skip MQTT)
+  port: 1883               # MQTT port (usually 1883; 0 when unused)
+
+# Remote inverter-gateway (HTTPS). Prefer this when Cerbo MQTT client slots
+# are scarce (desktop + IGW already connected). Polls GET /v1/snapshot.
+# Commands: only IGW whitelist (silence_alarm, acknowledge_all_notifications);
+# inverter/cmd/* is NOT on IGW yet (telemetry-first).
+gateway:
+  enabled: false
+  url: "https://victron.2560801.xyz"
+  access_client_id: ""       # Cloudflare Access service token client id
+  access_client_secret: ""   # Cloudflare Access service token client secret
+  api_token: ""              # Bearer GATEWAY_API_TOKEN
+  poll_interval_seconds: 2
 
 # Web Server Configuration
 web:

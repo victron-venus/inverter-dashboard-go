@@ -4,16 +4,25 @@ Pinned to Mac Pro worker via `nodeSelector: kubernetes.io/hostname: mp`.
 
 Image: `alvit/inverter-dashboard-go:latest` (Docker Hub).
 
-## MQTT
+## Telemetry: IGW-only (default in these manifests)
 
-Uses **Cerbo LAN MQTT** `192.168.160.150:1883` (args + ConfigMap).
+Uses **HTTPS inverter-gateway** (`https://victron.2560801.xyz`) via
+`GET /v1/snapshot` every ~2s with Cloudflare Access service-token headers +
+Bearer `GATEWAY_API_TOKEN`.
 
-ConfigMap sets `CERBO_PORTAL_ID=b827ebea1ece` for keepalive + water/EV/alarms.
-Live tiles (grid/battery/solar/loads) come from Cerbo MQTT wildcards; slim `inverter/state` only supplies daemon extras.
+- ConfigMap: `GATEWAY_ENABLED=true`, `GATEWAY_URL`, poll interval
+- Secret `inverter-dashboard-go-gateway`: Access client id/secret + API token
+- **No** `MQTT_HOST` / `MQTT_PORT` / `--mqtt-host` — this pod must not open a
+  third Cerbo MQTT client (IGW already owns keepalive)
 
-Do **not** point this deploy at in-cluster Mosquitto
-(`mosquitto.homeassistant.svc.cluster.local`) — the Python
-`inverter-dashboard` path already flaps on that broker.
+Commands: IGW whitelist only (`silence_alarm`, `acknowledge_all_notifications`).
+`inverter/cmd/*` (setpoint/toggles) is not on IGW yet — telemetry-first is OK.
+
+### Legacy Cerbo MQTT mode
+
+Set `MQTT_HOST`/`MQTT_PORT` (and drop `GATEWAY_ENABLED`) if you intentionally
+want a direct Cerbo broker client. Do **not** also run IGW + desktop + this
+pod against Cerbo at once.
 
 ## Ingress / DNS
 

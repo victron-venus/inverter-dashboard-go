@@ -1,0 +1,59 @@
+{
+  "system": {
+    "0/Ac/Grid/L1/Power": 10.0,
+    "0/Ac/Grid/L2/Power": 5.0,
+    "0/Ac/Consumption/L1/Power": 100.0,
+    "0/Ac/Consumption/L2/Power": 50.0,
+    "0/Dc/Battery/Voltage": 52.15,
+    "0/Dc/Battery/Current": 25.2,
+    "0/Dc/Battery/Power": 1349.7
+  },
+  "vebus": {
+    "290/Hub4/L1/AcPowerSetpoint": -2100.0,
+    "290/State": 3,
+    "290/Ac/ActiveIn/L2/P": null
+  },
+  "battery": {
+    "289/ProductName": "SmartShunt 500A/50mV",
+    "289/CustomName": "SmartShunt",
+    "289/Dc/0/Voltage": 53.55,
+    "289/Dc/0/Current": 23.5,
+    "289/Dc/0/Power": 1258.4,
+    "289/TimeToGo": 146880.0,
+    "512/ProductName": "JBD Battery Chain 1",
+    "512/Dc/0/Current": 7.03,
+    "512/Dc/0/Power": 376.0
+  },
+  "solarcharger": {
+    "290/Yield/Power": 403.57,
+    "290/ProductName": "SmartSolar",
+    "291/Yield/Power": 594.33,
+    "292/Yield/Power": 455.39
+  },
+  "pvinverter": {
+    "369/Ac/Power": 235.0,
+    "369/CustomName": "PV East",
+    "9895/Ac/Power": 278.0
+  },
+  "tank": {
+    "21/Level": 0.91,
+    "21/CustomName": "Cistern"
+  },
+  "pump": {
+    "1/CustomName": "Water pump",
+    "2/CustomName": "City water valve"
+  },
+  "ev": {
+    "22/Ac/Power": 3200.0,
+    "22/CustomName": "EV"
+  },
+  "evcharger": {
+    "40/Ac/Power": 7200.0,
+    "40/CustomName": "Wallbox"
+  },
+  "acload": {
+    "81/Ac/Power": 420.0,
+    "81/CustomName": "Oven"
+  },
+  "settings": {}
+}

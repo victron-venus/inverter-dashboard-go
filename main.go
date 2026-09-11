@@ -14,12 +14,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/victron-venus/inverter-dashboard-go/internal/auth"
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
+	"github.com/victron-venus/inverter-dashboard-go/internal/gateway"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/html"
 	"github.com/victron-venus/inverter-dashboard-go/internal/logging"
 	"github.com/victron-venus/inverter-dashboard-go/internal/metrics"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
 	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
+	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/tracing"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket"
@@ -109,6 +111,8 @@ func main() {
 		"version", version.GetCurrent(),
 		"mqtt_host", cfg.MQTT.Host,
 		"mqtt_port", cfg.MQTT.Port,
+		"gateway_enabled", cfg.Gateway.Enabled,
+		"gateway_url", cfg.Gateway.URL,
 		"web_proto", proto,
 		"web_host", cfg.Web.Host,
 		"web_port", cfg.Web.Port,
@@ -118,7 +122,7 @@ func main() {
 			"Set DASHBOARD_SECRET env var for production use.")
 	}
 
-	// Create MQTT client
+	// Create MQTT client (also used as the shared state store for IGW mode).
 	settings.Init(cfg.CameraTopic, cfg.MQTT.Host, cfg.MQTT.Port)
 	// Stored connection overrides win over env/config.yaml (restart to apply).
 	if ov := settings.Overrides(); len(ov) > 0 {
@@ -131,6 +135,14 @@ func main() {
 			cfg.MQTT.Port = v
 		}
 	}
+
+	mqttConfigured := cfg.MQTTConfigured()
+	igwConfigured := cfg.GatewayConfigured()
+	if !mqttConfigured && !igwConfigured {
+		logger.Error(logging.DefaultContext(), "No telemetry source configured: set MQTT_HOST or enable gateway (GATEWAY_ENABLED + URL + Access credentials)")
+		os.Exit(1)
+	}
+
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
@@ -166,27 +178,90 @@ func main() {
 		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HomeAssistant config NOT found (nil or empty URL)")
 	}
 
-	// Start MQTT connection (retry on failure instead of fatal)
-	var mqttConnected bool
-	for attempt := 1; attempt <= 10; attempt++ {
-		if err := startMQTT(mqttClient); err != nil {
-			logger.Warn(logging.DefaultContext().With("component", "mqtt"), "MQTT connection attempt failed",
-				"attempt", attempt,
-				"error", err,
-			)
-			if attempt < 10 {
-				time.Sleep(5 * time.Second)
+	var gwClient *gateway.Client
+	useIGW := igwConfigured && !mqttConfigured
+	if mqttConfigured && igwConfigured {
+		logger.Info(logging.DefaultContext().With("component", "gateway"),
+			"Both MQTT and IGW configured — using Cerbo MQTT (set mqtt.host empty for IGW-only)")
+	}
+
+	if mqttConfigured {
+		// Start MQTT connection (retry on failure instead of fatal)
+		var mqttConnected bool
+		for attempt := 1; attempt <= 10; attempt++ {
+			if err := startMQTT(mqttClient); err != nil {
+				logger.Warn(logging.DefaultContext().With("component", "mqtt"), "MQTT connection attempt failed",
+					"attempt", attempt,
+					"error", err,
+				)
+				if attempt < 10 {
+					time.Sleep(5 * time.Second)
+				}
+			} else {
+				mqttConnected = true
+				break
+			}
+		}
+		if !mqttConnected {
+			if igwConfigured {
+				logger.Warn(logging.DefaultContext().With("component", "mqtt"),
+					"MQTT connection failed after 10 attempts — falling back to IGW")
+				useIGW = true
+			} else {
+				logger.Error(logging.DefaultContext().With("component", "mqtt"), "MQTT connection failed after 10 attempts")
+				os.Exit(1)
 			}
 		} else {
-			mqttConnected = true
-			break
+			defer mqttClient.Disconnect()
 		}
 	}
-	if !mqttConnected {
-		logger.Error(logging.DefaultContext().With("component", "mqtt"), "MQTT connection failed after 10 attempts")
-		os.Exit(1)
+
+	if useIGW {
+		mqttClient.EnableGatewayMode()
+		interval := time.Duration(cfg.Gateway.PollIntervalSec) * time.Second
+		if interval <= 0 {
+			interval = 2 * time.Second
+		}
+		var err error
+		gwClient, err = gateway.NewClient(gateway.Config{
+			URL:                cfg.Gateway.URL,
+			AccessClientID:     cfg.Gateway.AccessClientID,
+			AccessClientSecret: cfg.Gateway.AccessClientSecret,
+			APIToken:           cfg.Gateway.APIToken,
+			PollInterval:       interval,
+			MapOptions: gateway.MapOptions{
+				TankInstance:      cfg.Cerbo.TankInstance,
+				PumpInstance:      cfg.Cerbo.PumpInstance,
+				ValveInstance:     cfg.Cerbo.ValveInstance,
+				EVInstance:        cfg.Cerbo.EVInstance,
+				EVChargerInstance: cfg.Cerbo.EVChargerInstance,
+			},
+		}, func(st *state.State) {
+			mqttClient.ApplyState(st)
+		}, mqttClient.SetGatewayConnected)
+		if err != nil {
+			logger.Error(logging.DefaultContext().With("component", "gateway"), "Failed to create IGW client", "error", err)
+			os.Exit(1)
+		}
+		mqttClient.SetGatewayPublisher(func(action string, payload interface{}) error {
+			name, ok := gateway.MapDashboardAction(action)
+			if !ok {
+				return fmt.Errorf("%w: %s", gateway.ErrCommandNotOnGateway, action)
+			}
+			body := payload
+			if body == nil {
+				body = map[string]any{}
+			}
+			return gwClient.PostCommand(context.Background(), name, body)
+		})
+		gwClient.Start()
+		defer gwClient.Stop()
+		logger.Info(logging.DefaultContext().With("component", "gateway"),
+			"IGW-only mode: polling /v1/snapshot (Cerbo MQTT not dialed)",
+			"url", cfg.Gateway.URL,
+			"poll_interval_sec", int(interval.Seconds()),
+		)
 	}
-	defer mqttClient.Disconnect()
 
 	// Start HA polling if configured
 	if haClient != nil {
