@@ -6,17 +6,11 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '**.json'
-      - '**.yaml'
-      - '**.yml'
   pull_request:
     branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '**.json'
-      - '**.yaml'
-      - '**.yml'
 
 permissions:
   contents: read
@@ -38,7 +32,9 @@ jobs:
 
   integration:
     name: Integration Tests
-    uses: victron-venus/integration-tests/.github/workflows/integration.yml@442f474e5620100ae953235e8674eda24b44d387
+    uses: victron-venus/integration-tests/.github/workflows/integration.yml@83fd2cb05532834ae0cc153263df2e5362ad00b2
+    with:
+      test-suite-ref: 83fd2cb05532834ae0cc153263df2e5362ad00b2
     # Run on PRs only; the integration-tests repo also runs this workflow
     # directly on its own main/push/schedule triggers.
     if: github.event_name == 'pull_request'
