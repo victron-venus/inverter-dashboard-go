@@ -14,7 +14,8 @@ import (
 func TestWebsocketWithoutHomeAssistant(t *testing.T) {
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.GET("/ws", websocketHandler(mqtt.NewClient("localhost", 1883), nil))
+	mqttClient := mqtt.NewClient("localhost", 1883)
+	router.GET("/ws", websocketHandler(mqttClient, nil))
 	server := httptest.NewServer(router)
 	defer server.Close()
 
@@ -32,5 +33,13 @@ func TestWebsocketWithoutHomeAssistant(t *testing.T) {
 	}
 	if _, ok := payload["dashboard_version"]; !ok {
 		t.Fatal("initial state has no dashboard version")
+	}
+
+	mqttMessageHandler(mqttClient, nil)()
+	if err := conn.ReadJSON(&payload); err != nil {
+		t.Fatalf("MQTT-only dashboard must broadcast subsequent state: %v", err)
+	}
+	if _, ok := payload["dashboard_version"]; !ok {
+		t.Fatal("broadcast state has no dashboard version")
 	}
 }
