@@ -1,6 +1,15 @@
 name: Build and Release
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - VERSION
+      - internal/html/**
+      - .github/workflows/release.yml
   push:
     tags:
       - 'v*'
@@ -12,14 +21,14 @@ on:
         type: string
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   build:
     name: Build binaries
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: darwin
@@ -61,17 +70,20 @@ jobs:
         id: get_version
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            TAG="v$(cat VERSION)"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             TAG="$INPUT_TAG"
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Error: Invalid tag format" >&2
-              exit 1
-            fi
-            echo "VERSION=$TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "Error: Invalid tag format" >&2
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         env:
@@ -79,14 +91,23 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: 0
+          BUILD_VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           output_name="inverter-dashboard-${{ matrix.name }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             output_name="${output_name}.exe"
           fi
 
-          ldflags="-s -w -X main.Version=${{ steps.get_version.outputs.VERSION }}"
+          ldflags="-s -w -X main.Version=$BUILD_VERSION"
           go build -ldflags "$ldflags" -o "dist/${output_name}" .
+
+      - name: Smoke test native release binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        env:
+          BUILD_VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          actual=$(dist/inverter-dashboard-linux-amd64 --version)
+          test "$actual" = "Inverter Dashboard v${BUILD_VERSION#v}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -96,6 +117,7 @@ jobs:
 
   release:
     name: Attach binaries to release
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -30,6 +30,14 @@ func init() {
 	version = readVersionFile()
 }
 
+// SetBuildVersion applies linker metadata before runtime goroutines are started.
+// Development builds retain the adjacent VERSION file as their fallback.
+func SetBuildVersion(value string) {
+	if value != "" && value != "dev" {
+		version = strings.TrimPrefix(value, "v")
+	}
+}
+
 // GetCurrent returns the current version
 func GetCurrent() string {
 	if version != "" {

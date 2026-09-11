@@ -37,6 +37,7 @@ var (
 )
 
 func main() {
+	version.SetBuildVersion(Version)
 	// Command line flags - match Python exactly
 	var (
 		mqttHost    = flag.String("mqtt-host", "", "MQTT broker host")
