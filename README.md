@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub last commit](https://img.shields.io/github/last-commit/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/commits/main)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
-[![Go 1.25+](https://img.shields.io/badge/Go-1.25+-blue.svg)](https://go.dev/)
+[![Go 1.26.6+](https://img.shields.io/badge/Go-1.26.6+-blue.svg)](https://go.dev/)
 
 
 ---
@@ -123,11 +123,19 @@ This project uses automated GitHub Actions workflows for continuous delivery:
 
 - Victron Cerbo GX with MQTT enabled (or standalone MQTT broker)
 - Home Assistant (optional, for enhanced features)
-- Go 1.25.11+ (for building from source)
+- Go 1.26.6+ (for building from source)
 
 ### Installation
 
 #### Using Pre-built Binaries
+
+Starting with v1.9.4, stable binaries include the Vue interface and their release version. No separate
+UI download or adjacent `VERSION` file is needed. Run the downloaded binary with
+`--version` to check its version before starting it.
+
+These releases include `checksums.txt`. Download it alongside your binary
+and compare the binary's SHA-256 with the matching filename in that file before
+installation.
 
 Download the appropriate binary for your platform from the Releases page:
 
@@ -224,6 +232,10 @@ web:
 ```
 
 ### Home Assistant Integration (Optional)
+
+Live MQTT monitoring and WebSocket updates work without Home Assistant. Leave
+Home Assistant unconfigured for an MQTT-only setup; no placeholder HA server or
+credentials are required.
 
 Enable direct Home Assistant integration for enhanced control:
 
