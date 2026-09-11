@@ -126,15 +126,17 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 		return
 	}
 
-	// Register client
+	// Register and initialize under the same lock used by broadcasts so an
+	// MQTT update cannot write to this connection during its initial frame.
 	clientsMu.Lock()
 	clients[conn] = true
+	clientCount := len(clients)
+	err = sendInitialState(conn, mqttClient, haClient)
 	clientsMu.Unlock()
 
-	log.Printf("WebSocket client connected (%d total)", len(clients))
+	log.Printf("WebSocket client connected (%d total)", clientCount)
 
-	// Send initial state
-	if err := sendInitialState(conn, mqttClient, haClient); err != nil {
+	if err != nil {
 		log.Printf("Failed to send initial state: %v", err)
 		removeClient(conn)
 		return

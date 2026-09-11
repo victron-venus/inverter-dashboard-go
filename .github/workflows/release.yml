@@ -1,6 +1,15 @@
 name: Build and Release
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - VERSION
+      - internal/html/**
+      - .github/workflows/release.yml
   push:
     tags:
       - 'v*'
@@ -12,14 +21,14 @@ on:
         type: string
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   build:
     name: Build binaries
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: darwin
@@ -49,13 +58,8 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
-      - name: Download Vue SPA from inverter-dashboard-vue
-        run: |
-          mkdir -p internal/html/dist
-          gh release download victron-venus/inverter-dashboard-vue --pattern 'vue-spa-dist.tar.gz' --dir dist-tmp
-          tar -xzf dist-tmp/vue-spa-dist.tar.gz -C internal/html/dist/
-          rm -rf dist-tmp
-          echo "Vue SPA embedded in: internal/html/dist/"
+      - name: Verify versioned Vue assets
+        run: test -s internal/html/vue-ui/index.html
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -66,17 +70,20 @@ jobs:
         id: get_version
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            TAG="v$(cat VERSION)"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             TAG="$INPUT_TAG"
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Error: Invalid tag format" >&2
-              exit 1
-            fi
-            echo "VERSION=$TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "Error: Invalid tag format" >&2
+            exit 1
+          fi
+          echo "VERSION=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build binary
         env:
@@ -84,14 +91,23 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: 0
+          BUILD_VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           output_name="inverter-dashboard-${{ matrix.name }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             output_name="${output_name}.exe"
           fi
 
-          ldflags="-s -w -X main.Version=${{ steps.get_version.outputs.VERSION }}"
+          ldflags="-s -w -X main.Version=$BUILD_VERSION"
           go build -ldflags "$ldflags" -o "dist/${output_name}" .
+
+      - name: Smoke test native release binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        env:
+          BUILD_VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          actual=$(dist/inverter-dashboard-linux-amd64 --version)
+          test "$actual" = "Inverter Dashboard v${BUILD_VERSION#v}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -101,6 +117,7 @@ jobs:
 
   release:
     name: Attach binaries to release
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -115,26 +132,31 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: dist/
+          pattern: inverter-dashboard-*
+          merge-multiple: true
 
       - name: Create checksums
-        run: find dist -type f -exec sha256sum {} \; | sort -k2 > checksums.txt
+        working-directory: dist
+        run: sha256sum inverter-dashboard-* > ../checksums.txt
 
       - name: Detect Prerelease
         id: detect
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           if [[ "$TAG" =~ -(alpha|beta|rc)\.[0-9]+ || "$TAG" =~ - ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
-        uses: victron-venus/venus-os-ci-toolkit/.github/workflows/release.yml@5b18667880c7a0154b7c7e6686042eff5f47cdb7
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
-          skip-checkout: true
-          generate-notes: true
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          generate_release_notes: true
           prerelease: ${{ steps.detect.outputs.is_prerelease == 'true' }}
-          files: dist/**/*
-        secrets:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/inverter-dashboard-*
+            checksums.txt

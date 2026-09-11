@@ -37,6 +37,7 @@ var (
 )
 
 func main() {
+	version.SetBuildVersion(Version)
 	// Command line flags - match Python exactly
 	var (
 		mqttHost    = flag.String("mqtt-host", "", "MQTT broker host")
@@ -297,18 +298,7 @@ func main() {
 	}
 
 	// Set state callback for WebSocket broadcasts and metrics updates
-	mqttClient.SetMessageHandler(func() {
-		var broadcastOverlay homeassistant.Overlay
-		if haClient != nil {
-			broadcastOverlay = haClient.GetOverlay()
-		}
-		_ = websocket.BroadcastState(mqttClient, haClient, broadcastOverlay) // best-effort: state already logged inside
-
-		// Update Prometheus metrics from current state
-		state := mqttClient.GetState()
-		metrics.DefaultCollector.UpdateFromState(state)
-		metrics.DefaultCollector.UpdateWebsocketClients()
-	})
+	mqttClient.SetMessageHandler(mqttMessageHandler(mqttClient, haClient))
 
 	// Start command buffer metrics collector
 	go collectCommandBufferMetrics(mqttClient)
@@ -556,9 +546,34 @@ func indexHandler() gin.HandlerFunc {
 	}
 }
 
+func websocketHAClient(client *homeassistant.Client) websocket.HAClient {
+	if client == nil {
+		return nil
+	}
+	return client
+}
+
+func mqttMessageHandler(mqttClient *mqtt.Client, haClient *homeassistant.Client) func() {
+	optionalHA := websocketHAClient(haClient)
+	return func() {
+		var broadcastOverlay homeassistant.Overlay
+		if haClient != nil {
+			broadcastOverlay = haClient.GetOverlay()
+		}
+		_ = websocket.BroadcastState(mqttClient, optionalHA, broadcastOverlay) // best-effort: state already logged inside
+
+		// Update Prometheus metrics from current state
+		state := mqttClient.GetState()
+		metrics.DefaultCollector.UpdateFromState(state)
+		metrics.DefaultCollector.UpdateWebsocketClients()
+	}
+}
+
 func websocketHandler(mqttClient *mqtt.Client, haClient *homeassistant.Client) gin.HandlerFunc {
+	// Preserve a nil interface when Home Assistant is not configured.
+	optionalHA := websocketHAClient(haClient)
 	return func(c *gin.Context) {
-		websocket.HandleWebSocket(c, mqttClient, haClient)
+		websocket.HandleWebSocket(c, mqttClient, optionalHA)
 	}
 }
 
