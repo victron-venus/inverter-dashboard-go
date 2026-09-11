@@ -39,4 +39,8 @@ func TestVueUIEmbedded(t *testing.T) {
 	if !strings.Contains(string(data), "acknowledge_all_notifications") {
 		t.Fatal("embedded SPA missing acknowledge_all_notifications (banner ack)")
 	}
+	// prodY regression: DailyStats must bind produced_yesterday (PR #99 left it undeclared).
+	if !strings.Contains(string(data), "produced_yesterday") {
+		t.Fatal("embedded SPA missing produced_yesterday (DailyStats prodY)")
+	}
 }
