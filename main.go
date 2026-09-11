@@ -557,8 +557,13 @@ func indexHandler() gin.HandlerFunc {
 }
 
 func websocketHandler(mqttClient *mqtt.Client, haClient *homeassistant.Client) gin.HandlerFunc {
+	// Preserve a nil interface when Home Assistant is not configured.
+	var optionalHA websocket.HAClient
+	if haClient != nil {
+		optionalHA = haClient
+	}
 	return func(c *gin.Context) {
-		websocket.HandleWebSocket(c, mqttClient, haClient)
+		websocket.HandleWebSocket(c, mqttClient, optionalHA)
 	}
 }
 
