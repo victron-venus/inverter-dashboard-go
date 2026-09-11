@@ -132,9 +132,12 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: dist/
+          pattern: inverter-dashboard-*
+          merge-multiple: true
 
       - name: Create checksums
-        run: find dist -type f -exec sha256sum {} \; | sort -k2 > checksums.txt
+        working-directory: dist
+        run: sha256sum inverter-dashboard-* > ../checksums.txt
 
       - name: Detect Prerelease
         id: detect
@@ -153,4 +156,7 @@ jobs:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           generate_release_notes: true
           prerelease: ${{ steps.detect.outputs.is_prerelease == 'true' }}
-          files: dist/**/*
+          fail_on_unmatched_files: true
+          files: |
+            dist/inverter-dashboard-*
+            checksums.txt
