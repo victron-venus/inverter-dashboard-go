@@ -1,0 +1,34 @@
+{
+  "system": {
+    "0/Ac/Grid/L1/Power": 10.0,
+    "0/Ac/Consumption/L1/Power": 100.0
+  },
+  "vebus": {
+    "0/State": 3,
+    "0/Hub4/L1/AcPowerSetpoint": -1000,
+    "0/Alarms/GridLost": 0
+  },
+  "battery": {
+    "289/Dc/0/Voltage": 53.2,
+    "289/Dc/0/Current": 10.0,
+    "289/Dc/0/Power": 532.0,
+    "289/Soc": 80,
+    "289/CustomName": "Bank",
+    "289/Alarms/HighVoltage": 2,
+    "512/Alarms/HighCellVoltage": 1
+  },
+  "platform": {
+    "0/Notifications/3/Description": "High cell voltage",
+    "0/Notifications/3/DeviceName": "Lynx Smart BMS",
+    "0/Notifications/3/Service": "battery",
+    "0/Notifications/3/DateTime": 1757550000,
+    "0/Notifications/3/Type": 1,
+    "0/Notifications/3/Active": 1,
+    "0/Notifications/3/Acknowledged": 0,
+    "0/Notifications/1/Description": "Grid lost",
+    "0/Notifications/1/DeviceName": "MultiPlus",
+    "0/Notifications/1/Type": 0,
+    "0/Notifications/1/Active": 1,
+    "0/Notifications/1/Acknowledged": 1
+  }
+}

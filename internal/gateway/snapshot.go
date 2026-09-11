@@ -15,6 +15,7 @@ type Snapshot struct {
 	EV           map[string]json.RawMessage `json:"ev"`
 	EVCharger    map[string]json.RawMessage `json:"evcharger"`
 	ACLoad       map[string]json.RawMessage `json:"acload"`
+	Platform     map[string]json.RawMessage `json:"platform"`
 	Settings     map[string]json.RawMessage `json:"settings"`
 }
 
@@ -49,11 +50,12 @@ func (s *Snapshot) decoded() snapshotLeaves {
 		EV:           decodeLeaves(s.EV),
 		EVCharger:    decodeLeaves(s.EVCharger),
 		ACLoad:       decodeLeaves(s.ACLoad),
+		Platform:     decodeLeaves(s.Platform),
 		Settings:     decodeLeaves(s.Settings),
 	}
 }
 
 type snapshotLeaves struct {
-	System, Vebus, Battery, Solarcharger, Pvinverter leafMap
-	Tank, Pump, EV, EVCharger, ACLoad, Settings      leafMap
+	System, Vebus, Battery, Solarcharger, Pvinverter      leafMap
+	Tank, Pump, EV, EVCharger, ACLoad, Platform, Settings leafMap
 }

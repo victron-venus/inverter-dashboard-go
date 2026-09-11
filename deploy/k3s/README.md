@@ -4,7 +4,16 @@ Pinned to Mac Pro worker via `nodeSelector: kubernetes.io/hostname: mp`.
 
 Image: `alvit/inverter-dashboard-go:latest` (Docker Hub).
 
-## Telemetry: IGW-only (default in these manifests)
+## Telemetry transport (code supports both; this deploy is IGW)
+
+Binary policy (like inverter-desktop `connectionPolicy`):
+
+1. `MQTT_HOST` set + broker reachable → **Cerbo MQTT** (preferred)
+2. MQTT set but unreachable + gateway configured → **IGW failover** (+ ~60s MQTT probe-back)
+3. No MQTT host + gateway configured → **IGW-only**
+4. Neither → exit
+
+### This k3s/mp deploy: IGW-only (unload Cerbo)
 
 Uses **HTTPS inverter-gateway** (`https://victron.2560801.xyz`) via
 `GET /v1/snapshot` every ~2s with Cloudflare Access service-token headers +
@@ -12,17 +21,20 @@ Bearer `GATEWAY_API_TOKEN`.
 
 - ConfigMap: `GATEWAY_ENABLED=true`, `GATEWAY_URL`, poll interval
 - Secret `inverter-dashboard-go-gateway`: Access client id/secret + API token
-- **No** `MQTT_HOST` / `MQTT_PORT` / `--mqtt-host` — this pod must not open a
-  third Cerbo MQTT client (IGW already owns keepalive)
+- **No** `MQTT_HOST` / `MQTT_PORT` / `--mqtt-host` — pod does not dial Cerbo
+  (IGW already owns keepalive). Set them only if you intentionally want
+  MQTT-preferred dual-path on this node.
 
-Commands: IGW whitelist only (`silence_alarm`, `acknowledge_all_notifications`).
+Banner ack/X: IGW `POST /v1/commands/acknowledge_all_notifications` (and
+`silence_alarm`). On MQTT path the same WS actions publish Cerbo
+`W/.../AcknowledgeAll` / `SilenceAlarm`.
+
 `inverter/cmd/*` (setpoint/toggles) is not on IGW yet — telemetry-first is OK.
 
-### Legacy Cerbo MQTT mode
+### Cerbo MQTT mode (non-k3s / LAN)
 
-Set `MQTT_HOST`/`MQTT_PORT` (and drop `GATEWAY_ENABLED`) if you intentionally
-want a direct Cerbo broker client. Do **not** also run IGW + desktop + this
-pod against Cerbo at once.
+Set `MQTT_HOST`/`MQTT_PORT` (and optionally keep gateway as failover). Do **not**
+run many concurrent Cerbo MQTT clients (desktop + IGW + this pod) unless slots allow.
 
 ## Ingress / DNS
 

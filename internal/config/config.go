@@ -43,8 +43,8 @@ type MQTTConfig struct {
 }
 
 // GatewayConfig selects HTTPS inverter-gateway (Cloudflare Access + bearer).
-// When Enabled and URL/Access credentials are set, the dashboard can run
-// without dialing Cerbo MQTT (IGW-only mode).
+// Used when MQTT is unset (IGW-only) or as failover when MQTT is configured
+// but unreachable (dual-path; see ChooseStartupSource).
 type GatewayConfig struct {
 	Enabled            bool
 	URL                string
@@ -212,7 +212,8 @@ func Load(configPath string) (*Config, error) {
 	mqttHostDefault := "192.168.160.150"
 	mqttPortDefault := 1883
 	if gatewayEnabled {
-		// IGW-only by default when GATEWAY_ENABLED — do not imply Cerbo MQTT.
+		// When GATEWAY_ENABLED without explicit MQTT_HOST, default to IGW-only
+		// (empty host). Explicit MQTT_HOST still prefers Cerbo MQTT.
 		mqttHostDefault = ""
 		mqttPortDefault = 0
 	}

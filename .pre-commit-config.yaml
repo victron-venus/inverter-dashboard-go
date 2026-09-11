@@ -20,3 +20,4 @@ repos:
   rev: v8.38.0
   hooks:
   - id: eslint
+    exclude: ^internal/html/vue-ui/

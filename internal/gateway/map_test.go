@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +135,55 @@ func TestHidesTimeToGoWhenIdle(t *testing.T) {
 	}
 	if st.Batteries[0].TimeToGo != "" {
 		t.Errorf("time_to_go should be empty when idle, got %q", st.Batteries[0].TimeToGo)
+	}
+}
+
+func TestSnapshotToStatePlatformNotifications(t *testing.T) {
+	st := SnapshotToState(loadFixture(t, "snapshot_platform_notifs.json"), MapOptions{})
+	if len(st.Notifications) != 1 {
+		t.Fatalf("notifications = %+v, want 1 active (acked skipped)", st.Notifications)
+	}
+	n := st.Notifications[0]
+	if n.ID != "victron-platform-0-3" {
+		t.Errorf("id = %q", n.ID)
+	}
+	if n.Level != "alarm" {
+		t.Errorf("level = %q, want alarm", n.Level)
+	}
+	if n.Title != "High cell voltage" {
+		t.Errorf("title = %q", n.Title)
+	}
+	if n.Body != "Lynx Smart BMS" {
+		t.Errorf("body = %q", n.Body)
+	}
+}
+
+func TestSnapshotToStateAlarmFallbackWhenNoPlatform(t *testing.T) {
+	snap := loadFixture(t, "snapshot_platform_notifs.json")
+	snap.Platform = nil
+	st := SnapshotToState(snap, MapOptions{})
+	if len(st.Notifications) < 1 {
+		t.Fatalf("expected alarm fallback banners, got %+v", st.Notifications)
+	}
+	found := false
+	for _, n := range st.Notifications {
+		if n.Level == "alarm" || n.Level == "warning" {
+			found = true
+			if !strings.HasPrefix(n.ID, "victron-") {
+				t.Errorf("id = %q", n.ID)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no alarm/warning in %+v", st.Notifications)
+	}
+}
+
+func TestMapDashboardActionAliases(t *testing.T) {
+	if name, ok := MapDashboardAction("dismiss_banner"); !ok || name != "acknowledge_all_notifications" {
+		t.Fatalf("dismiss_banner -> %q ok=%v", name, ok)
+	}
+	if name, ok := MapDashboardAction("acknowledge_victron_banner"); !ok || name != "acknowledge_all_notifications" {
+		t.Fatalf("acknowledge_victron_banner -> %q ok=%v", name, ok)
 	}
 }

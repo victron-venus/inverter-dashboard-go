@@ -50,6 +50,12 @@ type Client struct {
 	alarmValues map[string]int
 	alarmsMu    sync.Mutex
 
+	// Venus-platform notification slots (GUIv2). Once any platform message
+	// arrives, raw Alarms/* banners are suppressed (desktop parity).
+	platformMu         sync.Mutex
+	platformSlots      map[string]*platformSlotState
+	platformNotifsSeen bool
+
 	// AC PV inverters of any vendor discovered on the GX broker
 	// (N/<portal>/pvinverter/<instance>/<path>), keyed by instance.
 	pvInverters map[int]*state.Charger
@@ -136,7 +142,16 @@ func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Unlock()
 }
 
-// SetGatewayConnected updates health for IGW-only mode.
+// DisableGatewayMode returns the client to Cerbo MQTT health semantics
+// (used when dual-path recovery probes succeed and IGW is stopped).
+func (c *Client) DisableGatewayMode() {
+	c.gatewayMu.Lock()
+	c.gatewayMode = false
+	c.gatewayConnected = false
+	c.gatewayMu.Unlock()
+}
+
+// SetGatewayConnected updates health for IGW mode.
 func (c *Client) SetGatewayConnected(v bool) {
 	c.gatewayMu.Lock()
 	c.gatewayConnected = v
@@ -144,6 +159,7 @@ func (c *Client) SetGatewayConnected(v bool) {
 }
 
 // SetGatewayPublisher routes PublishCommand to IGW when set.
+// Pass nil to clear (MQTT W/ / inverter/cmd path resumes).
 func (c *Client) SetGatewayPublisher(fn func(action string, payload interface{}) error) {
 	c.gatewayMu.Lock()
 	c.gatewayPublish = fn
@@ -169,7 +185,9 @@ func (c *Client) ApplyState(st *state.State) {
 		if len(st.Console) == 0 {
 			st.Console = prev.Console
 		}
-		if len(st.Notifications) == 0 {
+		// nil = omitted (preserve); non-nil (incl. empty) = replace so cleared
+		// alarms drop from the banner strip on the next IGW poll.
+		if st.Notifications == nil {
 			st.Notifications = prev.Notifications
 		}
 		if st.CameraEvent == nil {
@@ -503,6 +521,12 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 		return fn(action, payload)
 	}
 
+	// Banner ack/silence against Cerbo MQTT when not on IGW.
+	if action == "acknowledge_all_notifications" || action == "silence_alarm" ||
+		action == "dismiss_banner" || action == "acknowledge_victron_banner" {
+		return c.publishCerboAlarmCommand(action)
+	}
+
 	topic := fmt.Sprintf("inverter/cmd/%s", action)
 	var message []byte
 	var err error
@@ -521,6 +545,31 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 		return fmt.Errorf("failed to publish command: %w", token.Error())
 	}
 	log.Printf("Published command to %s", topic)
+	return nil
+}
+
+// publishCerboAlarmCommand writes Venus-platform AcknowledgeAll or vebus SilenceAlarm.
+func (c *Client) publishCerboAlarmCommand(action string) error {
+	portal := c.PortalID()
+	if portal == "" {
+		return fmt.Errorf("cerbo portal id required for %s", action)
+	}
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("mqtt not connected")
+	}
+	var topic, body string
+	switch action {
+	case "silence_alarm":
+		topic = fmt.Sprintf("W/%s/vebus/0/Alarm", portal)
+		body = `{"SilenceAlarm":"1"}`
+	default:
+		topic = fmt.Sprintf("W/%s/platform/0/Notifications/AcknowledgeAll", portal)
+		body = `{"value":1}`
+	}
+	if token := c.client.Publish(topic, 0, false, body); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish %s: %w", action, token.Error())
+	}
+	log.Printf("Published Cerbo command %s to %s", action, topic)
 	return nil
 }
 

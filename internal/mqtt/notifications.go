@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
@@ -60,6 +62,14 @@ func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
 // and emits/clears banner notifications on transitions.
 func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
+
+	c.platformMu.Lock()
+	platformSeen := c.platformNotifsSeen
+	c.platformMu.Unlock()
+	if platformSeen {
+		// Desktop: once platform Notifications appear, suppress raw Alarms banners.
+		return
+	}
 
 	var payload struct {
 		Value interface{} `json:"value"`
@@ -200,4 +210,157 @@ func capitalize(s string) string {
 		return ""
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// platformSlotState mirrors Venus GUIv2 Notifications/<slot> fields.
+type platformSlotState struct {
+	inst         uint32
+	slot         uint32
+	description  string
+	deviceName   string
+	service      string
+	dateTime     int64
+	notifType    int64
+	hasType      bool
+	active       *bool
+	acknowledged bool
+}
+
+func (ps *platformSlotState) bannerID() string {
+	return fmt.Sprintf("victron-platform-%d-%d", ps.inst, ps.slot)
+}
+
+func (ps *platformSlotState) toNotification() (state.Notification, bool) {
+	if ps.acknowledged {
+		return state.Notification{}, false
+	}
+	desc := strings.TrimSpace(ps.description)
+	if desc == "" {
+		return state.Notification{}, false
+	}
+	if ps.active != nil && !*ps.active {
+		return state.Notification{}, false
+	}
+	level := "alarm"
+	if ps.hasType {
+		switch ps.notifType {
+		case 0:
+			level = "warning"
+		case 2:
+			level = "info"
+		}
+	}
+	body := ps.deviceName
+	if body == "" {
+		body = ps.service
+	}
+	ts := ""
+	if ps.dateTime > 0 {
+		ts = time.Unix(ps.dateTime, 0).UTC().Format(time.RFC3339)
+	}
+	return state.Notification{
+		ID:     ps.bannerID(),
+		Level:  level,
+		Title:  desc,
+		Body:   body,
+		Source: "victron",
+		Ts:     ts,
+	}, true
+}
+
+// onPlatformNotificationMessage handles
+// N/<portal>/platform/<inst>/Notifications/<slot>/<Field>.
+func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
+	parts := strings.Split(msg.Topic(), "/")
+	// N / portal / platform / inst / Notifications / slot / Field
+	if len(parts) < 7 || parts[2] != "platform" || parts[4] != "Notifications" {
+		return
+	}
+	inst64, err1 := strconv.ParseUint(parts[3], 10, 32)
+	slot64, err2 := strconv.ParseUint(parts[5], 10, 32)
+	if err1 != nil || err2 != nil {
+		return
+	}
+	field := parts[6]
+	var payload struct {
+		Value interface{} `json:"value"`
+	}
+	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		return
+	}
+
+	key := fmt.Sprintf("%d-%d", inst64, slot64)
+	c.platformMu.Lock()
+	c.platformNotifsSeen = true
+	if c.platformSlots == nil {
+		c.platformSlots = make(map[string]*platformSlotState)
+	}
+	ps, ok := c.platformSlots[key]
+	if !ok {
+		ps = &platformSlotState{inst: uint32(inst64), slot: uint32(slot64)}
+		c.platformSlots[key] = ps
+	}
+	switch field {
+	case "Description":
+		if str, ok := payload.Value.(string); ok {
+			ps.description = strings.TrimSpace(str)
+		}
+	case "DeviceName":
+		if str, ok := payload.Value.(string); ok {
+			ps.deviceName = strings.TrimSpace(str)
+		}
+	case "Service":
+		if str, ok := payload.Value.(string); ok {
+			ps.service = strings.TrimSpace(str)
+		}
+	case "DateTime":
+		if n, ok := toFloat(payload.Value); ok {
+			ps.dateTime = int64(n)
+		}
+	case "Type":
+		if n, ok := toFloat(payload.Value); ok {
+			ps.notifType = int64(n)
+			ps.hasType = true
+		}
+	case "Acknowledged":
+		if n, ok := toFloat(payload.Value); ok {
+			ps.acknowledged = n != 0
+		} else if b, ok := payload.Value.(bool); ok {
+			ps.acknowledged = b
+		}
+	case "Active":
+		if n, ok := toFloat(payload.Value); ok {
+			v := n != 0
+			ps.active = &v
+		} else if b, ok := payload.Value.(bool); ok {
+			ps.active = &b
+		}
+	}
+	snapshot := make([]*platformSlotState, 0, len(c.platformSlots))
+	for _, v := range c.platformSlots {
+		cp := *v
+		snapshot = append(snapshot, &cp)
+	}
+	c.platformMu.Unlock()
+
+	// Rebuild banners: keep inverter-control pushes; replace all victron-* with platform slots.
+	c.stateMu.Lock()
+	st := c.state
+	kept := st.Notifications[:0]
+	for _, n := range st.Notifications {
+		if !strings.HasPrefix(n.ID, "victron-") {
+			kept = append(kept, n)
+		}
+	}
+	for _, ps := range snapshot {
+		if n, ok := ps.toNotification(); ok {
+			kept = append(kept, n)
+		}
+	}
+	if len(kept) > maxNotifications {
+		kept = kept[len(kept)-maxNotifications:]
+	}
+	st.Notifications = kept
+	c.stateMu.Unlock()
+	c.triggerHandler()
 }
