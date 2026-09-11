@@ -20,11 +20,8 @@ spec:
         - name: dashboard
           image: alvit/inverter-dashboard-go:latest
           imagePullPolicy: Always
+          # IGW-only: no --mqtt-host/--mqtt-port (do not dial Cerbo).
           args:
-            - --mqtt-host
-            - "192.168.160.150"
-            - --mqtt-port
-            - "1883"
             - --port
             - "8080"
           ports:
@@ -33,12 +30,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: inverter-dashboard-go
+            - secretRef:
+                name: inverter-dashboard-go-gateway
+                optional: true
           env:
-            # Image defaults WEB_PORT=8080; host defaults to 0.0.0.0 in config.Load
             - name: WEB_HOST
               value: "0.0.0.0"
           volumeMounts:
-            # Optional example Secret — comment out until a real config Secret exists
+            # Optional HA/config.yaml Secret — comment out until present
             - name: config
               mountPath: /app/config.yaml
               subPath: config.yaml

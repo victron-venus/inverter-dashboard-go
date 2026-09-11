@@ -16,6 +16,7 @@ type Config struct {
 	Web               WebConfig
 	GitHub            GitHubConfig
 	Cerbo             CerboConfig
+	Gateway           GatewayConfig
 	DashboardSecret   string
 	SelfUpdateEnabled bool
 	CameraTopic       string
@@ -30,7 +31,7 @@ type CerboConfig struct {
 	PumpInstance  int
 	ValveInstance int
 	// EV instance for vehicle topics (N/<portal>/ev/<instance>/...)
-	EVInstance    int
+	EVInstance int
 	// EVCharger instance for charger topics (N/<portal>/evcharger/<instance>/...)
 	EVChargerInstance int
 }
@@ -39,6 +40,18 @@ type CerboConfig struct {
 type MQTTConfig struct {
 	Host string
 	Port int
+}
+
+// GatewayConfig selects HTTPS inverter-gateway (Cloudflare Access + bearer).
+// When Enabled and URL/Access credentials are set, the dashboard can run
+// without dialing Cerbo MQTT (IGW-only mode).
+type GatewayConfig struct {
+	Enabled            bool
+	URL                string
+	AccessClientID     string
+	AccessClientSecret string
+	APIToken           string
+	PollIntervalSec    int
 }
 
 // WebConfig from environment with Python defaults
@@ -167,16 +180,16 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 
 // HomeAssistantConfig from config.yaml
 type HomeAssistantConfig struct {
-	URL                string
-	Token              string
-	DirectControls     bool
-	PollInterval       float64
-	BooleanEntities    []BooleanEntityConfig
+	URL               string
+	Token             string
+	DirectControls    bool
+	PollInterval      float64
+	BooleanEntities   []BooleanEntityConfig
 	SwitchEntities    []EntityConfig
 	ApplianceEntities map[string]string
-	VueSensors         map[string]string
-	SensorEntities     map[string]string
-	FilteredEntities   *FilteredEntityConfig
+	VueSensors        map[string]string
+	SensorEntities    map[string]string
+	FilteredEntities  *FilteredEntityConfig
 }
 
 // FilteredEntityConfig selects rich display entities (config.yaml
@@ -195,10 +208,27 @@ func Load(configPath string) (*Config, error) {
 	log.Printf("[CONFIG DEBUG] Load() called")
 	// Parse Home Assistant secrets from python file if present
 
+	gatewayEnabled := envBool("GATEWAY_ENABLED", false)
+	mqttHostDefault := "192.168.160.150"
+	mqttPortDefault := 1883
+	if gatewayEnabled {
+		// IGW-only by default when GATEWAY_ENABLED — do not imply Cerbo MQTT.
+		mqttHostDefault = ""
+		mqttPortDefault = 0
+	}
+
 	cfg := &Config{
 		MQTT: MQTTConfig{
-			Host: getEnvDefault("MQTT_HOST", "192.168.160.150"),
-			Port: getEnvIntDefault("MQTT_PORT", 1883),
+			Host: getEnvDefault("MQTT_HOST", mqttHostDefault),
+			Port: getEnvIntDefault("MQTT_PORT", mqttPortDefault),
+		},
+		Gateway: GatewayConfig{
+			Enabled:            gatewayEnabled,
+			URL:                getEnvDefault("GATEWAY_URL", ""),
+			AccessClientID:     getEnvDefault("GATEWAY_ACCESS_CLIENT_ID", ""),
+			AccessClientSecret: getEnvDefault("GATEWAY_ACCESS_CLIENT_SECRET", ""),
+			APIToken:           getEnvDefault("GATEWAY_API_TOKEN", ""),
+			PollIntervalSec:    getEnvIntDefault("GATEWAY_POLL_INTERVAL_SECONDS", 2),
 		},
 		Web: WebConfig{
 			Port: getEnvIntDefault("WEB_PORT", 8080),
@@ -209,11 +239,11 @@ func Load(configPath string) (*Config, error) {
 			RawURL:     "https://raw.githubusercontent.com/victron-venus/inverter-dashboard-go/main",
 		},
 		Cerbo: CerboConfig{
-			PortalID:      getEnvDefault("CERBO_PORTAL_ID", ""),
-			TankInstance:  getEnvIntDefault("WATER_TANK_INSTANCE", 21),
-			PumpInstance:  getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
-			ValveInstance: getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
-			EVInstance:    getEnvIntDefault("EV_INSTANCE", 22),
+			PortalID:          getEnvDefault("CERBO_PORTAL_ID", ""),
+			TankInstance:      getEnvIntDefault("WATER_TANK_INSTANCE", 21),
+			PumpInstance:      getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
+			ValveInstance:     getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
+			EVInstance:        getEnvIntDefault("EV_INSTANCE", 22),
 			EVChargerInstance: getEnvIntDefault("EVCHARGER_INSTANCE", 40),
 		},
 		DashboardSecret:   getEnvDefault("DASHBOARD_SECRET", ""),
@@ -242,25 +272,34 @@ func loadConfigYAML(cfg *Config) error {
 
 	// Define a nested struct to match the YAML structure
 	type yamlMQTT struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
+		Host *string `yaml:"host"`
+		Port *int    `yaml:"port"`
+	}
+	type yamlGateway struct {
+		Enabled            *bool  `yaml:"enabled"`
+		URL                string `yaml:"url"`
+		AccessClientID     string `yaml:"access_client_id"`
+		AccessClientSecret string `yaml:"access_client_secret"`
+		APIToken           string `yaml:"api_token"`
+		PollIntervalSec    int    `yaml:"poll_interval_seconds"`
 	}
 	type yamlWeb struct {
 		Host string `yaml:"host"`
 		Port int    `yaml:"port"`
 	}
 	type yamlCerbo struct {
-		PortalID               string `yaml:"portal_id"`
-		TankInstance           *int   `yaml:"tank_instance"`
-		PumpInstance           *int   `yaml:"pump_instance"`
-		ValveInstance          *int   `yaml:"valve_instance"`
-		EVInstance             *int   `yaml:"ev_instance"`
-		EVChargerInstance      *int   `yaml:"evcharger_instance"`
+		PortalID          string `yaml:"portal_id"`
+		TankInstance      *int   `yaml:"tank_instance"`
+		PumpInstance      *int   `yaml:"pump_instance"`
+		ValveInstance     *int   `yaml:"valve_instance"`
+		EVInstance        *int   `yaml:"ev_instance"`
+		EVChargerInstance *int   `yaml:"evcharger_instance"`
 	}
 	type yamlTop struct {
-		MQTT          *yamlMQTT  `yaml:"mqtt"`
-		Web           *yamlWeb   `yaml:"web"`
-		Cerbo         *yamlCerbo `yaml:"cerbo"`
+		MQTT          *yamlMQTT    `yaml:"mqtt"`
+		Web           *yamlWeb     `yaml:"web"`
+		Cerbo         *yamlCerbo   `yaml:"cerbo"`
+		Gateway       *yamlGateway `yaml:"gateway"`
 		HomeAssistant *struct {
 			URL                 string                 `yaml:"url"`
 			Token               string                 `yaml:"token"`
@@ -286,13 +325,34 @@ func loadConfigYAML(cfg *Config) error {
 		return fmt.Errorf("failed to parse %s: %w", yamlFile, err)
 	}
 
-	// Apply MQTT config from YAML if present
+	// Apply MQTT config from YAML if present (empty host is meaningful for IGW-only).
 	if top.MQTT != nil {
-		if top.MQTT.Host != "" {
-			cfg.MQTT.Host = top.MQTT.Host
+		if top.MQTT.Host != nil {
+			cfg.MQTT.Host = *top.MQTT.Host
 		}
-		if top.MQTT.Port > 0 {
-			cfg.MQTT.Port = top.MQTT.Port
+		if top.MQTT.Port != nil {
+			cfg.MQTT.Port = *top.MQTT.Port
+		}
+	}
+
+	if top.Gateway != nil {
+		if top.Gateway.Enabled != nil {
+			cfg.Gateway.Enabled = *top.Gateway.Enabled
+		}
+		if top.Gateway.URL != "" {
+			cfg.Gateway.URL = top.Gateway.URL
+		}
+		if top.Gateway.AccessClientID != "" {
+			cfg.Gateway.AccessClientID = top.Gateway.AccessClientID
+		}
+		if top.Gateway.AccessClientSecret != "" {
+			cfg.Gateway.AccessClientSecret = top.Gateway.AccessClientSecret
+		}
+		if top.Gateway.APIToken != "" {
+			cfg.Gateway.APIToken = top.Gateway.APIToken
+		}
+		if top.Gateway.PollIntervalSec > 0 {
+			cfg.Gateway.PollIntervalSec = top.Gateway.PollIntervalSec
 		}
 	}
 
@@ -333,14 +393,14 @@ func loadConfigYAML(cfg *Config) error {
 			directControls = *top.HomeAssistant.DirectControls
 		}
 		ha := &HomeAssistantConfig{
-			URL:                top.HomeAssistant.URL,
-			Token:              top.HomeAssistant.Token,
-			DirectControls:     directControls,
-			PollInterval:       pollOrDefault(top.HomeAssistant.PollIntervalSeconds),
-			BooleanEntities:    convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
-			SwitchEntities:     convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
-			ApplianceEntities:  top.HomeAssistant.ApplianceEntities,
-			VueSensors:         top.HomeAssistant.VueSensors,
+			URL:               top.HomeAssistant.URL,
+			Token:             top.HomeAssistant.Token,
+			DirectControls:    directControls,
+			PollInterval:      pollOrDefault(top.HomeAssistant.PollIntervalSeconds),
+			BooleanEntities:   convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
+			SwitchEntities:    convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
+			ApplianceEntities: top.HomeAssistant.ApplianceEntities,
+			VueSensors:        top.HomeAssistant.VueSensors,
 		}
 		if fe := top.HomeAssistant.FilteredEntities; fe != nil {
 			ha.FilteredEntities = &FilteredEntityConfig{
@@ -388,6 +448,37 @@ func logHomeAssistantConfig(cfg *HomeAssistantConfig) {
 	log.Printf("Appliance Entities: %d entries", len(cfg.ApplianceEntities))
 	for key, entity := range cfg.ApplianceEntities {
 		log.Printf("  - %s: %s", key, entity)
+	}
+}
+
+// MQTTConfigured reports whether Cerbo/LAN MQTT should be dialed.
+func (c *Config) MQTTConfigured() bool {
+	return c != nil && strings.TrimSpace(c.MQTT.Host) != ""
+}
+
+// GatewayConfigured reports whether HTTPS IGW can be used as a telemetry source.
+func (c *Config) GatewayConfigured() bool {
+	if c == nil || !c.Gateway.Enabled {
+		return false
+	}
+	return strings.TrimSpace(c.Gateway.URL) != "" &&
+		strings.TrimSpace(c.Gateway.AccessClientID) != "" &&
+		strings.TrimSpace(c.Gateway.AccessClientSecret) != ""
+}
+
+// envBool reads a boolean environment variable.
+func envBool(key string, defaultValue bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return defaultValue
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultValue
 	}
 }
 

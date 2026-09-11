@@ -20,20 +20,20 @@ type MessageHandler func()
 
 // Client wraps the MQTT client and provides thread-safe state management
 type Client struct {
-	client          mqtt.Client
-	broker          string
-	port            int
-	state           *state.State
-	handler         MessageHandler
-	handlerMu       sync.RWMutex
+	client           mqtt.Client
+	broker           string
+	port             int
+	state            *state.State
+	handler          MessageHandler
+	handlerMu        sync.RWMutex
 	broadcastPending int32
-	stateMu         sync.RWMutex
-	consoleLines    []string
-	consoleMu       sync.RWMutex
-	maxConsoleLines int
-	lastStateTime   time.Time
-	lastStateMu     sync.RWMutex
-	cmdBuffer       *CommandBuffer
+	stateMu          sync.RWMutex
+	consoleLines     []string
+	consoleMu        sync.RWMutex
+	maxConsoleLines  int
+	lastStateTime    time.Time
+	lastStateMu      sync.RWMutex
+	cmdBuffer        *CommandBuffer
 
 	// dbus-pump water topics (Cerbo MQTT); empty portal disables
 	portalID      string
@@ -43,7 +43,7 @@ type Client struct {
 
 	// EV topics (Cerbo MQTT). Empty portal disables both vehicle
 	// (N/<portal>/ev/<ev>/...) and charger (N/<portal>/evcharger/<evcharger>/...).
-	evInstance       int
+	evInstance        int
 	evchargerInstance int
 
 	// Victron alarm tracking (N/<portal>/.../Alarms/<name> -> last value)
@@ -66,6 +66,12 @@ type Client struct {
 
 	// stop channel for Cerbo keepalive goroutine
 	keepaliveStop chan struct{}
+
+	// IGW-only mode: no Cerbo MQTT dial; ApplyState + gateway publisher.
+	gatewayMode      bool
+	gatewayConnected bool
+	gatewayMu        sync.RWMutex
+	gatewayPublish   func(action string, payload interface{}) error
 }
 
 // NewClient creates a new MQTT client instance with Python-equivalent defaults
@@ -113,7 +119,80 @@ func NewClient(broker string, port int) *Client {
 func (c *Client) GetIP() string { return c.broker }
 func (c *Client) GetPort() int  { return c.port }
 func (c *Client) IsConnected() bool {
+	c.gatewayMu.RLock()
+	gm := c.gatewayMode
+	gc := c.gatewayConnected
+	c.gatewayMu.RUnlock()
+	if gm {
+		return gc
+	}
 	return c.client != nil && c.client.IsConnected()
+}
+
+// EnableGatewayMode marks this client as IGW-fed (skip MQTT dial semantics).
+func (c *Client) EnableGatewayMode() {
+	c.gatewayMu.Lock()
+	c.gatewayMode = true
+	c.gatewayMu.Unlock()
+}
+
+// SetGatewayConnected updates health for IGW-only mode.
+func (c *Client) SetGatewayConnected(v bool) {
+	c.gatewayMu.Lock()
+	c.gatewayConnected = v
+	c.gatewayMu.Unlock()
+}
+
+// SetGatewayPublisher routes PublishCommand to IGW when set.
+func (c *Client) SetGatewayPublisher(fn func(action string, payload interface{}) error) {
+	c.gatewayMu.Lock()
+	c.gatewayPublish = fn
+	c.gatewayMu.Unlock()
+}
+
+// ApplyState replaces Cerbo telemetry state from an external source (IGW)
+// and triggers the WebSocket broadcast handler. Preserves console, version,
+// notifications, camera, and solar forecast when the incoming state omits them.
+func (c *Client) ApplyState(st *state.State) {
+	if st == nil {
+		return
+	}
+	c.stateMu.Lock()
+	prev := c.state
+	if prev != nil {
+		if st.Version == "" {
+			st.Version = prev.Version
+		}
+		if st.DashboardVersion == "" {
+			st.DashboardVersion = prev.DashboardVersion
+		}
+		if len(st.Console) == 0 {
+			st.Console = prev.Console
+		}
+		if len(st.Notifications) == 0 {
+			st.Notifications = prev.Notifications
+		}
+		if st.CameraEvent == nil {
+			st.CameraEvent = prev.CameraEvent
+		}
+		if st.SolarForecast == nil {
+			st.SolarForecast = prev.SolarForecast
+		}
+		if st.Booleans == nil {
+			st.Booleans = prev.Booleans
+		}
+		if st.Features == nil {
+			st.Features = prev.Features
+		}
+	}
+	c.state = st
+	c.stateMu.Unlock()
+
+	c.lastStateMu.Lock()
+	c.lastStateTime = time.Now()
+	c.lastStateMu.Unlock()
+
+	c.triggerHandler()
 }
 func (c *Client) LastStateTime() time.Time {
 	c.lastStateMu.RLock()
@@ -417,17 +496,29 @@ func (c *Client) onPvInverterMessage(client mqtt.Client, msg mqtt.Message) {
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {
+	c.gatewayMu.RLock()
+	fn := c.gatewayPublish
+	c.gatewayMu.RUnlock()
+	if fn != nil {
+		return fn(action, payload)
+	}
+
 	topic := fmt.Sprintf("inverter/cmd/%s", action)
-	var message string
+	var message []byte
+	var err error
 	if payload != nil {
-		data, err := json.Marshal(payload)
+		message, err = json.Marshal(payload)
 		if err != nil {
-			return fmt.Errorf("failed to marshal payload: %w", err)
+			return fmt.Errorf("failed to marshal command payload: %w", err)
 		}
-		message = string(data)
+	} else {
+		message = []byte("{}")
+	}
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("mqtt not connected")
 	}
 	if token := c.client.Publish(topic, 0, false, message); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish to %s: %w", topic, token.Error())
+		return fmt.Errorf("failed to publish command: %w", token.Error())
 	}
 	log.Printf("Published command to %s", topic)
 	return nil

@@ -5,10 +5,11 @@ metadata:
   labels:
     app: inverter-dashboard-go
 data:
-  # Cerbo LAN MQTT (do NOT use in-cluster mosquitto — Python dash flaps on that path)
-  MQTT_HOST: "192.168.160.150"
-  MQTT_PORT: "1883"
+  # IGW-only: do not set MQTT_HOST/MQTT_PORT (Cerbo MQTT owned by inverter-gateway).
   WEB_PORT: "8080"
   WEB_HOST: "0.0.0.0"
-  # Cerbo VRM portal ID — required for keepalive + water/EV/alarms
+  GATEWAY_ENABLED: "true"
+  GATEWAY_URL: "https://victron.2560801.xyz"
+  GATEWAY_POLL_INTERVAL_SECONDS: "2"
+  # Optional Cerbo portal metadata for water/EV instance mapping from snapshot
   CERBO_PORTAL_ID: "b827ebea1ece"

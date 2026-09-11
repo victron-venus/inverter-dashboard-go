@@ -1,0 +1,59 @@
+package gateway
+
+import "encoding/json"
+
+// Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
+// Keys are "<instance>/<DBusPath>" (e.g. "0/Ac/Grid/L1/Power").
+type Snapshot struct {
+	System       map[string]json.RawMessage `json:"system"`
+	Vebus        map[string]json.RawMessage `json:"vebus"`
+	Battery      map[string]json.RawMessage `json:"battery"`
+	Solarcharger map[string]json.RawMessage `json:"solarcharger"`
+	Pvinverter   map[string]json.RawMessage `json:"pvinverter"`
+	Tank         map[string]json.RawMessage `json:"tank"`
+	Pump         map[string]json.RawMessage `json:"pump"`
+	EV           map[string]json.RawMessage `json:"ev"`
+	EVCharger    map[string]json.RawMessage `json:"evcharger"`
+	ACLoad       map[string]json.RawMessage `json:"acload"`
+	Settings     map[string]json.RawMessage `json:"settings"`
+}
+
+// leafMap is a decoded service map with flexible JSON values.
+type leafMap map[string]any
+
+func decodeLeaves(raw map[string]json.RawMessage) leafMap {
+	out := make(leafMap, len(raw))
+	for k, v := range raw {
+		if len(v) == 0 || string(v) == "null" {
+			out[k] = nil
+			continue
+		}
+		var val any
+		if err := json.Unmarshal(v, &val); err != nil {
+			continue
+		}
+		out[k] = val
+	}
+	return out
+}
+
+func (s *Snapshot) decoded() snapshotLeaves {
+	return snapshotLeaves{
+		System:       decodeLeaves(s.System),
+		Vebus:        decodeLeaves(s.Vebus),
+		Battery:      decodeLeaves(s.Battery),
+		Solarcharger: decodeLeaves(s.Solarcharger),
+		Pvinverter:   decodeLeaves(s.Pvinverter),
+		Tank:         decodeLeaves(s.Tank),
+		Pump:         decodeLeaves(s.Pump),
+		EV:           decodeLeaves(s.EV),
+		EVCharger:    decodeLeaves(s.EVCharger),
+		ACLoad:       decodeLeaves(s.ACLoad),
+		Settings:     decodeLeaves(s.Settings),
+	}
+}
+
+type snapshotLeaves struct {
+	System, Vebus, Battery, Solarcharger, Pvinverter leafMap
+	Tank, Pump, EV, EVCharger, ACLoad, Settings      leafMap
+}
