@@ -1,5 +1,7 @@
 package state
 
+import "encoding/json"
+
 // DailyStats represents daily statistics with money calculations
 type DailyStats struct {
 	SolarKWh   float64 `json:"solar_kwh"`
@@ -168,4 +170,24 @@ type State struct {
 	SetLimitToEVCharger bool `json:"set_limit_to_ev_charger,omitempty"`
 	MinimizeCharging    bool `json:"minimize_charging,omitempty"`
 	DryRun              bool `json:"dry_run,omitempty"`
+}
+
+// Clone returns a deep copy of State so callers can safely read maps/slices
+// without holding the MQTT client's stateMu (json.Marshal on a live State
+// races with MQTT writers → "concurrent map read and map write").
+func (s *State) Clone() *State {
+	if s == nil {
+		return nil
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		cp := *s
+		return &cp
+	}
+	var out State
+	if err := json.Unmarshal(data, &out); err != nil {
+		cp := *s
+		return &cp
+	}
+	return &out
 }
