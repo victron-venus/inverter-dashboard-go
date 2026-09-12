@@ -32,9 +32,9 @@ jobs:
 
   integration:
     name: Integration Tests
-    uses: victron-venus/integration-tests/.github/workflows/integration.yml@868dd667fc28da9d654a57482a72f95f21f5325d
+    uses: victron-venus/integration-tests/.github/workflows/integration.yml@63b1c96938aa4766f645934c50b7c4a6653a14e3
     with:
-      test-suite-ref: 868dd667fc28da9d654a57482a72f95f21f5325d
+      test-suite-ref: 63b1c96938aa4766f645934c50b7c4a6653a14e3
     # Run on PRs only; the integration-tests repo also runs this workflow
     # directly on its own main/push/schedule triggers.
     if: github.event_name == 'pull_request'
