@@ -1,0 +1,30 @@
+{
+  "version_file": "VERSION",
+  "validation_workflows": [
+    "ci.yml",
+    "codeql-analysis.yml",
+    "go-security.yml",
+    "trivy-fs.yml"
+  ],
+  "artifact_pattern": "release-assets*",
+  "local_checks": [
+    "go mod download",
+    "golangci-lint run ./...",
+    "govulncheck ./...",
+    "go test -race -coverprofile=coverage.out -covermode=atomic ./...",
+    "python3 scripts/check-go-coverage.py 20"
+  ],
+  "notes": [
+    "Install golangci-lint and govulncheck before local checks; Docker integration additionally runs in CI.",
+    "All existing cross-compile targets are preserved; only the Linux amd64 binary executes on the hosted build runner.",
+    "Vue assets are committed under internal/html/vue-ui and tested by embed_test.go, never downloaded from a moving latest release.",
+    "Registry promotion consumes the approved OCI archive without rebuilding."
+  ],
+  "container_assets": {
+    "inverter-dashboard-go-container.oci.tar": "docker.io/alvit/inverter-dashboard-go"
+  },
+  "repository": "victron-venus/inverter-dashboard-go",
+  "mode": "release",
+  "default_branch": "main",
+  "visibility": "public"
+}

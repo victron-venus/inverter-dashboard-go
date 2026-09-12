@@ -97,19 +97,17 @@ The dashboard is read-only.
 - **Cross-platform** binaries for easy deployment
 - **Chart visualization** with uPlot for power flow history
 
-## Release Channels & CI/CD
+<!-- ci-release-process:start -->
+## Release process
 
-This project uses automated GitHub Actions workflows for continuous delivery:
-
-- **Stable Releases**: Tagged as `vX.Y.Z` (e.g., `v1.0.0`). Compiles standalone binaries for macOS (Intel & Apple Silicon), Linux (amd64, arm64, Raspberry Pi ARMv7).
-- **Pre-releases**: Tagged with `vX.Y.Z-rc.N` or `vX.Y.Z-beta.N`. Automatically marked as **Pre-release** on GitHub to prevent accidental deployment to production environments.
-- **Nightly Builds**: Built daily at 02:00 UTC from `main`. Publishes binary artifacts to the rolling **[Nightly Build Release](https://github.com/victron-venus/inverter-dashboard-go/releases/tag/nightly)** and updates the Docker image tag `ghcr.io/victron-venus/inverter-dashboard-go:nightly`.
+See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
+<!-- ci-release-process:end -->
 
 ---
 
 ## Completed Features
 
-- ✅ **CI/CD Releases & Nightly Builds**: Multi-arch Go binary builds, Docker `:nightly` images, and pre-release tag matching configured
+- ✅ **Release packaging**: Candidate artifacts and checksums; see the [release strategy](RELEASING.md).
 - ✅ **Embed Next-Gen Vue UI**: Updated `internal/html/template.go` to use Go `//go:embed` on `internal/html/vue-ui`, serving Vue SPA when available with fallback to Go dashboard
 - ✅ **Prometheus Metrics Endpoint**: Implemented `GET /metrics` exposing Prometheus gauges for `victron_solar_watts`, `victron_battery_soc`, `victron_grid_watts`, and `websocket_active_clients`
 - ✅ **Resilient MQTT Command Buffer**: Implemented thread-safe ring buffer with exponential backoff queue for MQTT commands during temporary broker disconnections (commit 8b2e777)
