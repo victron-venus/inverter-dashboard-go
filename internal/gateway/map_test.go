@@ -35,14 +35,14 @@ func TestSnapshotToStateCoreTiles(t *testing.T) {
 	if st.InverterState != "Bulk" {
 		t.Errorf("inverter_state = %q, want Bulk", st.InverterState)
 	}
-	if st.BatteryPower != 1258.4 {
-		t.Errorf("battery_power = %v, want 1258.4 (shunt)", st.BatteryPower)
+	if st.BatteryPower != 1349.7 {
+		t.Errorf("battery_power = %v, want 1349.7 (system)", st.BatteryPower)
 	}
-	if st.BatteryCurrent != 23.5 {
-		t.Errorf("battery_current = %v, want 23.5", st.BatteryCurrent)
+	if st.BatteryCurrent != 25.2 {
+		t.Errorf("battery_current = %v, want 25.2", st.BatteryCurrent)
 	}
-	if st.BatterySOC == 0 {
-		t.Errorf("battery_soc empty")
+	if st.BatterySOC != 61 {
+		t.Errorf("battery_soc = %v, want measured 61", st.BatterySOC)
 	}
 	if len(st.Batteries) != 2 {
 		t.Errorf("batteries len = %d, want 2", len(st.Batteries))
@@ -75,27 +75,24 @@ func TestSnapshotToStateWaterEVLoads(t *testing.T) {
 		TankInstance: 21, PumpInstance: 1, ValveInstance: 2,
 		EVInstance: 22, EVChargerInstance: 40,
 	})
-	if st.WaterLevel != 91.0 {
-		t.Errorf("water_level = %v, want 91", st.WaterLevel)
+	if st.WaterLevel != 0.91 {
+		t.Errorf("water_level = %v, want 0.91", st.WaterLevel)
 	}
-	if st.EVChargingKW != 3.2 {
-		t.Errorf("ev_charging_kw = %v, want 3.2", st.EVChargingKW)
+	if st.EVChargingKW != 7.2 {
+		t.Errorf("ev_charging_kw = %v, want 7.2", st.EVChargingKW)
 	}
-	if st.EVPower != 7.2 {
-		t.Errorf("ev_power = %v, want 7.2", st.EVPower)
+	if st.EVPower != 3200 {
+		t.Errorf("ev_power = %v, want 3200", st.EVPower)
 	}
 	if st.Loads["Oven"] != 420.0 {
 		t.Errorf("loads Oven = %v, want 420", st.Loads["Oven"])
 	}
 }
 
-func TestBankPrefersShuntOverSystem(t *testing.T) {
+func TestBankPrefersSelectedSystemMeasurements(t *testing.T) {
 	st := SnapshotToState(loadFixture(t, "snapshot_core.json"), MapOptions{})
-	if st.BatteryCurrent == 25.2 {
-		t.Fatal("bank current followed system aggregate instead of shunt")
-	}
-	if st.BatteryCurrent != 23.5 || st.BatteryPower != 1258.4 {
-		t.Fatalf("bank V/I/P not from shunt: I=%v P=%v", st.BatteryCurrent, st.BatteryPower)
+	if st.BatteryVoltage != 52.15 || st.BatteryCurrent != 25.2 || st.BatteryPower != 1349.7 || st.BatterySOC != 61 {
+		t.Fatalf("bank measurements not from system: %+v", st)
 	}
 }
 

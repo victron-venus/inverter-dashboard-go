@@ -60,13 +60,58 @@ flowchart TD
     style WS fill:#00ADD8,color:#fff
 ```
 
+### Direct Cerbo telemetry
+
+The dashboard reads `N/<portal>/...` notifications directly from the Cerbo broker.
+`inverter-control` supplies controller statistics, forecast, ESS mode and control flags;
+it is not required to relay grid, consumption, battery, solar, circuits, water or EV telemetry.
+
+Set `cerbo.portal_id` / `CERBO_PORTAL_ID` to the GX VRM portal ID for reliable startup.
+With an empty ID the dashboard discovers one portal from native MQTT traffic (the
+legacy `inverter/portal` topic is also accepted). Modern Venus notifications are not
+retained: a quiet broker may produce no discovery traffic until another client sends
+keepalive. In that case configure the portal ID. Multiple GX systems must use an
+explicit ID; foreign portals never overwrite the selected installation.
+
+After subscribing, an empty `R/<portal>/keepalive` requests the complete snapshot.
+Every 45 seconds a `suppress-republish` keepalive maintains streaming without replaying
+all values. Clean-session reconnects reinstall subscriptions, invalidate the old device
+inventory and request a new snapshot. No wildcard request topics are published.
+
+Systemcalc supplies consumption and preferred grid/battery aggregates. Grid-meter
+phases are the grid fallback; VE.Bus active-input power is used only when systemcalc
+identifies that input as grid/shore, never for generator/output power. All three phases
+are included. Battery SOC uses measured `/Soc`; pack voltage is not converted into an
+installation-specific SOC estimate. With no system battery measurement, an explicitly
+selected battery instance or one unambiguous battery service is used. Device details
+include names, serials, current, power, SOC, time-to-go, temperature and cell extremes
+when the service publishes them.
+
+Solar uses MPPT yield power (or DC power / voltage × current) plus AC PV power.
+Explicit device AC totals take precedence over phase sums. `mppt_total` and the legacy
+`pv_total` alias are DC solar watts; `pv_inverter_total` is AC solar watts. Direct solar
+totals never combine a fresh component with a stale controller component. AC load names
+remain compatible with saved household configuration; duplicate names gain an instance suffix.
+
+Zero/false readings and empty device collections are transmitted to the browser.
+`telemetry_available` distinguishes a real zero from a field that has never arrived or
+was invalidated. JSON `null` invalidates a path and recomputes available direct fallbacks;
+an empty MQTT payload removes the service. Once direct telemetry owns a field, old
+controller payloads cannot resurrect it. Device entries have their own availability maps.
+Gateway snapshots use the same reducer and units as the direct MQTT path.
+
 ### Water system
 
 Water data comes **exclusively** from [dbus-pump](https://github.com/victron-venus/dbus-pump)
 via Cerbo MQTT — no Home Assistant involved. Enable it in the `cerbo:` section of `config.yaml`
 (or `CERBO_PORTAL_ID` env); instances (`tank_instance` / `pump_instance` / `valve_instance`,
 defaults 21/1/2) must match dbus-pump's `local_config.py`. Valve/pump automation lives in
-dbus-pump; the dashboard is read-only.
+dbus-pump. Tank `/Level` is already a percentage, including values below 1%.
+`/Mode` exposes auto / forced-on / forced-off status separately from running state.
+The water controls write `W/<portal>/pump/<configured instance>/Mode` with
+`{"value":0|1|2}` only on a live direct MQTT connection and after that device has
+published a valid `/Mode`. Commands are not retained or queued; the UI waits for Cerbo
+readback. Gateway transport displays water telemetry without enabling these writes.
 
 ### EV data
 
@@ -79,8 +124,8 @@ Enable it in the `cerbo:` section of `config.yaml` (or `CERBO_PORTAL_ID` env); i
 | Dashboard field | MQTT topic |
 |---|---|
 | `car_soc` | `N/<portal>/ev/<i>/Soc` |
-| `ev_charging_kw` | `N/<portal>/ev/<i>/Ac/Power` (W → kW) |
-| `ev_power` | `N/<portal>/evcharger/<i>/Ac/Power` (W → kW) |
+| `ev_charging_kw` | `N/<portal>/evcharger/<i>/Ac/Power` (W → kW) |
+| `ev_power` | `N/<portal>/ev/<i>/Ac/Power` (W) |
 
 Car status (SOC, charging power) comes from dbus-ev; wallbox power from dbus-evcharger.
 The dashboard is read-only.

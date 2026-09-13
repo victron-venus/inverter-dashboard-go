@@ -86,9 +86,9 @@ func TestPrettyNames(t *testing.T) {
 	}
 }
 
-func TestStateNotificationsJSONOmittedWhenEmpty(t *testing.T) {
-	out, _ := json.Marshal(state.State{})
-	if strings.Contains(string(out), "notifications") {
-		t.Fatalf("empty notifications leaked: %s", out)
+func TestStateNotificationsJSONClearsEmpty(t *testing.T) {
+	out, _ := json.Marshal(state.State{Notifications: []state.Notification{}})
+	if !strings.Contains(string(out), `"notifications":[]`) {
+		t.Fatalf("empty notifications must clear the UI: %s", out)
 	}
 }

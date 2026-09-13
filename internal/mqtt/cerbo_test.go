@@ -94,18 +94,19 @@ func TestSystemcalcGridAndConsumption(t *testing.T) {
 	}
 }
 
-func TestBatteryShuntVoltageSOC(t *testing.T) {
+func TestBatteryShuntUsesMeasuredSOC(t *testing.T) {
 	c := NewClient("localhost", 1883)
 	c.stateMu.Lock()
 	c.handleCerboDevice("N/p1/battery/512/ProductName", mustJSON("SmartShunt 500A"))
 	c.handleCerboDevice("N/p1/battery/512/Dc/0/Voltage", mustJSON(47.2))
+	c.handleCerboDevice("N/p1/battery/512/Soc", mustJSON(63))
 	c.handleCerboDevice("N/p1/battery/512/Dc/0/Current", mustJSON(-12.5))
 	c.handleCerboDevice("N/p1/battery/512/Dc/0/Power", mustJSON(-590))
 	c.stateMu.Unlock()
 
 	st := c.GetState()
-	if st.BatterySOC != 50 {
-		t.Errorf("battery_soc = %v, want 50", st.BatterySOC)
+	if st.BatterySOC != 63 {
+		t.Errorf("battery_soc = %v, want 63", st.BatterySOC)
 	}
 	if st.BatteryVoltage != 47.2 || st.BatteryCurrent != -12.5 || st.BatteryPower != -590 {
 		t.Errorf("battery V/I/P = %v %v %v", st.BatteryVoltage, st.BatteryCurrent, st.BatteryPower)

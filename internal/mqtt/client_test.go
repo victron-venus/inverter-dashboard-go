@@ -91,11 +91,11 @@ func TestOnEVMessageMapsTopicsToState(t *testing.T) {
 	if st.CarSOC != 75 {
 		t.Errorf("CarSOC = %v, want 75", st.CarSOC)
 	}
-	if st.EVChargingKW != 7.3 {
-		t.Errorf("EVChargingKW = %v, want 7.3", st.EVChargingKW)
+	if st.EVChargingKW != 7.2 {
+		t.Errorf("EVChargingKW = %v, want 7.2", st.EVChargingKW)
 	}
-	if st.EVPower != 7.2 {
-		t.Errorf("EVPower = %v, want 7.2", st.EVPower)
+	if st.EVPower != 7300 {
+		t.Errorf("EVPower = %v, want 7300", st.EVPower)
 	}
 }
 

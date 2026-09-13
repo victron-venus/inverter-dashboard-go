@@ -19,10 +19,10 @@ type Command struct {
 
 // CommandBuffer is a thread-safe channel-based queue with exponential backoff retry
 type CommandBuffer struct {
-	client  *Client
-	queue   chan Command
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	client *Client
+	queue  chan Command
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	// Retry configuration
 	baseDelay   time.Duration
@@ -38,13 +38,13 @@ const maxConcurrentRetries = 10
 func NewCommandBuffer(capacity int, client *Client) *CommandBuffer {
 	ctx, cancel := context.WithCancel(context.Background())
 	cb := &CommandBuffer{
-		client:       client,
-		queue:        make(chan Command, capacity),
-		cancel:       cancel,
-		baseDelay:    100 * time.Millisecond,
-		maxDelay:     30 * time.Second,
-		maxRetries:   10,
-		retryJitter:  0.1,
+		client:      client,
+		queue:       make(chan Command, capacity),
+		cancel:      cancel,
+		baseDelay:   100 * time.Millisecond,
+		maxDelay:    30 * time.Second,
+		maxRetries:  10,
+		retryJitter: 0.1,
 	}
 
 	cb.wg.Add(1)
@@ -186,7 +186,7 @@ func (cb *CommandBuffer) publishOnce(cmd Command) error {
 		return fmt.Errorf("MQTT client not initialized")
 	}
 
-	if !cb.client.client.IsConnected() {
+	if !cb.client.client.IsConnectionOpen() {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
