@@ -1,0 +1,121 @@
+name: Build release assets
+'on':
+  workflow_call:
+    inputs:
+      version:
+        description: Committed base version, without a v prefix or channel suffix
+        required: true
+        type: string
+      channel:
+        description: nightly, beta or rc; stable promotes existing RC bytes
+        required: true
+        type: string
+permissions:
+  contents: read
+env:
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_CHANNEL: ${{ inputs.channel }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - goos: darwin
+          goarch: arm64
+          name: macos-silicon
+        - goos: linux
+          goarch: arm64
+          name: linux-arm64
+        - goos: linux
+          goarch: arm
+          goarm: 7
+          name: raspberry-pi3
+        - goos: linux
+          goarch: amd64
+          name: linux-amd64
+        - goos: darwin
+          goarch: amd64
+          name: macos-intel
+    steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Verify committed release version
+      run: python3 scripts/check-release-version.py "$RELEASE_VERSION" "$RELEASE_CHANNEL"
+    - name: Verify versioned Vue assets
+      run: test -s internal/html/vue-ui/index.html
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      with:
+        go-version-file: go.mod
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm }}
+        CGO_ENABLED: 0
+        BUILD_VERSION: ${{ inputs.version }}
+      run: |
+        output_name="inverter-dashboard-${{ matrix.name }}"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          output_name="${output_name}.exe"
+        fi
+
+        ldflags="-s -w -X main.Version=$BUILD_VERSION"
+        go build -ldflags "$ldflags" -o "dist/${output_name}" .
+    - name: Smoke test native release binary
+      if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+      run: |
+        actual=$(dist/inverter-dashboard-linux-amd64 --version)
+        test "$actual" = "Inverter Dashboard v${BUILD_VERSION#v}"
+    - name: Store release assets
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-assets-${{ matrix.name }}
+        path: dist/inverter-dashboard-${{ matrix.name }}*
+        if-no-files-found: error
+        retention-days: 14
+  container:
+    name: Build container archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+    - name: Harden runner
+      uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1
+      with:
+        egress-policy: audit
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Verify committed release version
+      run: python3 scripts/check-release-version.py "$RELEASE_VERSION" "$RELEASE_CHANNEL"
+    - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a
+    - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
+    - name: Build OCI image archive
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: false
+        outputs: type=oci,dest=inverter-dashboard-go-container.oci.tar
+        tags: inverter-dashboard-go:${{ inputs.version }}
+        sbom: true
+        provenance: mode=max
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    - name: Store release assets
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-assets-container
+        path: inverter-dashboard-go-container.oci.tar
+        if-no-files-found: error
+        retention-days: 14
