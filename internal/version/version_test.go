@@ -50,7 +50,7 @@ func TestCheckLatestError(t *testing.T) {
 
 	_, err := CheckLatest("https://example.com")
 	if err == nil {
-		t.Error("CheckLatest expected error, got nil")
+		t.Fatal("CheckLatest expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "network error") {
 		t.Errorf("CheckLatest error = %v, want error containing \"network error\"", err)
@@ -72,7 +72,7 @@ func TestCheckLatestNonOKStatus(t *testing.T) {
 
 	_, err := CheckLatest("https://example.com")
 	if err == nil {
-		t.Error("CheckLatest expected error for non-200 status, got nil")
+		t.Fatal("CheckLatest expected error for non-200 status, got nil")
 	}
 	if !strings.Contains(err.Error(), "unexpected status code: 404") {
 		t.Errorf("CheckLatest error = %v, want status error", err)
