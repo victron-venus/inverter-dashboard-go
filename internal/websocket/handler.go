@@ -45,6 +45,10 @@ type Message struct {
 	Entity   string                 `json:"entity,omitempty"`
 	ID       string                 `json:"id,omitempty"`
 	Value    interface{}            `json:"value,omitempty"`
+	Position interface{}            `json:"position,omitempty"`
+	MPAction string                 `json:"mp_action,omitempty"`
+	Which    string                 `json:"which,omitempty"`
+	Mode     interface{}            `json:"mode,omitempty"`
 	Min      float64                `json:"min,omitempty"`
 	Max      float64                `json:"max,omitempty"`
 	Interval float64                `json:"interval,omitempty"`
@@ -88,29 +92,33 @@ func mergeStates(mqttState *state.State, overlay homeassistant.Overlay, managedK
 	merged := stateToMap(mqttState)
 
 	merged["ha_direct_connected"] = overlay.HADirectConnected
+	booleans, _ := merged["booleans"].(map[string]interface{})
+	if booleans == nil {
+		booleans = make(map[string]interface{})
+	}
+	merged["booleans"] = booleans
 
 	if overlay.HADirectConnected {
-		if len(overlay.Booleans) > 0 {
-			booleansCopy := make(map[string]bool, len(overlay.Booleans))
-			for k, v := range overlay.Booleans {
-				booleansCopy[k] = v
+		for k, v := range overlay.Booleans {
+			if !homeassistant.IsMQTTOwnedKey(k) {
+				booleans[k] = v
 			}
-			merged["booleans"] = booleansCopy
 		}
 		if len(overlay.AdditionalFields) > 0 {
 			for k, v := range overlay.AdditionalFields {
-				if v != nil {
+				if v != nil && !homeassistant.IsMQTTOwnedKey(k) {
 					merged[k] = v
 				}
 			}
 		}
 	} else {
-		if booleans, ok := merged["booleans"].(map[string]interface{}); ok {
-			for key := range booleans {
+		for _, key := range managedKeys {
+			if homeassistant.IsMQTTOwnedKey(key) {
+				continue
+			}
+			if _, ok := booleans[key]; ok {
 				booleans[key] = false
 			}
-		}
-		for _, key := range managedKeys {
 			merged[key] = false
 		}
 	}
@@ -170,55 +178,113 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 	removeClient(conn)
 }
 
-// sendInitialState sends the complete state to a newly connected client
-func sendInitialState(conn *websocket.Conn, mqttClient MQTTCommander, haClient HAClient) error {
-	state := mqttClient.GetState()
-	console := mqttClient.GetConsole()
-
-	// Get overlay and UI config if HA client is configured
+// BuildPayload is the canonical full snapshot for HTTP and WebSocket clients.
+func BuildPayload(mqttClient MQTTCommander, haClient HAClient) map[string]interface{} {
 	overlay := homeassistant.Overlay{}
-	uiConfig := map[string]interface{}{}
-	if haClient != nil {
+	if haClient != nil && haClient.IsDirectMode() {
 		overlay = haClient.GetOverlay()
-		uiConfig = haClient.GetUIConfig()
-		// Add boolean buttons for dynamic header toggles
-		uiConfig["boolean_buttons"] = haClient.GetBooleanButtons()
 	}
+	return buildPayload(mqttClient, haClient, overlay)
+}
 
-	// Get HA-managed keys for fallback when disconnected
+func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassistant.Overlay) map[string]interface{} {
+	mqttState := mqttClient.GetState()
+	if mqttState == nil {
+		mqttState = &state.State{}
+	}
+	console := mqttClient.GetConsole()
 	var managedKeys []string
-	if haClient != nil {
+	if haClient != nil && haClient.IsDirectMode() {
 		managedKeys = haClient.GetManagedKeys()
+	} else {
+		overlay = homeassistant.Overlay{}
 	}
-
-	// Merge MQTT state with HA overlay
-	mergedState := mergeStates(state, overlay, managedKeys)
-
-	// Flatten merged state into payload (like Python)
-	payload := make(map[string]interface{}, len(mergedState)+5)
-	for k, v := range mergedState {
-		payload[k] = v
+	payload := mergeStates(mqttState, overlay, managedKeys)
+	uiConfig := make(map[string]interface{})
+	if controllerConfig, ok := payload["ui_config"].(map[string]interface{}); ok {
+		for key, value := range controllerConfig {
+			uiConfig[key] = value
+		}
+	}
+	if haClient != nil {
+		for key, value := range haClient.GetUIConfig() {
+			uiConfig[key] = value
+		}
+		if buttons := haClient.GetBooleanButtons(); len(buttons) > 0 {
+			uiConfig["boolean_buttons"] = buttons
+		}
 	}
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
-	if uiConfig == nil {
-		uiConfig = map[string]interface{}{}
+	// Report source health independently of the WebSocket transport itself.
+	if connection, ok := mqttClient.(interface{ IsConnected() bool }); ok {
+		payload["mqtt_connected"] = connection.IsConnected()
 	}
 	uiConfig["settings"] = settings.Get()
 	payload["ui_config"] = uiConfig
-
-	// Limit console to last 20 lines
+	payload["water_controls_available"] = false
+	if water, ok := mqttClient.(interface{ CanControlWater() bool }); ok {
+		payload["water_controls_available"] = water.CanControlWater()
+	}
 	if len(console) > 20 {
 		payload["console"] = console[len(console)-20:]
 	}
+	return payload
+}
 
-	return conn.WriteJSON(payload)
+// sendInitialState sends the same complete snapshot returned by /api/state.
+func sendInitialState(conn *websocket.Conn, mqttClient MQTTCommander, haClient HAClient) error {
+	return conn.WriteJSON(BuildPayload(mqttClient, haClient))
 }
 
 // handleMessage processes incoming WebSocket messages
 func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) error {
 	switch msg.Action {
+	case "water_mode":
+		if msg.Which != "pump" && msg.Which != "valve" {
+			return fmt.Errorf("water device must be pump or valve")
+		}
+		var mode int
+		switch value := msg.Mode.(type) {
+		case int:
+			mode = value
+		case float64:
+			if value != 0 && value != 1 && value != 2 {
+				return fmt.Errorf("water mode must be integer 0, 1 or 2")
+			}
+			mode = int(value)
+		default:
+			return fmt.Errorf("water mode must be integer 0, 1 or 2")
+		}
+		if mode < 0 || mode > 2 {
+			return fmt.Errorf("water mode must be integer 0, 1 or 2")
+		}
+		client, ok := mqttClient.(interface{ SetWaterMode(string, int) error })
+		if !ok {
+			return fmt.Errorf("direct Cerbo water mode control is unavailable")
+		}
+		return client.SetWaterMode(msg.Which, mode)
+	case "number_set", "set_cover_position", "media_player", "scene_activate":
+		if haClient == nil || !haClient.IsDirectMode() {
+			return fmt.Errorf("direct Home Assistant controls are not enabled")
+		}
+		client, ok := haClient.(interface {
+			PerformAction(string, string, map[string]interface{}) error
+		})
+		if !ok {
+			return fmt.Errorf("home assistant client does not support rich controls")
+		}
+		if err := client.PerformAction(msg.Action, msg.Entity, map[string]interface{}{
+			"value": msg.Value, "position": msg.Position, "mp_action": msg.MPAction,
+		}); err != nil {
+			return err
+		}
+		overlay, err := haClient.FetchStatesOnce()
+		if err == nil && overlay.HADirectConnected {
+			haClient.ReplaceOverlay(overlay)
+		}
+		return nil
 	case "toggle":
 		return handleToggle(msg.Entity, mqttClient, haClient)
 	case "press":
@@ -274,6 +340,13 @@ func handleToggle(entityID string, mqttClient MQTTCommander, haClient HAClient) 
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for toggle")
 	}
+	if homeassistant.IsControlFlag(entityID) {
+		parts := strings.Split(entityID, ".")
+		return mqttClient.PublishCommand("toggle", map[string]interface{}{"entity": parts[len(parts)-1]})
+	}
+	if strings.HasPrefix(entityID, "button.") {
+		return handlePress(entityID, mqttClient, haClient)
+	}
 
 	// Use HA direct mode if enabled
 	if haClient != nil && haClient.IsDirectMode() && haClient.IsToggleAllowed(entityID) {
@@ -314,14 +387,11 @@ func handlePress(entityID string, mqttClient MQTTCommander, haClient HAClient) e
 		return fmt.Errorf("entity ID required for press")
 	}
 
-	// Try HA button press first
-	if haClient != nil && haClient.IsDirectMode() && haClient.IsToggleAllowed(entityID) {
-		if strings.HasPrefix(entityID, "button.") {
-			err := haClient.PressButton(entityID)
-			if err == nil {
-				return nil
-			}
+	if haClient != nil && haClient.IsDirectMode() {
+		if !haClient.IsToggleAllowed(entityID) || !strings.HasPrefix(entityID, "button.") {
+			return fmt.Errorf("button is not configured for direct Home Assistant control")
 		}
+		return haClient.PressButton(entityID)
 	}
 
 	// Fall back to MQTT
@@ -366,57 +436,7 @@ func getKeys(m map[string]interface{}) []string {
 
 // BroadcastState sends the current state to all connected clients
 func BroadcastState(mqttClient MQTTCommander, haClient HAClient, overlay homeassistant.Overlay) error {
-	state := mqttClient.GetState()
-	console := mqttClient.GetConsole()
-
-	// Debug: log all important fields
-	log.Printf("[BROADCAST DEBUG] Base MQTT state: solar=%.2fW, grid=%.2fW, battery_SOC=%.2f%%, cons=%.2fW", state.SolarTotal, state.GT, state.BatterySOC, state.TT)
-
-	uiConfig := map[string]interface{}{}
-	haDirectConnected := false
-
-	if haClient != nil {
-		uiConfig = haClient.GetUIConfig()
-		uiConfig["boolean_buttons"] = haClient.GetBooleanButtons()
-		haDirectConnected = overlay.HADirectConnected
-	}
-
-	// Debug: show overlay values
-	if haDirectConnected {
-		log.Printf("[BROADCAST DEBUG] HA Direct Connected: true")
-		log.Printf("[BROADCAST DEBUG] Overlay AdditionalFields: %+v", overlay.AdditionalFields)
-	} else {
-		log.Printf("[BROADCAST DEBUG] HA Direct Connected: false - HA values not available")
-	}
-
-	// Get HA-managed keys for fallback when disconnected
-	var managedKeys []string
-	if haClient != nil {
-		managedKeys = haClient.GetManagedKeys()
-	}
-
-	// Merge MQTT state with HA overlay
-	mergedState := mergeStates(state, overlay, managedKeys)
-
-	// Flatten merged state into payload (like Python's flat format)
-	payload := make(map[string]interface{}, len(mergedState)+6)
-	for k, v := range mergedState {
-		payload[k] = v
-	}
-	payload["console"] = console
-	payload["dashboard_version"] = version.GetCurrent()
-	payload["latest_version"] = getLatestVersion()
-	if uiConfig == nil {
-		uiConfig = map[string]interface{}{}
-	}
-	uiConfig["settings"] = settings.Get()
-	payload["ui_config"] = uiConfig
-	payload["ha_direct_connected"] = haDirectConnected
-
-	// Limit console to last 20 lines
-	if len(console) > 20 {
-		payload["console"] = console[len(console)-20:]
-	}
+	payload := buildPayload(mqttClient, haClient, overlay)
 
 	// Broadcast to all clients with per-client exception handling (matches Python)
 	// Use write lock to prevent concurrent websocket writes

@@ -38,13 +38,16 @@ logging:
 
 # Cerbo GX / Water / EV Configuration (dbus-pump, dbus-ev, dbus-evcharger via Cerbo MQTT)
 # Water and EV data come exclusively from the dbus-* services - no HA entities.
-# Set portal_id (or CERBO_PORTAL_ID env) to enable; leave empty to disable.
+# Set portal_id (or CERBO_PORTAL_ID env) to bootstrap a quiet Cerbo immediately.
+# Empty enables passive discovery from native N/<portal>/system/... or device traffic;
+# a silent broker still requires an explicit portal_id. inverter/portal is optional.
+# All native telemetry is scoped to the configured or first discovered portal.
 cerbo:
   portal_id: ""              # VRM portal ID of your Cerbo GX
   tank_instance: 21          # com.victronenergy.tank.ha_tank<N>
   pump_instance: 1           # com.victronenergy.pump.startstop<N> (Water pump)
   valve_instance: 2          # com.victronenergy.pump.startstop<N> (City valve)
-  ev_instance: 22            # com.victronenergy.evcharger<N> (vehicle SOC, charging power)
+  ev_instance: 22            # com.victronenergy.ev.<name> (vehicle SOC, charging watts)
   evcharger_instance: 40     # com.victronenergy.evcharger<N> (wallbox power)
 
 # Home Assistant Configuration (Optional)
@@ -81,14 +84,10 @@ homeassistant:
     washer_time: "sensor.washer_remaining_time"
     dryer_time: "sensor.dryer_remaining_time"
   sensor_entities:
-    # NOTE: Most fields now come from inverter-control MQTT (D-Bus sourced):
-    #   gt, g1, g2, tt, t1, t2, solar_total, mppt_total, tasmota_total
-    #   battery_soc, battery_power, battery_voltage, battery_current
-    #   setpoint, daily_stats, mppt_chargers, batteries, mppt_individual, tasmota_individual
-    #   loads (Vue circuits via D-Bus acload)
-    # Only configure fields NOT available from inverter-control:
-    #   (car_soc/ev_charging_kw/ev_power come from dbus-ev/dbus-evcharger via cerbo: - never from HA)
-    #   # gt: "sensor.grid_power"  # if you prefer HA CT meter over Victron
+    # Victron telemetry is read directly from Cerbo MQTT: grid/consumption L1-L3,
+    # battery SOC/V/I/P, MPPT/PV, VE.Bus state/setpoint, circuits, water and EV.
+    # inverter-control remains the source for daily_stats, solar_forecast,
+    # ess_mode and control flags. Configure HA-only household sensors here.
 
 # Optional: Add custom UI configuration
 ui:

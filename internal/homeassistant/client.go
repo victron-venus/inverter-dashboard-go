@@ -213,14 +213,14 @@ func (c *Client) IsToggleAllowed(entityID string) bool {
 		return false
 	}
 
-	for _, eid := range c.booleanEntities {
-		if eid == entityID {
+	for key, eid := range c.booleanEntities {
+		if eid == entityID && haOwnsField(key, eid) {
 			return true
 		}
 	}
 
 	for _, button := range c.switchEntities {
-		if button.Entity == entityID {
+		if button.Entity == entityID && haOwnsField(button.StateKey, button.Entity) {
 			return true
 		}
 	}
@@ -271,6 +271,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 
 	// Fetch boolean entities
 	for key, entityID := range c.booleanEntities {
+		if !haOwnsField(key, entityID) {
+			continue
+		}
 		state, err := fetchEntityState(entityID)
 		if err != nil {
 			continue
@@ -280,6 +283,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 
 	// Fetch switch entities
 	for _, btn := range c.switchEntities {
+		if !haOwnsField(btn.StateKey, btn.Entity) {
+			continue
+		}
 		state, err := fetchEntityState(btn.Entity)
 		if err != nil {
 			continue
@@ -291,6 +297,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 
 	// Fetch sensor entities
 	for key, entityID := range c.sensorEntities {
+		if !haOwnsField(key, entityID) {
+			continue
+		}
 		state, err := fetchEntityState(entityID)
 		if err != nil {
 			continue
@@ -306,27 +315,17 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	log.Printf("[HA DEBUG] Final AdditionalFields: %+v", result.AdditionalFields)
 	// Fetch appliance entities
 	for key, entityID := range c.applianceEntities {
+		if !haOwnsField(key, entityID) {
+			continue
+		}
 		state, err := fetchEntityState(entityID)
 		if err != nil {
 			continue
 		}
 		result.AdditionalFields[key] = parseApplianceField(key, entityID, state)
 	}
-	// Fetch Vue sensors (wattage) - store as nested loads object
-	loads := make(map[string]float64)
-	for key, entityID := range c.vueSensors {
-		state, err := fetchEntityState(entityID)
-		if err != nil {
-			continue
-		}
-		if val, err := strconv.ParseFloat(state, 64); err == nil {
-			loads[key] = val
-			log.Printf("[HA DEBUG] Vue sensor %s: %.2f W", key, val)
-		}
-	}
-	if len(loads) > 0 {
-		result.AdditionalFields["loads"] = loads
-	}
+	// Active loads are discovered from Cerbo acload services. Legacy VueSensors
+	// HA mirrors must not replace that inventory or its live power values.
 
 	// Rich display entities (covers/media_players/scenes/numbers/sensors/weather)
 	if !filteredEmpty(c.filteredEntities) {
@@ -566,6 +565,10 @@ func (c *Client) PressButton(entityID string) error {
 
 // callService makes a POST request to Home Assistant service endpoint
 func (c *Client) callService(domain, service, entityID string) error {
+	return c.callServiceData(domain, service, entityID, nil)
+}
+
+func (c *Client) callServiceData(domain, service, entityID string, fields map[string]interface{}) error {
 	if c.httpClient == nil {
 		return fmt.Errorf("http client not initialized")
 	}
@@ -575,6 +578,9 @@ func (c *Client) callService(domain, service, entityID string) error {
 
 	body := map[string]interface{}{
 		"entity_id": entityID,
+	}
+	for key, value := range fields {
+		body[key] = value
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -628,17 +634,25 @@ func (c *Client) GetBooleanButtons() []Button {
 // GetManagedKeys returns all HA-managed state keys for fallback reset when HA is disconnected
 func (c *Client) GetManagedKeys() []string {
 	keys := make([]string, 0)
-	for k := range c.booleanEntities {
-		keys = append(keys, k)
+	for k, entity := range c.booleanEntities {
+		if haOwnsField(k, entity) {
+			keys = append(keys, k)
+		}
 	}
 	for _, btn := range c.switchEntities {
-		keys = append(keys, btn.StateKey)
+		if haOwnsField(btn.StateKey, btn.Entity) {
+			keys = append(keys, btn.StateKey)
+		}
 	}
-	for k := range c.applianceEntities {
-		keys = append(keys, k)
+	for k, entity := range c.applianceEntities {
+		if haOwnsField(k, entity) {
+			keys = append(keys, k)
+		}
 	}
-	for k := range c.sensorEntities {
-		keys = append(keys, k)
+	for k, entity := range c.sensorEntities {
+		if haOwnsField(k, entity) {
+			keys = append(keys, k)
+		}
 	}
 	return keys
 }

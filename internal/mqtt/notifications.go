@@ -74,14 +74,19 @@ func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 	var payload struct {
 		Value interface{} `json:"value"`
 	}
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return
+	if len(msg.Payload()) > 0 {
+		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+			return
+		}
 	}
-	num, ok := toFloat(payload.Value)
-	if !ok {
-		return
+	value := 0 // Null or removed alarm paths clear their previous banner.
+	if payload.Value != nil {
+		num, ok := toFloat(payload.Value)
+		if !ok {
+			return
+		}
+		value = int(num)
 	}
-	value := int(num)
 
 	if _, changed := c.setAlarmValue(topic, value); !changed {
 		return
@@ -93,7 +98,10 @@ func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 	name := topic
 	if len(parts) > 4 {
 		service = parts[2]
-		name = parts[4]
+		name = parts[len(parts)-1]
+		if len(parts) > 5 && parts[4] == "Alarms" {
+			service += "_" + parts[3]
+		}
 	}
 
 	c.stateMu.Lock()
@@ -285,8 +293,10 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	var payload struct {
 		Value interface{} `json:"value"`
 	}
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return
+	if len(msg.Payload()) > 0 {
+		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+			return
+		}
 	}
 
 	key := fmt.Sprintf("%d-%d", inst64, slot64)
@@ -299,6 +309,26 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	if !ok {
 		ps = &platformSlotState{inst: uint32(inst64), slot: uint32(slot64)}
 		c.platformSlots[key] = ps
+	}
+	if len(msg.Payload()) == 0 {
+		delete(c.platformSlots, key)
+	} else if payload.Value == nil {
+		switch field {
+		case "Description":
+			ps.description = ""
+		case "DeviceName":
+			ps.deviceName = ""
+		case "Service":
+			ps.service = ""
+		case "DateTime":
+			ps.dateTime = 0
+		case "Type":
+			ps.hasType = false
+		case "Acknowledged":
+			ps.acknowledged = false
+		case "Active":
+			ps.active = nil
+		}
 	}
 	switch field {
 	case "Description":

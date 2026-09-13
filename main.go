@@ -478,7 +478,7 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	// Routes
 	router.GET("/", indexHandler())
 	router.GET("/ws", websocketHandler(mqttClient, haClient))
-	router.GET("/api/state", apiStateHandler(mqttClient))
+	router.GET("/api/state", apiStateHandler(mqttClient, haClient))
 	router.GET("/health", healthHandler(mqttClient))
 	router.POST("/api/check-update", apiCheckUpdateHandler())
 	router.POST("/api/update", apiUpdateHandler(cfg.SelfUpdateEnabled))
@@ -577,36 +577,21 @@ func websocketHandler(mqttClient *mqtt.Client, haClient *homeassistant.Client) g
 	}
 }
 
-func apiStateHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
+func apiStateHandler(mqttClient *mqtt.Client, haClients ...*homeassistant.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		st := mqttClient.GetState()
-
-		has_mqtt_state := st != nil
-		controlVersion := ""
-		solarTotal, gt, tt, batterySOC := 0.0, 0.0, 0.0, 0.0
-		inverterState := ""
-		if st != nil {
-			controlVersion = st.Version
-			solarTotal = st.SolarTotal
-			gt = st.GT
-			tt = st.TT
-			batterySOC = st.BatterySOC
-			inverterState = st.InverterState
+		var haClient websocket.HAClient
+		if len(haClients) > 0 && haClients[0] != nil {
+			haClient = haClients[0]
 		}
-
-		c.JSON(200, gin.H{
-			"ok":                true,
-			"dashboard_version": version.GetCurrent(),
-			"control_version":   controlVersion,
-			"has_mqtt_state":    has_mqtt_state,
-			"portal_id":         mqttClient.PortalID(),
-			// Live Cerbo tiles (ops / curl verification)
-			"solar_total":    solarTotal,
-			"gt":             gt,
-			"tt":             tt,
-			"battery_soc":    batterySOC,
-			"inverter_state": inverterState,
-		})
+		payload := websocket.BuildPayload(mqttClient, haClient)
+		payload["ok"] = true
+		payload["has_mqtt_state"] = mqttClient.GetState() != nil
+		payload["portal_id"] = mqttClient.PortalID()
+		payload["mqtt_connected"] = mqttClient.IsConnected()
+		if st := mqttClient.GetState(); st != nil {
+			payload["control_version"] = st.Version
+		}
+		c.JSON(http.StatusOK, payload)
 	}
 }
 
