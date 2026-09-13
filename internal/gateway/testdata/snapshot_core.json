@@ -4,6 +4,7 @@
     "0/Ac/Grid/L2/Power": 5.0,
     "0/Ac/Consumption/L1/Power": 100.0,
     "0/Ac/Consumption/L2/Power": 50.0,
+    "0/Dc/Battery/Soc": 61.0,
     "0/Dc/Battery/Voltage": 52.15,
     "0/Dc/Battery/Current": 25.2,
     "0/Dc/Battery/Power": 1349.7

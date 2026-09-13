@@ -5,6 +5,7 @@ import "encoding/json"
 // Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
 // Keys are "<instance>/<DBusPath>" (e.g. "0/Ac/Grid/L1/Power").
 type Snapshot struct {
+	Grid         map[string]json.RawMessage `json:"grid"`
 	System       map[string]json.RawMessage `json:"system"`
 	Vebus        map[string]json.RawMessage `json:"vebus"`
 	Battery      map[string]json.RawMessage `json:"battery"`
@@ -40,6 +41,7 @@ func decodeLeaves(raw map[string]json.RawMessage) leafMap {
 
 func (s *Snapshot) decoded() snapshotLeaves {
 	return snapshotLeaves{
+		Grid:         decodeLeaves(s.Grid),
 		System:       decodeLeaves(s.System),
 		Vebus:        decodeLeaves(s.Vebus),
 		Battery:      decodeLeaves(s.Battery),
@@ -56,6 +58,7 @@ func (s *Snapshot) decoded() snapshotLeaves {
 }
 
 type snapshotLeaves struct {
+	Grid                                                  leafMap
 	System, Vebus, Battery, Solarcharger, Pvinverter      leafMap
 	Tank, Pump, EV, EVCharger, ACLoad, Platform, Settings leafMap
 }

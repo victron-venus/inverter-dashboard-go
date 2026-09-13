@@ -53,10 +53,12 @@ func TestStateToMap(t *testing.T) { /* unchanged */
 	}
 }
 
-func TestMergeStatesHAConnected(t *testing.T) { /* unchanged */
+func TestMergeStatesHAConnected(t *testing.T) {
 	s := &state.State{
 		SolarTotal: 3500.0,
 		GT:         150.0,
+		WaterLevel: 12.0,
+		CarSOC:     20.0,
 		Booleans: map[string]interface{}{
 			"only_charging": false,
 		},
@@ -81,19 +83,19 @@ func TestMergeStatesHAConnected(t *testing.T) { /* unchanged */
 		t.Error("ha_direct_connected should be true")
 	}
 
-	booleans, ok := merged["booleans"].(map[string]bool)
+	booleans, ok := merged["booleans"].(map[string]interface{})
 	if !ok {
-		t.Fatal("booleans not a map[string]bool")
+		t.Fatal("booleans not a map[string]interface{}")
 	}
-	if booleans["only_charging"] != true {
-		t.Errorf("booleans.only_charging = %v, want true", booleans["only_charging"])
+	if booleans["only_charging"] != false {
+		t.Errorf("booleans.only_charging = %v, want MQTT false", booleans["only_charging"])
 	}
 
-	if merged["water_level"] != 45.0 {
-		t.Errorf("water_level = %v, want 45.0", merged["water_level"])
+	if merged["water_level"] != 12.0 {
+		t.Errorf("water_level = %v, want Cerbo 12.0", merged["water_level"])
 	}
-	if merged["car_soc"] != 75.0 {
-		t.Errorf("car_soc = %v, want 75.0", merged["car_soc"])
+	if merged["car_soc"] != 20.0 {
+		t.Errorf("car_soc = %v, want Cerbo 20.0", merged["car_soc"])
 	}
 
 	if merged["solar_total"] != 3500.0 {
@@ -101,9 +103,11 @@ func TestMergeStatesHAConnected(t *testing.T) { /* unchanged */
 	}
 }
 
-func TestMergeStatesHADisconnected(t *testing.T) { /* unchanged */
+func TestMergeStatesHADisconnected(t *testing.T) {
 	s := &state.State{
 		SolarTotal: 3500.0,
+		WaterLevel: 12.0,
+		CarSOC:     20.0,
 		Booleans: map[string]interface{}{
 			"only_charging": true,
 			"no_feed":       true,
@@ -127,18 +131,18 @@ func TestMergeStatesHADisconnected(t *testing.T) { /* unchanged */
 	if !ok {
 		t.Fatal("booleans not a map")
 	}
-	if booleans["only_charging"] != false {
-		t.Errorf("booleans.only_charging = %v, want false", booleans["only_charging"])
+	if booleans["only_charging"] != true {
+		t.Errorf("booleans.only_charging = %v, want MQTT true", booleans["only_charging"])
 	}
-	if booleans["no_feed"] != false {
-		t.Errorf("booleans.no_feed = %v, want false", booleans["no_feed"])
+	if booleans["no_feed"] != true {
+		t.Errorf("booleans.no_feed = %v, want MQTT true", booleans["no_feed"])
 	}
 
-	if merged["water_level"] != false {
-		t.Errorf("water_level = %v, want false", merged["water_level"])
+	if merged["water_level"] != 12.0 {
+		t.Errorf("water_level = %v, want Cerbo 12.0", merged["water_level"])
 	}
-	if merged["car_soc"] != false {
-		t.Errorf("car_soc = %v, want false", merged["car_soc"])
+	if merged["car_soc"] != 20.0 {
+		t.Errorf("car_soc = %v, want Cerbo 20.0", merged["car_soc"])
 	}
 
 	if merged["solar_total"] != 3500.0 {

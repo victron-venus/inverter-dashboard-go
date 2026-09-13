@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
-	"strconv"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,14 +35,13 @@ type Client struct {
 	lastStateMu      sync.RWMutex
 	cmdBuffer        *CommandBuffer
 
-	// dbus-pump water topics (Cerbo MQTT); empty portal disables
+	// Cerbo identity; empty portal enables native MQTT discovery.
 	portalID      string
 	tankInstance  int
 	pumpInstance  int
 	valveInstance int
 
-	// EV topics (Cerbo MQTT). Empty portal disables both vehicle
-	// (N/<portal>/ev/<ev>/...) and charger (N/<portal>/evcharger/<evcharger>/...).
+	// Selected vehicle and wallbox instances on the same Cerbo portal.
 	evInstance        int
 	evchargerInstance int
 
@@ -56,22 +55,16 @@ type Client struct {
 	platformSlots      map[string]*platformSlotState
 	platformNotifsSeen bool
 
-	// AC PV inverters of any vendor discovered on the GX broker
-	// (N/<portal>/pvinverter/<instance>/<path>), keyed by instance.
-	pvInverters map[int]*state.Charger
-
-	// camera events (optional Frigate topic; empty disables)
-	cameraTopic string
-
-	// Cerbo live-tile device maps (system/battery/mppt/vebus/acload)
-	batteries map[string]*cerboBattery
-	chargers  map[string]*cerboCharger
-	system    map[string]*cerboSystem
-	vebus     map[string]*cerboVebus
-	acloads   map[string]*cerboACLoad
-
-	// stop channel for Cerbo keepalive goroutine
-	keepaliveStop chan struct{}
+	// Cerbo state is cached by service, instance and path. Null leaves remain
+	// present to distinguish unavailable measurements from undiscovered data.
+	cerboLeaves           map[string]map[string]interface{}
+	cerboOwned            map[string]bool
+	cameraTopic           string
+	keepaliveStop         chan struct{}
+	keepaliveMu           sync.Mutex
+	keepaliveNeedsRefresh bool
+	subscribeMu           sync.Mutex
+	subscriptionsEnabled  atomic.Bool
 
 	// IGW-only mode: no Cerbo MQTT dial; ApplyState + gateway publisher.
 	gatewayMode      bool
@@ -90,10 +83,9 @@ func NewClient(broker string, port int) *Client {
 	opts.SetCleanSession(true)
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetConnectRetryInterval(5)
+	opts.SetConnectRetryInterval(5 * time.Second)
 
 	client := &Client{
-		client: mqtt.NewClient(opts),
 		broker: broker,
 		port:   port,
 		state: &state.State{
@@ -108,13 +100,24 @@ func NewClient(broker string, port int) *Client {
 		},
 		consoleLines:    make([]string, 0),
 		maxConsoleLines: 50,
-		pvInverters:     make(map[int]*state.Charger),
-		batteries:       make(map[string]*cerboBattery),
-		chargers:        make(map[string]*cerboCharger),
-		system:          make(map[string]*cerboSystem),
-		vebus:           make(map[string]*cerboVebus),
-		acloads:         make(map[string]*cerboACLoad),
 	}
+
+	// Clean sessions lose subscriptions on reconnect. Subscribe runs outside
+	// Paho's message router; waiting for SUBACK inside a router callback can deadlock.
+	opts.SetOnConnectHandler(func(_ mqtt.Client) {
+		if client.subscriptionsEnabled.Load() {
+			if err := client.Subscribe(); err != nil {
+				log.Printf("MQTT resubscribe: %v", err)
+			}
+		}
+	})
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		log.Printf("MQTT connection lost: %v", err)
+		client.stopKeepalive()
+		client.invalidateCerbo()
+	})
+	client.client = mqtt.NewClient(opts)
+	client.initCerboMaps()
 
 	// Initialize command buffer with capacity of 1000 commands
 	client.cmdBuffer = NewCommandBuffer(1000, client)
@@ -132,7 +135,9 @@ func (c *Client) IsConnected() bool {
 	if gm {
 		return gc
 	}
-	return c.client != nil && c.client.IsConnected()
+	// Paho IsConnected also means "will reconnect". Health and immediate
+	// controls require a currently open broker connection.
+	return c.client != nil && c.client.IsConnectionOpen()
 }
 
 // EnableGatewayMode marks this client as IGW-fed (skip MQTT dial semantics).
@@ -154,8 +159,14 @@ func (c *Client) DisableGatewayMode() {
 // SetGatewayConnected updates health for IGW mode.
 func (c *Client) SetGatewayConnected(v bool) {
 	c.gatewayMu.Lock()
+	changed := c.gatewayConnected != v
 	c.gatewayConnected = v
 	c.gatewayMu.Unlock()
+	// Failed gateway polls have no ApplyState call. Push their transport
+	// transition to existing WebSockets while retaining the last snapshot.
+	if changed {
+		c.triggerHandler()
+	}
 }
 
 // SetGatewayPublisher routes PublishCommand to IGW when set.
@@ -168,7 +179,7 @@ func (c *Client) SetGatewayPublisher(fn func(action string, payload interface{})
 
 // ApplyState replaces Cerbo telemetry state from an external source (IGW)
 // and triggers the WebSocket broadcast handler. Preserves console, version,
-// notifications, camera, and solar forecast when the incoming state omits them.
+// notifications, camera, forecast and controller metadata when a telemetry snapshot omits them.
 func (c *Client) ApplyState(st *state.State) {
 	if st == nil {
 		return
@@ -198,6 +209,36 @@ func (c *Client) ApplyState(st *state.State) {
 		}
 		if st.Booleans == nil {
 			st.Booleans = prev.Booleans
+			st.OnlyCharging, st.NoFeed, st.HouseSupport = prev.OnlyCharging, prev.NoFeed, prev.HouseSupport
+			st.ChargeBattery, st.DoNotSupplyCharger = prev.ChargeBattery, prev.DoNotSupplyCharger
+			st.SetLimitToEVCharger, st.MinimizeCharging, st.DryRun = prev.SetLimitToEVCharger, prev.MinimizeCharging, prev.DryRun
+		}
+		if reflect.ValueOf(st.DailyStats).IsZero() {
+			st.DailyStats = prev.DailyStats
+		}
+		if reflect.ValueOf(st.ESSMode).IsZero() {
+			st.ESSMode = prev.ESSMode
+		}
+		if st.UIConfig == nil {
+			st.UIConfig = prev.UIConfig
+		}
+		if st.DVCCLimits == nil {
+			st.DVCCLimits = prev.DVCCLimits
+		}
+		if st.Limits == nil {
+			st.Limits = prev.Limits
+		}
+		if st.Perf == nil {
+			st.Perf = prev.Perf
+		}
+		if st.LoopInterval == 0 {
+			st.LoopInterval = prev.LoopInterval
+		}
+		if st.GridControlValid == nil {
+			st.GridControlValid, st.GridControlReason = prev.GridControlValid, prev.GridControlReason
+			st.GridLossState, st.GridLossHoldSeconds = prev.GridLossState, prev.GridLossHoldSeconds
+			st.GridLossElapsed, st.GridLossRemaining = prev.GridLossElapsed, prev.GridLossRemaining
+			st.GridLossZeroApplied = prev.GridLossZeroApplied
 		}
 		if st.Features == nil {
 			st.Features = prev.Features
@@ -272,13 +313,17 @@ func (c *Client) SetCameraTopic(topic string) {
 }
 
 func (c *Client) SetWaterConfig(portalID string, tank, pump, valve int) {
-	c.portalID = portalID
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	c.portalID = strings.TrimSpace(portalID)
 	c.tankInstance = tank
 	c.pumpInstance = pump
 	c.valveInstance = valve
 }
 
 func (c *Client) SetEVConfig(ev, evcharger int) {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
 	c.evInstance = ev
 	c.evchargerInstance = evcharger
 }
@@ -298,144 +343,84 @@ func (c *Client) triggerHandler() {
 	if handler == nil {
 		return
 	}
-	// Coalesce concurrent MQTT bursts into one in-flight broadcast.
-	if !atomic.CompareAndSwapInt32(&c.broadcastPending, 0, 1) {
-		return
+	// Coalesce bursts, but run again when data changed during the callback.
+	// Otherwise the last reading (especially a disconnect) can be lost forever.
+	for {
+		switch atomic.LoadInt32(&c.broadcastPending) {
+		case 0:
+			if !atomic.CompareAndSwapInt32(&c.broadcastPending, 0, 1) {
+				continue
+			}
+			go func() {
+				for {
+					handler()
+					if atomic.CompareAndSwapInt32(&c.broadcastPending, 1, 0) {
+						return
+					}
+					atomic.StoreInt32(&c.broadcastPending, 1)
+				}
+			}()
+			return
+		case 1:
+			if atomic.CompareAndSwapInt32(&c.broadcastPending, 1, 2) {
+				return
+			}
+		case 2:
+			return
+		}
 	}
-	go func() {
-		defer atomic.StoreInt32(&c.broadcastPending, 0)
-		handler()
-	}()
 }
 
 func (c *Client) Subscribe() error {
-	if token := c.client.Subscribe("inverter/state", 0, c.onStateMessage); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to subscribe to inverter/state: %w", token.Error())
+	c.subscriptionsEnabled.Store(true)
+	c.subscribeMu.Lock()
+	defer c.subscribeMu.Unlock()
+	if c.client == nil || !c.client.IsConnectionOpen() {
+		return fmt.Errorf("mqtt not connected")
 	}
-	if token := c.client.Subscribe("inverter/console", 0, c.onConsoleMessage); token.Wait() && token.Error() != nil {
-		log.Printf("Warning: failed to subscribe to inverter/console: %v", token.Error())
+	if portal := c.PortalID(); portal != "" && !validPortal(portal) {
+		return fmt.Errorf("invalid Cerbo portal id")
 	}
-	if token := c.client.Subscribe("inverter/notifications", 0, c.onNotificationMessage); token.Wait() && token.Error() != nil {
-		log.Printf("Warning: failed to subscribe to inverter/notifications: %v", token.Error())
-	}
-	if token := c.client.Subscribe("inverter/portal", 0, c.onPortalMessage); token.Wait() && token.Error() != nil {
-		log.Printf("Warning: failed to subscribe to inverter/portal: %v", token.Error())
-	}
-
-	// Wildcard Cerbo live tiles — work even before portal ID is known.
-	for _, filt := range []string{
-		"N/+/acload/+/#",
-		"N/+/pvinverter/+/#",
-		"N/+/system/+/#",
-		"N/+/battery/+/#",
-		"N/+/solarcharger/+/#",
-		"N/+/vebus/+/#",
+	// A clean MQTT session needs a fresh device inventory. Old retained daemon
+	// values cannot resurrect readings that the previous Cerbo session owned.
+	c.stateMu.Lock()
+	c.cerboLeaves = nil
+	c.applyCerboOverlays()
+	c.stateMu.Unlock()
+	for _, sub := range []struct {
+		topic   string
+		handler mqtt.MessageHandler
+	}{
+		{"inverter/state", c.onStateMessage}, {"inverter/console", c.onConsoleMessage},
+		{"inverter/notifications", c.onNotificationMessage}, {"inverter/portal", c.onPortalMessage},
 	} {
-		handler := c.onCerboLiveMessage
-		if strings.Contains(filt, "pvinverter") {
-			handler = c.onPvInverterMessage
-		}
-		if token := c.client.Subscribe(filt, 0, handler); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to %s: %v", filt, token.Error())
+		if token := c.client.Subscribe(sub.topic, 0, sub.handler); token.Wait() && token.Error() != nil {
+			log.Printf("Optional controller subscription %s failed: %v", sub.topic, token.Error())
 		}
 	}
-
-	if c.portalID != "" {
-		c.subscribePortalTopics(c.portalID)
+	portal := c.PortalID()
+	if portal == "" {
+		portal = "+"
+	}
+	if err := c.subscribeNativeTopics(portal); err != nil {
+		return err
 	}
 	if c.cameraTopic != "" {
 		if token := c.client.Subscribe(c.cameraTopic, 0, c.onCameraMessage); token.Wait() && token.Error() != nil {
-			log.Printf("Warning: failed to subscribe to %s: %v", c.cameraTopic, token.Error())
-		} else {
-			log.Printf("Subscribed to camera events on %s", c.cameraTopic)
+			return token.Error()
 		}
 	}
 	c.startKeepalive()
-	log.Printf("Subscribed to MQTT topics")
 	return nil
 }
 
-// onWaterMessage decodes dbus-pump water topics into the shared state.
-// Topic shapes: N/<portal>/tank/<instance>/Level and
-// N/<portal>/pump/<instance>/State, payload {"value": <num>}.
-// cerboMsg parses a Cerbo MQTT message payload. Returns topic parts and the
-// float value on success; skips if the topic does not match the portal or has
-// too few segments.
-func (c *Client) cerboMsg(msg mqtt.Message) (parts []string, num float64, ok bool) {
-	if c.portalID == "" {
-		return nil, 0, false
+// Compatibility entry points share the same reducer as all native telemetry.
+func (c *Client) onWaterMessage(_ mqtt.Client, msg mqtt.Message) { c.onCerboLiveMessage(nil, msg) }
+func (c *Client) onEVMessage(_ mqtt.Client, msg mqtt.Message)    { c.onCerboLiveMessage(nil, msg) }
+func (c *Client) onPvInverterMessage(_ mqtt.Client, msg mqtt.Message) {
+	if strings.Contains(msg.Topic(), "/pvinverter/") {
+		c.onCerboLiveMessage(nil, msg)
 	}
-	parts = strings.Split(msg.Topic(), "/")
-	if len(parts) < 5 || parts[0] != "N" || parts[1] != c.portalID {
-		return nil, 0, false
-	}
-	var payload struct {
-		Value interface{} `json:"value"`
-	}
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return nil, 0, false
-	}
-	num, ok = toFloat(payload.Value)
-	if !ok {
-		return nil, 0, false
-	}
-	return parts, num, true
-}
-
-func (c *Client) onWaterMessage(client mqtt.Client, msg mqtt.Message) {
-	parts, num, ok := c.cerboMsg(msg)
-	if !ok {
-		return
-	}
-	c.stateMu.Lock()
-	st := c.state
-	switch {
-	case parts[2] == "tank" && parts[3] == strconv.Itoa(c.tankInstance) && parts[4] == "Level":
-		st.WaterLevel = num
-	// Venus bridges pump.startstop services as N/<portal>/pump/<instance>/State
-	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.valveInstance):
-		st.WaterValve = num != 0
-	case len(parts) >= 5 && parts[2] == "pump" && parts[4] == "State" && parts[3] == strconv.Itoa(c.pumpInstance):
-		st.PumpSwitch = num != 0
-	default:
-		c.stateMu.Unlock()
-		return
-	}
-	c.stateMu.Unlock()
-	c.triggerHandler()
-}
-
-// onEVMessage decodes Cerbo EV/EV-charger topics into shared state.
-// Topics: N/<portal>/ev/<i>/Soc, N/<portal>/ev/<i>/Ac/Power,
-// N/<portal>/evcharger/<i>/Ac/Power (W → kW).
-func (c *Client) onEVMessage(client mqtt.Client, msg mqtt.Message) {
-	parts, num, ok := c.cerboMsg(msg)
-	if !ok {
-		return
-	}
-	c.stateMu.Lock()
-	st := c.state
-	evInst := strconv.Itoa(c.evInstance)
-	evChargerInst := strconv.Itoa(c.evchargerInstance)
-	switch {
-	case len(parts) == 5 && parts[2] == "ev" && parts[3] == evInst && parts[4] == "Soc":
-		st.CarSOC = num
-	case len(parts) == 6 && parts[4] == "Ac" && parts[5] == "Power":
-		switch parts[2] + "/" + parts[3] {
-		case "ev/" + evInst:
-			st.EVChargingKW = num / 1000.0
-		case "evcharger/" + evChargerInst:
-			st.EVPower = num / 1000.0
-		default:
-			c.stateMu.Unlock()
-			return
-		}
-	default:
-		c.stateMu.Unlock()
-		return
-	}
-	c.stateMu.Unlock()
-	c.triggerHandler()
 }
 
 func toFloat(v interface{}) (float64, bool) {
@@ -452,65 +437,6 @@ func toFloat(v interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// onPvInverterMessage decodes GX PV-inverter topics into the shared state.
-// Topic shape: N/<portal>/pvinverter/<instance>/<path...>, payload
-// {"value": <num|str>}. Works with any vendor's dbus publisher.
-func (c *Client) onPvInverterMessage(client mqtt.Client, msg mqtt.Message) {
-	parts := strings.Split(msg.Topic(), "/")
-	if len(parts) < 5 || parts[0] != "N" || parts[2] != "pvinverter" {
-		return
-	}
-	inst, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return
-	}
-	path := strings.Join(parts[4:], "/")
-
-	var payload struct {
-		Value interface{} `json:"value"`
-	}
-	if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-		return
-	}
-
-	c.stateMu.Lock()
-	entry, ok := c.pvInverters[inst]
-	if !ok {
-		entry = &state.Charger{}
-		c.pvInverters[inst] = entry
-	}
-	changed := false
-	switch path {
-	case "Ac/Power", "Ac/L1/Power":
-		if num, okNum := toFloat(payload.Value); okNum && entry.Power != num {
-			entry.Power = num
-			changed = true
-		}
-	case "Ac/L1/Voltage":
-		if num, okNum := toFloat(payload.Value); okNum && entry.PVVoltage != num {
-			entry.PVVoltage = num
-			changed = true
-		}
-	case "Ac/L1/Current":
-		if num, okNum := toFloat(payload.Value); okNum && entry.Current != num {
-			entry.Current = num
-			changed = true
-		}
-	case "ProductName":
-		if name, okStr := payload.Value.(string); okStr && name != "" && entry.Name != name {
-			entry.Name = name
-			changed = true
-		}
-	}
-	if changed {
-		c.applyCerboOverlays()
-		c.stateMu.Unlock()
-		c.triggerHandler()
-		return
-	}
-	c.stateMu.Unlock()
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {
@@ -538,7 +464,7 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	} else {
 		message = []byte("{}")
 	}
-	if c.client == nil || !c.client.IsConnected() {
+	if c.client == nil || !c.client.IsConnectionOpen() {
 		return fmt.Errorf("mqtt not connected")
 	}
 	if token := c.client.Publish(topic, 0, false, message); token.Wait() && token.Error() != nil {
@@ -554,7 +480,7 @@ func (c *Client) publishCerboAlarmCommand(action string) error {
 	if portal == "" {
 		return fmt.Errorf("cerbo portal id required for %s", action)
 	}
-	if c.client == nil || !c.client.IsConnected() {
+	if c.client == nil || !c.client.IsConnectionOpen() {
 		return fmt.Errorf("mqtt not connected")
 	}
 	var topic, body string
@@ -590,6 +516,7 @@ func (c *Client) Disconnect() {
 		c.cmdBuffer.Stop()
 	}
 
+	// Disconnect must also cancel Paho's pending reconnect loop.
 	if c.client != nil && c.client.IsConnected() {
 		c.client.Disconnect(250)
 		log.Printf("Disconnected from MQTT broker")
@@ -609,7 +536,7 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 
 	c.stateMu.Lock()
 	c.mergeDaemonState(data)
-	st := c.state
+	st := c.state.Clone()
 	c.stateMu.Unlock()
 
 	// Log values

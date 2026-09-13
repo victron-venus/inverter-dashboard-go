@@ -24,7 +24,7 @@ type Config struct {
 }
 
 // CerboConfig selects the dbus-pump water topics on the Cerbo MQTT broker.
-// Empty PortalID disables water and EV extras.
+// Empty PortalID enables passive native discovery; configure it to bootstrap a quiet broker.
 type CerboConfig struct {
 	PortalID      string
 	TankInstance  int
@@ -435,7 +435,7 @@ func logHomeAssistantConfig(cfg *HomeAssistantConfig) {
 	}
 	log.Println("=== HomeAssistant Configuration Values ===")
 	log.Printf("URL: %s", cfg.URL)
-	log.Printf("Token: %s...%s (truncated)", cfg.Token[:10], cfg.Token[len(cfg.Token)-5:])
+	log.Printf("Token configured: %t", cfg.Token != "")
 	log.Printf("Direct Controls: %v", cfg.DirectControls)
 	log.Printf("Poll Interval: %.1f seconds", cfg.PollInterval)
 	log.Printf("Boolean Entities: %d entries", len(cfg.BooleanEntities))
