@@ -10,6 +10,10 @@ name: Build release assets
         description: nightly, beta or rc; stable promotes existing RC bytes
         required: true
         type: string
+      release_plan_artifact:
+        description: Frozen version plan artifact allocated by the release workflow
+        required: true
+        type: string
 permissions:
   contents: read
 env:
@@ -49,6 +53,18 @@ jobs:
         egress-policy: audit
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Set up release version tooling
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Download frozen release version plan
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.release_plan_artifact }}
+        path: .
+    - name: Apply frozen release version inputs
+      shell: bash
+      run: python3 scripts/version_plan.py sync --root . --plan .release-plan.json
     - name: Verify committed release version
       run: python3 scripts/check-release-version.py "$RELEASE_VERSION" "$RELEASE_CHANNEL"
     - name: Verify versioned Vue assets
@@ -63,27 +79,27 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         GOARM: ${{ matrix.goarm }}
         CGO_ENABLED: 0
-        BUILD_VERSION: ${{ inputs.version }}
-      run: |
-        output_name="inverter-dashboard-${{ matrix.name }}"
-        if [ "${{ matrix.goos }}" = "windows" ]; then
-          output_name="${output_name}.exe"
-        fi
-
-        ldflags="-s -w -X main.Version=$BUILD_VERSION"
-        go build -ldflags "$ldflags" -o "dist/${output_name}" .
+      run: "output_name=\"inverter-dashboard-${{ matrix.name }}\"\nif [ \"${{ matrix.goos }}\" = \"windows\" ]; then\n  output_name=\"${output_name}.exe\"\nfi\npackage_version=$(tr -d '\\r\\n' < VERSION)\nldflags=\"-s -w -X main.Version=$package_version\"\ngo build -ldflags \"$ldflags\" -o \"dist/${output_name}\" .\npython3 scripts/write_binary_build_metadata.py \"dist/${output_name}\" \"dist/inverter-dashboard-${{ matrix.name }}.version.json\"\n"
     - name: Smoke test native release binary
       if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-      env:
-        BUILD_VERSION: ${{ inputs.version }}
-      run: |
+      run: 'package_version=$(tr -d ''\r\n'' < VERSION)
+
         actual=$(dist/inverter-dashboard-linux-amd64 --version)
-        test "$actual" = "Inverter Dashboard v${BUILD_VERSION#v}"
+
+        test "$actual" = "Inverter Dashboard v$package_version"
+
+        '
+    - name: Verify and stage versioned release assets
+      shell: bash
+      env:
+        RELEASE_ASSET_TARGET: ${{ matrix.name }}
+        RELEASE_ASSET_PATTERN_0: dist/inverter-dashboard-${{ matrix.name }}*
+      run: python3 scripts/stage_release_assets.py --target "$RELEASE_ASSET_TARGET" --pattern "$RELEASE_ASSET_PATTERN_0"
     - name: Store release assets
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: release-assets-${{ matrix.name }}
-        path: dist/inverter-dashboard-${{ matrix.name }}*
+        path: release-assets/${{ matrix.name }}/*
         if-no-files-found: error
         retention-days: 14
   container:
@@ -96,10 +112,25 @@ jobs:
       with:
         egress-policy: audit
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Set up release version tooling
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: '3.12'
+    - name: Download frozen release version plan
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ inputs.release_plan_artifact }}
+        path: .
+    - name: Apply frozen release version inputs
+      shell: bash
+      run: python3 scripts/version_plan.py sync --root . --plan .release-plan.json
     - name: Verify committed release version
       run: python3 scripts/check-release-version.py "$RELEASE_VERSION" "$RELEASE_CHANNEL"
     - uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a
     - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e
+    - name: Check container version metadata
+      id: image-version
+      run: python3 scripts/release_container_labels.py --github-output "$GITHUB_OUTPUT"
     - name: Build OCI image archive
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
       with:
@@ -112,10 +143,21 @@ jobs:
         provenance: mode=max
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        labels: 'org.opencontainers.image.version=${{ steps.image-version.outputs.version }}
+
+          org.opencontainers.image.revision=${{ steps.image-version.outputs.revision }}
+
+          '
+    - name: Verify and stage versioned release assets
+      shell: bash
+      env:
+        RELEASE_ASSET_TARGET: container
+        RELEASE_ASSET_PATTERN_0: inverter-dashboard-go-container.oci.tar
+      run: python3 scripts/stage_release_assets.py --target "$RELEASE_ASSET_TARGET" --pattern "$RELEASE_ASSET_PATTERN_0"
     - name: Store release assets
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: release-assets-container
-        path: inverter-dashboard-go-container.oci.tar
+        path: release-assets/container/*
         if-no-files-found: error
         retention-days: 14
