@@ -15,12 +15,17 @@ Binary policy (like inverter-desktop `connectionPolicy`):
 
 ### This k3s/mp deploy: IGW-only (unload Cerbo)
 
-Uses **HTTPS inverter-gateway** (`https://victron.2560801.xyz`) via
-`GET /v1/snapshot` every ~2s with Cloudflare Access service-token headers +
-Bearer `GATEWAY_API_TOKEN`.
+Uses native **HTTPS inverter-gateway** (`https://igw.s.2560801.xyz:9151`) via
+`GET /v1/snapshot` every ~2s with Bearer `GATEWAY_API_TOKEN`.
+The TLS certificate must be trusted and valid for the hostname. Pod DNS must
+resolve `igw.s.2560801.xyz` to the IGW node; if cluster DNS does not forward the
+LAN zone, use an installation-specific workload `hostAliases` entry while DNS is
+configured. Keep the hostname in the URL so TLS identity is verified.
 
 - ConfigMap: `GATEWAY_ENABLED=true`, `GATEWAY_URL`, poll interval
-- Secret `inverter-dashboard-go-gateway`: Access client id/secret + API token
+- Secret `inverter-dashboard-go-gateway`: API token
+- Deployment explicitly empties the two Access environment values, overriding
+  old credentials inherited from the Secret or mounted YAML.
 - **No** `MQTT_HOST` / `MQTT_PORT` / `--mqtt-host` — pod does not dial Cerbo
   (IGW already owns keepalive). Set them only if you intentionally want
   MQTT-preferred dual-path on this node.
@@ -30,6 +35,18 @@ Banner ack/X: IGW `POST /v1/commands/acknowledge_all_notifications` (and
 `W/.../AcknowledgeAll` / `SilenceAlarm`.
 
 `inverter/cmd/*` (setpoint/toggles) is not on IGW yet — telemetry-first is OK.
+
+Both polling and commands reject all redirects, including same-origin and HTTPS
+to HTTP redirects. `GATEWAY_URL` must be an absolute HTTPS URL without userinfo,
+query, or fragment; existing path prefixes are supported. An HTTP URL now fails
+client initialization before credentials can be sent. Configure the final HTTPS
+endpoint directly rather than relying on an HTTP-to-HTTPS redirect.
+
+For the Cloudflare-protected public endpoint `https://victron.2560801.xyz`, set a
+complete Access client id/secret pair and override/remove the deployment's two
+explicit empty Access environment values. Public HTTPS and the existing command
+API remain supported. Any explicitly set `GATEWAY_*` environment value takes
+precedence over mounted `config.yaml`, including empty credentials.
 
 ### Cerbo MQTT mode (non-k3s / LAN)
 

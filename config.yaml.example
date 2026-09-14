@@ -15,14 +15,17 @@ mqtt:
   host: "192.168.160.150"  # Cerbo/LAN broker ("" to skip MQTT / force IGW when gateway on)
   port: 1883               # MQTT port (usually 1883; 0 when unused)
 
-# Remote inverter-gateway (HTTPS). Used when MQTT is unset or unreachable.
+# Remote inverter-gateway (HTTPS only). Used when MQTT is unset or unreachable.
+# Certificate trust and hostname are verified; all redirects are rejected.
+# Explicit GATEWAY_* environment values override this block, including empty
+# Access credentials when switching from Cloudflare to native bearer-only HTTPS.
 # Polls GET /v1/snapshot. Commands: IGW whitelist only
 # (silence_alarm, acknowledge_all_notifications); inverter/cmd/* not on IGW yet.
 gateway:
   enabled: false
-  url: "https://victron.2560801.xyz"
-  access_client_id: ""       # Cloudflare Access service token client id
-  access_client_secret: ""   # Cloudflare Access service token client secret
+  url: "https://igw.s.2560801.xyz:9151"
+  access_client_id: ""       # Optional: Cloudflare Access client id (configure both)
+  access_client_secret: ""   # Optional: Cloudflare Access client secret
   api_token: ""              # Bearer GATEWAY_API_TOKEN
   poll_interval_seconds: 2
 

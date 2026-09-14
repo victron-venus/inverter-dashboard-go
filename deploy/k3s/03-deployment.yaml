@@ -36,6 +36,12 @@ spec:
           env:
             - name: WEB_HOST
               value: "0.0.0.0"
+            # Native IGW HTTPS needs bearer auth, not the old Cloudflare pair.
+            # Explicit empty env overrides inherited Secret and mounted YAML values.
+            - name: GATEWAY_ACCESS_CLIENT_ID
+              value: ""
+            - name: GATEWAY_ACCESS_CLIENT_SECRET
+              value: ""
           volumeMounts:
             # Optional HA/config.yaml Secret — comment out until present
             - name: config

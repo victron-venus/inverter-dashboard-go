@@ -42,7 +42,7 @@ type MQTTConfig struct {
 	Port int
 }
 
-// GatewayConfig selects HTTPS inverter-gateway (Cloudflare Access + bearer).
+// GatewayConfig selects HTTPS inverter-gateway (bearer and optional Cloudflare Access).
 // Used when MQTT is unset (IGW-only) or as failover when MQTT is configured
 // but unreachable (dual-path; see ChooseStartupSource).
 type GatewayConfig struct {
@@ -337,22 +337,25 @@ func loadConfigYAML(cfg *Config) error {
 	}
 
 	if top.Gateway != nil {
-		if top.Gateway.Enabled != nil {
+		// Explicit gateway environment values take precedence over mounted YAML.
+		// In particular, empty Access values disable old Cloudflare credentials
+		// when switching the deployment to the native bearer-only HTTPS endpoint.
+		if _, set := os.LookupEnv("GATEWAY_ENABLED"); !set && top.Gateway.Enabled != nil {
 			cfg.Gateway.Enabled = *top.Gateway.Enabled
 		}
-		if top.Gateway.URL != "" {
+		if _, set := os.LookupEnv("GATEWAY_URL"); !set && top.Gateway.URL != "" {
 			cfg.Gateway.URL = top.Gateway.URL
 		}
-		if top.Gateway.AccessClientID != "" {
+		if _, set := os.LookupEnv("GATEWAY_ACCESS_CLIENT_ID"); !set && top.Gateway.AccessClientID != "" {
 			cfg.Gateway.AccessClientID = top.Gateway.AccessClientID
 		}
-		if top.Gateway.AccessClientSecret != "" {
+		if _, set := os.LookupEnv("GATEWAY_ACCESS_CLIENT_SECRET"); !set && top.Gateway.AccessClientSecret != "" {
 			cfg.Gateway.AccessClientSecret = top.Gateway.AccessClientSecret
 		}
-		if top.Gateway.APIToken != "" {
+		if _, set := os.LookupEnv("GATEWAY_API_TOKEN"); !set && top.Gateway.APIToken != "" {
 			cfg.Gateway.APIToken = top.Gateway.APIToken
 		}
-		if top.Gateway.PollIntervalSec > 0 {
+		if _, set := os.LookupEnv("GATEWAY_POLL_INTERVAL_SECONDS"); !set && top.Gateway.PollIntervalSec > 0 {
 			cfg.Gateway.PollIntervalSec = top.Gateway.PollIntervalSec
 		}
 	}
@@ -462,9 +465,10 @@ func (c *Config) GatewayConfigured() bool {
 	if c == nil || !c.Gateway.Enabled {
 		return false
 	}
-	return strings.TrimSpace(c.Gateway.URL) != "" &&
-		strings.TrimSpace(c.Gateway.AccessClientID) != "" &&
-		strings.TrimSpace(c.Gateway.AccessClientSecret) != ""
+	hasID := strings.TrimSpace(c.Gateway.AccessClientID) != ""
+	hasSecret := strings.TrimSpace(c.Gateway.AccessClientSecret) != ""
+	return strings.TrimSpace(c.Gateway.URL) != "" && hasID == hasSecret &&
+		(strings.TrimSpace(c.Gateway.APIToken) != "" || hasID)
 }
 
 // envBool reads a boolean environment variable.

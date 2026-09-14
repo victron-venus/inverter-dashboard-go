@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +18,7 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
 
-// Config holds HTTPS IGW client settings (Cloudflare Access + bearer).
+// Config holds HTTPS IGW client settings (bearer and optional Cloudflare Access).
 type Config struct {
 	URL                string
 	AccessClientID     string
@@ -38,14 +40,20 @@ type Client struct {
 	mapOptions MapOptions
 }
 
-// NewClient builds an IGW HTTP client. apply receives mapped dashboard state.
+// NewClient builds an IGW HTTPS client. apply receives mapped dashboard state.
 func NewClient(cfg Config, apply func(*state.State), onStatus func(connected bool)) (*Client, error) {
-	base := strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
-	if base == "" {
-		return nil, fmt.Errorf("gateway URL is required")
+	base, err := normalizeURL(cfg.URL)
+	if err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(cfg.AccessClientID) == "" || strings.TrimSpace(cfg.AccessClientSecret) == "" {
-		return nil, fmt.Errorf("cloudflare Access client id and secret are required")
+	cfg.AccessClientID = strings.TrimSpace(cfg.AccessClientID)
+	cfg.AccessClientSecret = strings.TrimSpace(cfg.AccessClientSecret)
+	cfg.APIToken = strings.TrimSpace(cfg.APIToken)
+	if (cfg.AccessClientID == "") != (cfg.AccessClientSecret == "") {
+		return nil, fmt.Errorf("cloudflare Access client id and secret must be configured together")
+	}
+	if cfg.APIToken == "" && cfg.AccessClientID == "" {
+		return nil, fmt.Errorf("gateway bearer token or Cloudflare Access credentials are required")
 	}
 	interval := cfg.PollInterval
 	if interval <= 0 {
@@ -57,12 +65,39 @@ func NewClient(cfg Config, apply func(*state.State), onStatus func(connected boo
 		cfg: cfg,
 		http: &http.Client{
 			Timeout: 25 * time.Second,
+			// Custom Access headers can survive Go's default redirect handling.
+			// Commands must also never be replayed at a redirected URL.
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		apply:      apply,
 		onStatus:   onStatus,
 		stopCh:     make(chan struct{}),
 		mapOptions: cfg.MapOptions,
 	}, nil
+}
+
+// normalizeURL rejects insecure or ambiguous endpoints before adding credentials.
+// Error messages deliberately omit the input, which may contain URL credentials.
+func normalizeURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil || !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" || u.Opaque != "" {
+		return "", fmt.Errorf("gateway URL must be an absolute HTTPS URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
+		return "", fmt.Errorf("gateway URL must not contain userinfo, a query, or a fragment")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", fmt.Errorf("gateway URL has an invalid port")
+		}
+	} else if strings.HasSuffix(u.Host, ":") {
+		return "", fmt.Errorf("gateway URL has an invalid port")
+	}
+	u.Scheme = "https"
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 // IsConnected reports whether the last poll succeeded.
@@ -124,8 +159,10 @@ func (c *Client) pollOnce() {
 }
 
 func (c *Client) authHeaders(req *http.Request) {
-	req.Header.Set("CF-Access-Client-Id", c.cfg.AccessClientID)
-	req.Header.Set("CF-Access-Client-Secret", c.cfg.AccessClientSecret)
+	if c.cfg.AccessClientID != "" {
+		req.Header.Set("CF-Access-Client-Id", c.cfg.AccessClientID)
+		req.Header.Set("CF-Access-Client-Secret", c.cfg.AccessClientSecret)
+	}
 	if tok := strings.TrimSpace(c.cfg.APIToken); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
