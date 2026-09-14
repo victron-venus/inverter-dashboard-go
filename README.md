@@ -100,6 +100,21 @@ an empty MQTT payload removes the service. Once direct telemetry owns a field, o
 controller payloads cannot resurrect it. Device entries have their own availability maps.
 Gateway snapshots use the same reducer and units as the direct MQTT path.
 
+### HTTPS gateway transport
+
+For native IGW, configure `GATEWAY_URL=https://igw.s.2560801.xyz:9151` and
+`GATEWAY_API_TOKEN`. The optional Cloudflare Access client id/secret must be set
+together when using a protected public endpoint. Native HTTPS works with a bearer
+token alone. Explicit `GATEWAY_*` environment settings override mounted YAML;
+empty Access values disable previously configured Cloudflare credentials.
+
+The gateway client requires HTTPS and normal certificate/hostname verification.
+HTTP URLs, URL userinfo, queries, and fragments are rejected before credentials
+are sent. Snapshot polling and commands never follow redirects, even to the same
+origin. Existing HTTP configurations must switch to the final HTTPS endpoint;
+gateway HTTP availability for other legacy consumers is unchanged. See the
+[k3s deployment guide](deploy/k3s/README.md) for DNS and Secret configuration.
+
 ### Water system
 
 Water data comes **exclusively** from [dbus-pump](https://github.com/victron-venus/dbus-pump)

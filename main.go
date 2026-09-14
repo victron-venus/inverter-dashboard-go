@@ -113,7 +113,6 @@ func main() {
 		"mqtt_host", cfg.MQTT.Host,
 		"mqtt_port", cfg.MQTT.Port,
 		"gateway_enabled", cfg.Gateway.Enabled,
-		"gateway_url", cfg.Gateway.URL,
 		"web_proto", proto,
 		"web_host", cfg.Web.Host,
 		"web_port", cfg.Web.Port,
@@ -140,7 +139,7 @@ func main() {
 	mqttConfigured := cfg.MQTTConfigured()
 	igwConfigured := cfg.GatewayConfigured()
 	if !mqttConfigured && !igwConfigured {
-		logger.Error(logging.DefaultContext(), "No telemetry source configured: set MQTT_HOST or enable gateway (GATEWAY_ENABLED + URL + Access credentials)")
+		logger.Error(logging.DefaultContext(), "No telemetry source configured: set MQTT_HOST or enable gateway (GATEWAY_ENABLED + HTTPS URL + bearer token or complete Access credentials)")
 		os.Exit(1)
 	}
 

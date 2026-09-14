@@ -10,7 +10,7 @@ data:
   WEB_PORT: "8080"
   WEB_HOST: "0.0.0.0"
   GATEWAY_ENABLED: "true"
-  GATEWAY_URL: "https://victron.2560801.xyz"
+  GATEWAY_URL: "https://igw.s.2560801.xyz:9151"
   GATEWAY_POLL_INTERVAL_SECONDS: "2"
   # Optional Cerbo portal metadata for water/EV instance mapping from snapshot
   CERBO_PORTAL_ID: "b827ebea1ece"
