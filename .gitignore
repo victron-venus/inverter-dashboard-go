@@ -87,3 +87,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 /release-output/
+# Frozen release overlays and final build staging
+.release-plan.json
+.release-inputs.json
+release-assets/

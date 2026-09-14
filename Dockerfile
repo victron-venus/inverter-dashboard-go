@@ -16,7 +16,8 @@ COPY . .
 # Cross-compile on the native builder instead of emulating the target CPU.
 ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o inverter-dashboard .
+RUN package_version="$(tr -d '\r\n' < VERSION)" \
+    && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s -X main.Version=${package_version}" -o inverter-dashboard .
 
 # Runtime stage - match Python slim image
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
