@@ -5,7 +5,8 @@ metadata:
   labels:
     app: inverter-dashboard-go
 data:
-  # Deploy default: IGW-only (no MQTT_HOST) to unload Cerbo.
+  # Clear the image's legacy MQTT_HOST default for IGW-only deployment.
+  MQTT_HOST: ""
   # Code still prefers Cerbo MQTT when MQTT_HOST is set and reachable; IGW is failover.
   WEB_PORT: "8080"
   WEB_HOST: "0.0.0.0"
