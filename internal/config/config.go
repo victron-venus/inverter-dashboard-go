@@ -30,9 +30,9 @@ type CerboConfig struct {
 	TankInstance  int
 	PumpInstance  int
 	ValveInstance int
-	// EV instance for vehicle topics (N/<portal>/ev/<instance>/...)
+	// EV instance for vehicle topics; -1 discovers automatically, zero is valid.
 	EVInstance int
-	// EVCharger instance for charger topics (N/<portal>/evcharger/<instance>/...)
+	// EVCharger instance for wallbox topics; -1 discovers automatically.
 	EVChargerInstance int
 }
 
@@ -244,8 +244,8 @@ func Load(configPath string) (*Config, error) {
 			TankInstance:      getEnvIntDefault("WATER_TANK_INSTANCE", 21),
 			PumpInstance:      getEnvIntDefault("WATER_PUMP_INSTANCE", 1),
 			ValveInstance:     getEnvIntDefault("WATER_VALVE_INSTANCE", 2),
-			EVInstance:        getEnvIntDefault("EV_INSTANCE", 22),
-			EVChargerInstance: getEnvIntDefault("EVCHARGER_INSTANCE", 40),
+			EVInstance:        getEnvIntDefault("EV_INSTANCE", -1),
+			EVChargerInstance: getEnvIntDefault("EVCHARGER_INSTANCE", -1),
 		},
 		DashboardSecret:   getEnvDefault("DASHBOARD_SECRET", ""),
 		SelfUpdateEnabled: getEnvDefault("SELF_UPDATE_ENABLED", "") == "true",

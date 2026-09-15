@@ -5,19 +5,21 @@ import "encoding/json"
 // Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
 // Keys are "<instance>/<DBusPath>" (e.g. "0/Ac/Grid/L1/Power").
 type Snapshot struct {
-	Grid         map[string]json.RawMessage `json:"grid"`
-	System       map[string]json.RawMessage `json:"system"`
-	Vebus        map[string]json.RawMessage `json:"vebus"`
-	Battery      map[string]json.RawMessage `json:"battery"`
-	Solarcharger map[string]json.RawMessage `json:"solarcharger"`
-	Pvinverter   map[string]json.RawMessage `json:"pvinverter"`
-	Tank         map[string]json.RawMessage `json:"tank"`
-	Pump         map[string]json.RawMessage `json:"pump"`
-	EV           map[string]json.RawMessage `json:"ev"`
-	EVCharger    map[string]json.RawMessage `json:"evcharger"`
-	ACLoad       map[string]json.RawMessage `json:"acload"`
-	Platform     map[string]json.RawMessage `json:"platform"`
-	Settings     map[string]json.RawMessage `json:"settings"`
+	InverterPresent bool                       `json:"-"`
+	Inverter        map[string]interface{}     `json:"inverter"`
+	Grid            map[string]json.RawMessage `json:"grid"`
+	System          map[string]json.RawMessage `json:"system"`
+	Vebus           map[string]json.RawMessage `json:"vebus"`
+	Battery         map[string]json.RawMessage `json:"battery"`
+	Solarcharger    map[string]json.RawMessage `json:"solarcharger"`
+	Pvinverter      map[string]json.RawMessage `json:"pvinverter"`
+	Tank            map[string]json.RawMessage `json:"tank"`
+	Pump            map[string]json.RawMessage `json:"pump"`
+	EV              map[string]json.RawMessage `json:"ev"`
+	EVCharger       map[string]json.RawMessage `json:"evcharger"`
+	ACLoad          map[string]json.RawMessage `json:"acload"`
+	Platform        map[string]json.RawMessage `json:"platform"`
+	Settings        map[string]json.RawMessage `json:"settings"`
 }
 
 // leafMap is a decoded service map with flexible JSON values.
@@ -61,4 +63,20 @@ type snapshotLeaves struct {
 	Grid                                                  leafMap
 	System, Vebus, Battery, Solarcharger, Pvinverter      leafMap
 	Tank, Pump, EV, EVCharger, ACLoad, Platform, Settings leafMap
+}
+
+// UnmarshalJSON distinguishes older gateways from an explicit controller clear.
+func (s *Snapshot) UnmarshalJSON(data []byte) error {
+	type snapshotAlias Snapshot
+	var decoded snapshotAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	_, decoded.InverterPresent = fields["inverter"]
+	*s = Snapshot(decoded)
+	return nil
 }

@@ -38,7 +38,7 @@ func TestPollKeepsAppliancesAndSkipsCerboMirrors(t *testing.T) {
 		URL: "http://ha.test", Token: "test", DirectControls: true,
 		BooleanEntities: []config.BooleanEntityConfig{
 			{Key: "only_charging", Entity: "input_boolean.only_charging"},
-			{Key: "legacy_alias", Entity: "binary_sensor.no_feed"},
+			{Key: "legacy_alias", Entity: "input_boolean.no_feed"},
 			{Key: "holiday", Entity: "input_boolean.holiday"},
 		},
 		SwitchEntities: []config.EntityConfig{
@@ -63,10 +63,28 @@ func TestPollKeepsAppliancesAndSkipsCerboMirrors(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("HA outage would reset wrong keys: %v", got)
 	}
-	if c.IsToggleAllowed("input_boolean.only_charging") || c.IsToggleAllowed("binary_sensor.no_feed") || c.IsToggleAllowed("switch.old_pump") || !c.IsToggleAllowed("light.kitchen") {
+	if c.IsToggleAllowed("input_boolean.only_charging") || c.IsToggleAllowed("input_boolean.no_feed") || c.IsToggleAllowed("switch.old_pump") || !c.IsToggleAllowed("light.kitchen") {
 		t.Fatal("HA control ownership is incorrect")
 	}
 	if len(requested) != len(states) {
 		t.Errorf("polled %v, want %v", requested, states)
+	}
+}
+
+func TestControlFlagAliasesDoNotClaimOtherHAEntities(t *testing.T) {
+	for _, key := range []string{"no_feed", "input_boolean.no_feed"} {
+		if !IsControlFlag(key) {
+			t.Errorf("missing controller alias %s", key)
+		}
+	}
+	for _, key := range []string{"switch.no_feed", "binary_sensor.no_feed", "input_boolean.other"} {
+		if IsControlFlag(key) {
+			t.Errorf("unrelated HA entity claimed %s", key)
+		}
+	}
+	c := NewClient(&config.HomeAssistantConfig{URL: "http://ha.test", Token: "test", DirectControls: true,
+		SwitchEntities: []config.EntityConfig{{Key: "external_feed_switch", Entity: "switch.no_feed"}}})
+	if !c.IsToggleAllowed("switch.no_feed") {
+		t.Fatal("explicit independent HA switch is unavailable")
 	}
 }

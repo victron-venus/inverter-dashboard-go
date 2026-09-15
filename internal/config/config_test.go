@@ -174,7 +174,6 @@ func TestConvertMapToBooleanEntitySlice(t *testing.T) {
 	}
 }
 
-
 func TestGatewayConfigFromEnv(t *testing.T) {
 	t.Setenv("GATEWAY_ENABLED", "true")
 	t.Setenv("GATEWAY_URL", "https://victron.example")

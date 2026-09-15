@@ -41,6 +41,7 @@ type HAClient interface {
 
 // Message represents a WebSocket message from client
 type Message struct {
+	State    interface{}            `json:"state,omitempty"`
 	Action   string                 `json:"action"`
 	Entity   string                 `json:"entity,omitempty"`
 	ID       string                 `json:"id,omitempty"`
@@ -200,8 +201,33 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 		overlay = homeassistant.Overlay{}
 	}
 	payload := mergeStates(mqttState, overlay, managedKeys)
+	uiConfig := mergeUIConfig(payload["ui_config"], haClient)
+	payload["console"] = console
+	payload["dashboard_version"] = version.GetCurrent()
+	payload["latest_version"] = getLatestVersion()
+	// Report source health independently of the WebSocket transport itself.
+	if connection, ok := mqttClient.(interface{ IsConnected() bool }); ok {
+		payload["mqtt_connected"] = connection.IsConnected()
+	}
+	uiConfig["settings"] = settings.Get()
+	payload["ui_config"] = uiConfig
+	payload["controller_controls_available"] = false
+	if controller, ok := mqttClient.(interface{ CanControlInverter() bool }); ok {
+		payload["controller_controls_available"] = controller.CanControlInverter()
+	}
+	payload["water_controls_available"] = false
+	if water, ok := mqttClient.(interface{ CanControlWater() bool }); ok {
+		payload["water_controls_available"] = water.CanControlWater()
+	}
+	if len(console) > 20 {
+		payload["console"] = console[len(console)-20:]
+	}
+	return payload
+}
+
+func mergeUIConfig(controller interface{}, haClient HAClient) map[string]interface{} {
 	uiConfig := make(map[string]interface{})
-	if controllerConfig, ok := payload["ui_config"].(map[string]interface{}); ok {
+	if controllerConfig, ok := controller.(map[string]interface{}); ok {
 		for key, value := range controllerConfig {
 			uiConfig[key] = value
 		}
@@ -214,23 +240,7 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 			uiConfig["boolean_buttons"] = buttons
 		}
 	}
-	payload["console"] = console
-	payload["dashboard_version"] = version.GetCurrent()
-	payload["latest_version"] = getLatestVersion()
-	// Report source health independently of the WebSocket transport itself.
-	if connection, ok := mqttClient.(interface{ IsConnected() bool }); ok {
-		payload["mqtt_connected"] = connection.IsConnected()
-	}
-	uiConfig["settings"] = settings.Get()
-	payload["ui_config"] = uiConfig
-	payload["water_controls_available"] = false
-	if water, ok := mqttClient.(interface{ CanControlWater() bool }); ok {
-		payload["water_controls_available"] = water.CanControlWater()
-	}
-	if len(console) > 20 {
-		payload["console"] = console[len(console)-20:]
-	}
-	return payload
+	return uiConfig
 }
 
 // sendInitialState sends the same complete snapshot returned by /api/state.
@@ -286,19 +296,35 @@ func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) err
 		}
 		return nil
 	case "toggle":
+		if state.IsControlFlag(msg.Entity) {
+			return handleControllerToggle(msg.Entity, msg.State, mqttClient)
+		}
 		return handleToggle(msg.Entity, mqttClient, haClient)
 	case "press":
 		return handlePress(msg.Entity, mqttClient, haClient)
 	case "setpoint":
 		return mqttClient.PublishCommand("setpoint", map[string]interface{}{"value": msg.Value})
 	case "dry_run":
-		return mqttClient.PublishCommand("dry_run", map[string]interface{}{})
+		if err := requireController(mqttClient); err != nil {
+			return err
+		}
+		value, ok := msg.Value.(bool)
+		if msg.Value == nil {
+			value, ok = !mqttClient.GetState().DryRun, true
+		}
+		if !ok {
+			return fmt.Errorf("dry_run value must be boolean")
+		}
+		return mqttClient.PublishCommand("dry_run", map[string]interface{}{"value": value})
 	case "limits":
 		return mqttClient.PublishCommand("limits", map[string]interface{}{
 			"min": msg.Min,
 			"max": msg.Max,
 		})
 	case "ess_mode":
+		if err := requireController(mqttClient); err != nil {
+			return err
+		}
 		return mqttClient.PublishCommand("ess_mode", map[string]interface{}{})
 	case "loop_interval":
 		interval := msg.Interval
@@ -340,9 +366,8 @@ func handleToggle(entityID string, mqttClient MQTTCommander, haClient HAClient) 
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for toggle")
 	}
-	if homeassistant.IsControlFlag(entityID) {
-		parts := strings.Split(entityID, ".")
-		return mqttClient.PublishCommand("toggle", map[string]interface{}{"entity": parts[len(parts)-1]})
+	if state.IsControlFlag(entityID) {
+		return handleControllerToggle(entityID, nil, mqttClient)
 	}
 	if strings.HasPrefix(entityID, "button.") {
 		return handlePress(entityID, mqttClient, haClient)
