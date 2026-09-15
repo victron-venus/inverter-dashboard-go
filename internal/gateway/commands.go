@@ -12,6 +12,8 @@ import (
 // does not expose through its command whitelist.
 var ErrCommandNotOnGateway = errors.New("command not available via inverter-gateway")
 
+const invalidControllerPayload = "invalid inverter-control command payload"
+
 // Whitelisted IGW command names (must match inverter-gateway src/whitelist.rs).
 var whitelistedCommands = map[string]struct{}{
 	"toggle":                        {},
@@ -51,19 +53,7 @@ func normalizeControllerCommand(name string, body any) (any, error) {
 	}
 	switch name {
 	case "toggle":
-		entity, ok := object["entity"].(string)
-		if !ok || !state.IsControlFlag(entity) || len(object) != 2 {
-			break
-		}
-		enabled, ok := state.ControlBool(object["state"])
-		if !ok {
-			break
-		}
-		value := "off"
-		if enabled {
-			value = "on"
-		}
-		return map[string]interface{}{"entity": strings.TrimPrefix(strings.TrimSpace(entity), "input_boolean."), "state": value}, nil
+		return normalizeToggleCommand(object)
 	case "dry_run":
 		if _, ok := object["value"].(bool); ok && len(object) == 1 {
 			return object, nil
@@ -73,5 +63,21 @@ func normalizeControllerCommand(name string, body any) (any, error) {
 			return object, nil
 		}
 	}
-	return nil, fmt.Errorf("invalid inverter-control command payload")
+	return nil, errors.New(invalidControllerPayload)
+}
+
+func normalizeToggleCommand(object map[string]interface{}) (any, error) {
+	entity, ok := object["entity"].(string)
+	if !ok || !state.IsControlFlag(entity) || len(object) != 2 {
+		return nil, errors.New(invalidControllerPayload)
+	}
+	enabled, ok := state.ControlBool(object["state"])
+	if !ok {
+		return nil, errors.New(invalidControllerPayload)
+	}
+	value := "off"
+	if enabled {
+		value = "on"
+	}
+	return map[string]interface{}{"entity": strings.TrimPrefix(strings.TrimSpace(entity), "input_boolean."), "state": value}, nil
 }

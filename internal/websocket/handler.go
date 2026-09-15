@@ -201,20 +201,7 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 		overlay = homeassistant.Overlay{}
 	}
 	payload := mergeStates(mqttState, overlay, managedKeys)
-	uiConfig := make(map[string]interface{})
-	if controllerConfig, ok := payload["ui_config"].(map[string]interface{}); ok {
-		for key, value := range controllerConfig {
-			uiConfig[key] = value
-		}
-	}
-	if haClient != nil {
-		for key, value := range haClient.GetUIConfig() {
-			uiConfig[key] = value
-		}
-		if buttons := haClient.GetBooleanButtons(); len(buttons) > 0 {
-			uiConfig["boolean_buttons"] = buttons
-		}
-	}
+	uiConfig := mergeUIConfig(payload["ui_config"], haClient)
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
@@ -236,6 +223,24 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 		payload["console"] = console[len(console)-20:]
 	}
 	return payload
+}
+
+func mergeUIConfig(controller interface{}, haClient HAClient) map[string]interface{} {
+	uiConfig := make(map[string]interface{})
+	if controllerConfig, ok := controller.(map[string]interface{}); ok {
+		for key, value := range controllerConfig {
+			uiConfig[key] = value
+		}
+	}
+	if haClient != nil {
+		for key, value := range haClient.GetUIConfig() {
+			uiConfig[key] = value
+		}
+		if buttons := haClient.GetBooleanButtons(); len(buttons) > 0 {
+			uiConfig["boolean_buttons"] = buttons
+		}
+	}
+	return uiConfig
 }
 
 // sendInitialState sends the same complete snapshot returned by /api/state.

@@ -15,6 +15,25 @@ var controllerFields = []string{"booleans", "features", "ess_mode", "dry_run", "
 func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
 	available := len(data) > 0
 	st.InverterAvailable = &available
+	applyControllerFields(st, data)
+	flags := controllerBooleans(data["booleans"])
+	st.Booleans = flags
+	st.OnlyCharging, _ = flags["only_charging"].(bool)
+	st.NoFeed, _ = flags["no_feed"].(bool)
+	st.HouseSupport, _ = flags["house_support"].(bool)
+	st.ChargeBattery, _ = flags["charge_battery"].(bool)
+	st.DoNotSupplyCharger, _ = flags["do_not_supply_charger"].(bool)
+	st.SetLimitToEVCharger, _ = flags["set_limit_to_ev_charger"].(bool)
+	st.MinimizeCharging, _ = flags["minimize_charging"].(bool)
+	if st.UIConfig == nil {
+		st.UIConfig = map[string]interface{}{}
+	}
+	if available && st.UIConfig["header_toggles"] == nil {
+		st.UIConfig["header_toggles"] = state.FormatHeaderToggles()
+	}
+}
+
+func applyControllerFields(st *state.State, data map[string]interface{}) {
 	clean := map[string]interface{}{}
 	for _, key := range controllerFields {
 		if st.TelemetryAvailable[key] || (key == "ess_mode" && st.NativeESSObserved) {
@@ -33,8 +52,11 @@ func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
 			_ = json.Unmarshal(encoded, st)
 		}
 	}
+}
+
+func controllerBooleans(raw interface{}) map[string]interface{} {
 	flags := map[string]interface{}{}
-	if values, ok := data["booleans"].(map[string]interface{}); ok {
+	if values, ok := raw.(map[string]interface{}); ok {
 		for key, value := range values {
 			canonical := strings.TrimPrefix(key, "input_boolean.")
 			if state.IsControlFlag(canonical) {
@@ -46,20 +68,7 @@ func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
 			}
 		}
 	}
-	st.Booleans = flags
-	st.OnlyCharging, _ = flags["only_charging"].(bool)
-	st.NoFeed, _ = flags["no_feed"].(bool)
-	st.HouseSupport, _ = flags["house_support"].(bool)
-	st.ChargeBattery, _ = flags["charge_battery"].(bool)
-	st.DoNotSupplyCharger, _ = flags["do_not_supply_charger"].(bool)
-	st.SetLimitToEVCharger, _ = flags["set_limit_to_ev_charger"].(bool)
-	st.MinimizeCharging, _ = flags["minimize_charging"].(bool)
-	if st.UIConfig == nil {
-		st.UIConfig = map[string]interface{}{}
-	}
-	if available && st.UIConfig["header_toggles"] == nil {
-		st.UIConfig["header_toggles"] = state.FormatHeaderToggles()
-	}
+	return flags
 }
 
 // CanControlInverter requires current transport health and observed daemon state.
