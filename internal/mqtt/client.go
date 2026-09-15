@@ -60,6 +60,7 @@ type Client struct {
 	cerboLeaves           map[string]map[string]interface{}
 	cerboOwned            map[string]bool
 	controllerLastSeen    time.Time
+	nativeLastSeen        time.Time
 	cameraTopic           string
 	keepaliveStop         chan struct{}
 	keepaliveMu           sync.Mutex
@@ -148,6 +149,9 @@ func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Lock()
 	c.gatewayMode = true
 	c.gatewayMu.Unlock()
+	c.stateMu.Lock()
+	c.nativeLastSeen = time.Time{}
+	c.stateMu.Unlock()
 }
 
 // DisableGatewayMode returns the client to Cerbo MQTT health semantics
@@ -157,6 +161,9 @@ func (c *Client) DisableGatewayMode() {
 	c.gatewayMode = false
 	c.gatewayConnected = false
 	c.gatewayMu.Unlock()
+	c.stateMu.Lock()
+	c.nativeLastSeen = time.Time{}
+	c.stateMu.Unlock()
 }
 
 // SetGatewayConnected updates health for IGW mode.
@@ -197,6 +204,7 @@ func (c *Client) ApplyState(st *state.State) {
 		// The gateway owns freshness for its controller envelope.
 		c.controllerLastSeen = time.Time{}
 	}
+	c.nativeLastSeen = time.Now()
 	prev := c.state
 	if prev != nil {
 		if st.Version == "" {

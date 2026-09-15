@@ -235,12 +235,13 @@ func main() {
 			APIToken:           cfg.Gateway.APIToken,
 			PollInterval:       interval,
 			MapOptions: gateway.MapOptions{
-				TankInstance:          cfg.Cerbo.TankInstance,
-				PumpInstance:          cfg.Cerbo.PumpInstance,
-				ValveInstance:         cfg.Cerbo.ValveInstance,
-				EVInstance:            cfg.Cerbo.EVInstance,
-				EVChargerInstance:     cfg.Cerbo.EVChargerInstance,
-				EVInstancesConfigured: true,
+				WaterInstancesConfigured: true,
+				TankInstance:             cfg.Cerbo.TankInstance,
+				PumpInstance:             cfg.Cerbo.PumpInstance,
+				ValveInstance:            cfg.Cerbo.ValveInstance,
+				EVInstance:               cfg.Cerbo.EVInstance,
+				EVChargerInstance:        cfg.Cerbo.EVChargerInstance,
+				EVInstancesConfigured:    true,
 			},
 		}, func(st *state.State) {
 			mqttClient.ApplyState(st)

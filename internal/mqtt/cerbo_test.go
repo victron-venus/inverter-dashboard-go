@@ -33,8 +33,8 @@ func TestSlimInverterStateDoesNotClearCerboLoads(t *testing.T) {
 	}
 	c.stateMu.Unlock()
 
-	if c.GetState().Loads["Oven"] != 420 {
-		t.Fatalf("loads Oven = %v, want 420", c.GetState().Loads["Oven"])
+	if c.GetState().Loads["81"] != 420 {
+		t.Fatalf("loads Oven = %v, want 420", c.GetState().Loads["81"])
 	}
 
 	c.stateMu.Lock()
@@ -47,7 +47,7 @@ func TestSlimInverterStateDoesNotClearCerboLoads(t *testing.T) {
 	c.stateMu.Unlock()
 
 	st := c.GetState()
-	if st.Loads["Oven"] != 420 {
+	if st.Loads["81"] != 420 {
 		t.Errorf("loads wiped: %v", st.Loads)
 	}
 	if st.DailyStats.SolarKWh != 12.5 {
@@ -94,7 +94,7 @@ func TestSystemcalcGridAndConsumption(t *testing.T) {
 	}
 }
 
-func TestBatteryShuntUsesMeasuredSOC(t *testing.T) {
+func TestBatteryShuntUsesDesktopVoltageSOC(t *testing.T) {
 	c := NewClient("localhost", 1883)
 	c.stateMu.Lock()
 	c.handleCerboDevice("N/p1/battery/512/ProductName", mustJSON("SmartShunt 500A"))
@@ -105,8 +105,8 @@ func TestBatteryShuntUsesMeasuredSOC(t *testing.T) {
 	c.stateMu.Unlock()
 
 	st := c.GetState()
-	if st.BatterySOC != 63 {
-		t.Errorf("battery_soc = %v, want 63", st.BatterySOC)
+	if st.BatterySOC != 50 {
+		t.Errorf("battery_soc = %v, want 50", st.BatterySOC)
 	}
 	if st.BatteryVoltage != 47.2 || st.BatteryCurrent != -12.5 || st.BatteryPower != -590 {
 		t.Errorf("battery V/I/P = %v %v %v", st.BatteryVoltage, st.BatteryCurrent, st.BatteryPower)
@@ -156,8 +156,8 @@ func TestACLoadPowerUpdatesExistingEntry(t *testing.T) {
 	c.handleACLoad("N/p1/acload/81/CustomName", mustJSON("Oven"))
 	c.handleACLoad("N/p1/acload/81/Ac/Power", mustJSON(455))
 	c.stateMu.Unlock()
-	if c.GetState().Loads["Oven"] != 455 {
-		t.Errorf("Oven = %v, want 455", c.GetState().Loads["Oven"])
+	if c.GetState().Loads["81"] != 455 {
+		t.Errorf("Oven = %v, want 455", c.GetState().Loads["81"])
 	}
 }
 

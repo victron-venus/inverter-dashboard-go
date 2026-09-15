@@ -23,7 +23,7 @@ var inverterStates = map[int]string{0: "Off", 1: "Low Power", 2: "Fault", 3: "Bu
 // CerboOptions selects explicitly configured device instances; zero is a valid instance.
 type CerboOptions struct{ TankInstance, PumpInstance, ValveInstance, EVInstance, EVChargerInstance int }
 
-var directFields = []string{"g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power", "car_soc", "ev_present", "evcharger_present", "discovered_water_ev", "ess_mode", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode"}
+var directFields = []string{"g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power", "car_soc", "ev_present", "evcharger_present", "discovered_water_ev", "ess_mode", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode", "water_pump_mode"}
 
 func emptyAvailability() map[string]bool {
 	m := map[string]bool{}
@@ -33,8 +33,8 @@ func emptyAvailability() map[string]bool {
 	return m
 }
 
-// VoltageSOC remains for source compatibility. Telemetry never estimates SOC
-// from voltage: the relationship depends on chemistry, temperature and load.
+// VoltageSOC matches the desktop dashboard's configured 40–54.4 V pack estimate.
+// Individual battery rows retain their device-reported SOC.
 func VoltageSOC(v float64) float64 {
 	return math.Round(math.Max(0, math.Min(100, (v-40)/(54.4-40)*100)))
 }
@@ -130,7 +130,13 @@ func (d leaves) dcPower() (float64, bool) {
 	i, hi := d.num("Dc/0/Current")
 	return v * i, hv && hi
 }
-func (d leaves) enabled() bool { n, ok := d.num("Connected"); return !ok || n != 0 }
+func (d leaves) enabled() bool {
+	if _, exists := d["Connected"]; !exists {
+		return true
+	}
+	n, ok := d.num("Connected")
+	return ok && n == 1
+}
 func devices(all map[string]map[string]interface{}, kind string) map[string]leaves {
 	out := map[string]leaves{}
 	for path, value := range all[kind] {
@@ -260,8 +266,8 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 	if len(bats) > 0 {
 		out["batteries"] = batteryList
 	}
-	// The systemcalc-selected battery is authoritative. Device fallback is safe
-	// only for an explicit monitor instance or one unambiguous battery service.
+	// Prefer the real SmartShunt for bank metrics, matching inverter-desktop.
+	// Never sum overlapping battery strings or virtual bank services.
 	selected := ""
 	if n, ok := firstNum(sys, "Dc/Battery/Instance"); ok {
 		selected = strconv.Itoa(int(n))
@@ -272,8 +278,27 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 		}
 	}
 	battery := bats[selected]
-	for _, f := range []struct{ key, alias, system, path string }{{"battery_voltage", "bv", "Voltage", "Dc/0/Voltage"}, {"battery_current", "bc", "Current", "Dc/0/Current"}, {"battery_power", "bp", "Power", "Dc/0/Power"}, {"battery_soc", "", "Soc", "Soc"}} {
-		n, ok := firstNum(sys, "Dc/Battery/"+f.system)
+	var shunt leaves
+	for _, id := range sortedStringKeys(bats) {
+		d := bats[id]
+		if strings.Contains(strings.ToLower(deviceName(d, "")), "shunt") {
+			if shunt == nil {
+				shunt = d
+			}
+			if _, valid := d.num("Dc/0/Voltage"); valid {
+				shunt = d
+				break
+			}
+		}
+	}
+	for _, f := range []struct{ key, alias, system, path string }{{"battery_voltage", "bv", "Voltage", "Dc/0/Voltage"}, {"battery_current", "bc", "Current", "Dc/0/Current"}, {"battery_power", "bp", "Power", "Dc/0/Power"}} {
+		n, ok := shunt.num(f.path)
+		if f.key == "battery_power" {
+			n, ok = shunt.dcPower()
+		}
+		if !ok {
+			n, ok = firstNum(sys, "Dc/Battery/"+f.system)
+		}
 		if !ok {
 			if f.key == "battery_power" {
 				n, ok = battery.dcPower()
@@ -282,8 +307,15 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 			}
 		}
 		put(f.key, n, ok)
-		if f.alias != "" {
-			put(f.alias, n, ok)
+		put(f.alias, n, ok)
+		if f.key == "battery_voltage" {
+			voltage, known := shunt.num("Dc/0/Voltage")
+			if !known {
+				voltage, known = firstNum(sys, "Dc/Battery/Voltage")
+			}
+			if known {
+				out["battery_soc"] = VoltageSOC(voltage)
+			}
 		}
 	}
 
@@ -363,14 +395,7 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 		d := ac[id]
 		if p, ok := d.acPower(); ok {
 			name := deviceName(d, "AC Load "+id)
-			key := name
-			if strings.HasPrefix(name, "AC Load ") {
-				key = strings.ToLower(strings.ReplaceAll(name, " ", "_"))
-			}
-			if _, exists := loads[key]; exists {
-				key += "_" + id
-			}
-			loads[key] = p
+			loads[id] = p
 			loadNames[id] = name
 		}
 	}
@@ -388,13 +413,20 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 		if n, ok := d.num(f.path); ok {
 			switch f.key {
 			case "pump_switch", "water_valve":
-				out[f.key] = n != 0
+				if n == 0 || n == 1 {
+					out[f.key] = n == 1
+				}
 			case "pump_mode", "water_valve_mode":
-				out[f.key] = int(n)
+				if n >= 0 && n <= 2 && n == math.Trunc(n) {
+					out[f.key] = int(n)
+				}
 			default:
 				out[f.key] = n * f.scale
 			}
 		}
+	}
+	if mode, ok := out["pump_mode"]; ok {
+		out["water_pump_mode"] = mode
 	}
 	applyEVOverlay(all, o, out)
 	applyESSOverlay(all, out)
@@ -462,7 +494,7 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 	c.initCerboMaps()
 	clean := map[string]interface{}{}
 	for key, value := range data {
-		if c.cerboOwned[key] || key == "telemetry_available" || isNativeEVField(key) {
+		if c.cerboOwned[key] || key == "telemetry_available" || isNativeSectionField(key) {
 			continue
 		}
 		// One malformed optional field must not suppress valid controller flags.
@@ -489,9 +521,9 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 	c.applyCerboOverlays()
 }
 
-func isNativeEVField(key string) bool {
+func isNativeSectionField(key string) bool {
 	switch key {
-	case "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
+	case "loads", "load_names", "water_level", "pump_switch", "water_valve", "pump_mode", "water_pump_mode", "water_valve_mode", "battery_soc", "gateway_capabilities", "telemetry", "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
 		"ev_present", "evcharger_present", "discovered_water_ev":
 		return true
 	}
@@ -545,6 +577,11 @@ func (c *Client) handleCerboDevice(topic string, payload []byte) bool {
 		return false
 	}
 	path := strings.Join(parts[4:], "/")
+	if path == "Connected" && value != nil {
+		if n, ok := number(value); !ok || (n != 0 && n != 1) {
+			value = nil
+		}
+	}
 	// Numeric paths accept JSON numbers only. Metadata accepts strings; a null
 	// explicitly invalidates either. Booleans/numeric strings are not readings.
 	if value != nil {
@@ -572,6 +609,7 @@ func (c *Client) handleCerboDevice(topic string, payload []byte) bool {
 		}
 	}
 	c.cerboLeaves[kind][instance+"/"+path] = value
+	c.nativeLastSeen = time.Now()
 	c.applyCerboOverlays()
 	return true
 }

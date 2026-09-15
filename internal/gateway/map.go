@@ -13,23 +13,26 @@ import (
 
 // MapOptions selects Cerbo instances for water/EV (same defaults as MQTT path).
 type MapOptions struct {
-	TankInstance          int
-	PumpInstance          int
-	ValveInstance         int
-	EVInstance            int
-	EVChargerInstance     int
-	EVInstancesConfigured bool
+	TankInstance             int
+	PumpInstance             int
+	ValveInstance            int
+	EVInstance               int
+	EVChargerInstance        int
+	EVInstancesConfigured    bool
+	WaterInstancesConfigured bool
 }
 
 func (o MapOptions) withDefaults() MapOptions {
-	if o.TankInstance == 0 {
-		o.TankInstance = 21
-	}
-	if o.PumpInstance == 0 {
-		o.PumpInstance = 1
-	}
-	if o.ValveInstance == 0 {
-		o.ValveInstance = 2
+	if !o.WaterInstancesConfigured {
+		if o.TankInstance == 0 {
+			o.TankInstance = 21
+		}
+		if o.PumpInstance == 0 {
+			o.PumpInstance = 1
+		}
+		if o.ValveInstance == 0 {
+			o.ValveInstance = 2
+		}
 	}
 	if !o.EVInstancesConfigured {
 		if o.EVInstance == 0 {
@@ -308,6 +311,7 @@ func SnapshotToState(snap *Snapshot, opt MapOptions) *state.State {
 		EVChargerInstance: opt.EVChargerInstance,
 	})
 
+	st.GatewayCapabilities = snap.Capabilities
 	st.Notifications = mapNotifications(leaves)
 	if snap.InverterPresent || snap.Inverter != nil {
 		mqtt.ApplyControllerSnapshot(st, snap.Inverter)

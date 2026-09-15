@@ -127,11 +127,13 @@ type State struct {
 	GridLossRemaining   *float64               `json:"grid_loss_remaining"`
 	GridLossZeroApplied *bool                  `json:"grid_loss_zero_applied,omitempty"`
 	// Explicit false marks an invalidated direct measurement; absent allows legacy data.
-	TelemetryAvailable map[string]bool `json:"telemetry_available,omitempty"`
-	G3                 float64         `json:"g3"`
-	T3                 float64         `json:"t3"`
-	WaterValveMode     int             `json:"water_valve_mode"`
-	PumpMode           int             `json:"pump_mode"`
+	TelemetryAvailable  map[string]bool `json:"telemetry_available,omitempty"`
+	G3                  float64         `json:"g3"`
+	T3                  float64         `json:"t3"`
+	WaterValveMode      int             `json:"water_valve_mode"`
+	PumpMode            int             `json:"pump_mode"`
+	WaterPumpMode       int             `json:"water_pump_mode"`
+	GatewayCapabilities map[string]bool `json:"gateway_capabilities,omitempty"`
 	// Using interface for booleans to match reference
 	Booleans      map[string]interface{} `json:"booleans"`
 	Features      map[string]interface{} `json:"features"`
