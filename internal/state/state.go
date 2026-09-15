@@ -219,7 +219,8 @@ type State struct {
 	DoNotSupplyCharger  bool `json:"do_not_supply_charger,omitempty"`
 	SetLimitToEVCharger bool `json:"set_limit_to_ev_charger,omitempty"`
 	MinimizeCharging    bool `json:"minimize_charging,omitempty"`
-	DryRun              bool `json:"dry_run,omitempty"`
+	// Nil is unknown; an observed false must survive cloning and full snapshots.
+	DryRun *bool `json:"dry_run"`
 }
 
 // Clone returns a deep copy of State so callers can safely read maps/slices

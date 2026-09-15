@@ -16,6 +16,10 @@ func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
 	available := len(data) > 0
 	st.InverterAvailable = &available
 	applyControllerFields(st, data)
+	st.DryRun = nil
+	if enabled, ok := data["dry_run"].(bool); ok {
+		st.DryRun = &enabled
+	}
 	flags := controllerBooleans(data["booleans"])
 	st.Booleans = flags
 	st.OnlyCharging, _ = flags["only_charging"].(bool)

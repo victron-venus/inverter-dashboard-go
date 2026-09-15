@@ -1,7 +1,7 @@
 package websocket
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
@@ -9,7 +9,7 @@ import (
 
 func requireController(client MQTTCommander) error {
 	if capability, ok := client.(interface{ CanControlInverter() bool }); ok && !capability.CanControlInverter() {
-		return fmt.Errorf("inverter-control state or transport is unavailable")
+		return errors.New("inverter-control state or transport is unavailable")
 	}
 	return nil
 }
@@ -20,7 +20,7 @@ func handleControllerToggle(entity string, requested interface{}, client MQTTCom
 	}
 	entity = strings.TrimPrefix(strings.TrimSpace(entity), "input_boolean.")
 	if !state.IsControlFlag(entity) {
-		return fmt.Errorf("unknown inverter-control flag")
+		return errors.New("unknown inverter-control flag")
 	}
 	var value bool
 	var ok bool
@@ -31,7 +31,7 @@ func handleControllerToggle(entity string, requested interface{}, client MQTTCom
 		value = !value
 	}
 	if !ok {
-		return fmt.Errorf("control flag state is unknown or invalid")
+		return errors.New("control flag state is unknown or invalid")
 	}
 	text := "off"
 	if value {
@@ -39,4 +39,22 @@ func handleControllerToggle(entity string, requested interface{}, client MQTTCom
 	}
 	// Absolute setters are never interpreted as HA entity commands.
 	return client.PublishCommand("toggle", map[string]interface{}{"entity": entity, "state": text})
+}
+
+func handleDryRun(requested interface{}, client MQTTCommander) error {
+	if err := requireController(client); err != nil {
+		return err
+	}
+	value, ok := requested.(bool)
+	if requested == nil {
+		current := client.GetState()
+		if current == nil || current.DryRun == nil {
+			return errors.New("dry_run state is unknown")
+		}
+		value, ok = !*current.DryRun, true
+	}
+	if !ok {
+		return errors.New("dry_run value must be boolean")
+	}
+	return client.PublishCommand("dry_run", map[string]interface{}{"value": value})
 }
