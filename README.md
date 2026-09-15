@@ -582,3 +582,29 @@ For issues and feature requests, please use the GitHub issue tracker.
 ---
 
 **Note:** This is a community project and is not affiliated with Victron Energy.
+
+### Native loads, Water, and battery status
+
+Active loads come from Cerbo `acload` services through the active MQTT or IGW
+transport. Instance IDs remain stable when names change; `load_names` supplies
+the display label. Signed readings preserve generation. Home Assistant and
+`inverter/state` mirrors cannot supply these native sections.
+
+Water uses configured `tank/<instance>/Level` (already percent) and
+`pump/<instance>/State` / `Mode`. Mode is 0 auto, 1 on, or 2 off. Commands use
+native `W/<portal>/pump/<instance>/Mode` directly or IGW's advertised
+`water_mode` capability. Each target requires observed valid Mode and a healthy
+transport. Older gateways remain read-only for Water. Commands never change the
+observed UI mode before device readback; explicit instance zero is preserved.
+
+The main BATTERY percentage matches inverter-desktop:
+`round(clamp((voltage - 40) / (54.4 - 40) * 100, 0, 100))`.
+SmartShunt voltage takes priority, followed by the system battery voltage. Real battery rows retain their reported SoC;
+the UI does not synthesize a BANK row.
+
+The footer identifies MQTT or IGW separately from WebSocket connectivity.
+`mqtt_connected` means a live direct broker connection; `native_connected`
+reports the selected transport. Telemetry quality becomes stale on disconnect
+or after 120 seconds without native observations. `observed_at` is explicitly
+labeled `local_receipt`: a recent gateway snapshot is not a timestamp for each
+individual sensor measurement.

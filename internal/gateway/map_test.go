@@ -35,14 +35,14 @@ func TestSnapshotToStateCoreTiles(t *testing.T) {
 	if st.InverterState != "Bulk" {
 		t.Errorf("inverter_state = %q, want Bulk", st.InverterState)
 	}
-	if st.BatteryPower != 1349.7 {
-		t.Errorf("battery_power = %v, want 1349.7 (system)", st.BatteryPower)
+	if st.BatteryPower != 1258.4 {
+		t.Errorf("battery_power = %v, want 1258.4 (SmartShunt)", st.BatteryPower)
 	}
-	if st.BatteryCurrent != 25.2 {
-		t.Errorf("battery_current = %v, want 25.2", st.BatteryCurrent)
+	if st.BatteryCurrent != 23.5 {
+		t.Errorf("battery_current = %v, want 23.5", st.BatteryCurrent)
 	}
-	if st.BatterySOC != 61 {
-		t.Errorf("battery_soc = %v, want measured 61", st.BatterySOC)
+	if st.BatterySOC != 94 {
+		t.Errorf("battery_soc = %v, want voltage estimate 94", st.BatterySOC)
 	}
 	if len(st.Batteries) != 2 {
 		t.Errorf("batteries len = %d, want 2", len(st.Batteries))
@@ -84,15 +84,15 @@ func TestSnapshotToStateWaterEVLoads(t *testing.T) {
 	if st.EVPower != 3200 {
 		t.Errorf("ev_power = %v, want 3200", st.EVPower)
 	}
-	if st.Loads["Oven"] != 420.0 {
-		t.Errorf("loads Oven = %v, want 420", st.Loads["Oven"])
+	if st.Loads["81"] != 420.0 {
+		t.Errorf("loads Oven = %v, want 420", st.Loads["81"])
 	}
 }
 
-func TestBankPrefersSelectedSystemMeasurements(t *testing.T) {
+func TestBankPrefersSmartShuntVoltageEstimate(t *testing.T) {
 	st := SnapshotToState(loadFixture(t, "snapshot_core.json"), MapOptions{})
-	if st.BatteryVoltage != 52.15 || st.BatteryCurrent != 25.2 || st.BatteryPower != 1349.7 || st.BatterySOC != 61 {
-		t.Fatalf("bank measurements not from system: %+v", st)
+	if st.BatteryVoltage != 53.55 || st.BatteryCurrent != 23.5 || st.BatteryPower != 1258.4 || st.BatterySOC != 94 {
+		t.Fatalf("bank measurements not from SmartShunt: %+v", st)
 	}
 }
 

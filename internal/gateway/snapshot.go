@@ -5,6 +5,7 @@ import "encoding/json"
 // Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
 // Keys are "<instance>/<DBusPath>" (e.g. "0/Ac/Grid/L1/Power").
 type Snapshot struct {
+	Capabilities    map[string]bool            `json:"capabilities"`
 	InverterPresent bool                       `json:"-"`
 	Inverter        map[string]interface{}     `json:"inverter"`
 	Grid            map[string]json.RawMessage `json:"grid"`

@@ -35,7 +35,7 @@ func applyEVOverlay(all map[string]map[string]interface{}, o CerboOptions, out m
 	for _, group := range []struct {
 		kind string
 		ds   map[string]leaves
-	}{{"ev", evs}, {"evcharger", chargers}} {
+	}{{"ev", evs}, {"evcharger", chargers}, {"tank", devices(all, "tank")}, {"pump", devices(all, "pump")}} {
 		for _, id := range sortedStringKeys(group.ds) {
 			d := group.ds[id]
 			inst, _ := strconv.Atoi(id)

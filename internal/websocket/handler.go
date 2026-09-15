@@ -209,6 +209,11 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 	if connection, ok := mqttClient.(interface{ IsConnected() bool }); ok {
 		payload["mqtt_connected"] = connection.IsConnected()
 	}
+	if transport, ok := mqttClient.(interface{ TransportStatus() map[string]interface{} }); ok {
+		for key, value := range transport.TransportStatus() {
+			payload[key] = value
+		}
+	}
 	uiConfig["settings"] = settings.Get()
 	payload["ui_config"] = uiConfig
 	payload["controller_controls_available"] = false
@@ -218,6 +223,10 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 	payload["water_controls_available"] = false
 	if water, ok := mqttClient.(interface{ CanControlWater() bool }); ok {
 		payload["water_controls_available"] = water.CanControlWater()
+	}
+	if water, ok := mqttClient.(interface{ CanControlWaterDevice(string) bool }); ok {
+		payload["water_pump_controls_available"] = water.CanControlWaterDevice("pump")
+		payload["water_valve_controls_available"] = water.CanControlWaterDevice("valve")
 	}
 	if len(console) > 20 {
 		payload["console"] = console[len(console)-20:]

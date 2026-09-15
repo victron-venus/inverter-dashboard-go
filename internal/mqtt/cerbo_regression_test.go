@@ -43,7 +43,7 @@ func TestFieldOwnershipZerosAndNull(t *testing.T) {
 	c.stateMu.Unlock()
 	send(c, "vebus/276", "ProductName", "MultiPlus")
 	send(c, "battery/512", "ProductName", "Battery")
-	if c.GetState().Setpoint != 100 || c.GetState().BatterySOC != 80 || c.GetState().GT != 150 {
+	if c.GetState().Setpoint != 100 || c.GetState().TelemetryAvailable["battery_soc"] || c.GetState().GT != 150 {
 		t.Fatal("device metadata stole unrelated fields")
 	}
 	send(c, "system/0", "Ac/Grid/L1/Power", 0)
@@ -96,31 +96,35 @@ func TestThreePhasePowerPrecedenceAndInvalidation(t *testing.T) {
 	}
 }
 
-func TestSystemBatteryPriorityAndNoVoltageEstimate(t *testing.T) {
+func TestSmartShuntVoltageSOCPriorityAndFallback(t *testing.T) {
 	c := NewClient("localhost", 1883)
+	send(c, "system/0", "Dc/Battery/Soc", 99)
+	send(c, "system/0", "Dc/Battery/Voltage", 54.4)
+	if c.GetState().BatterySOC != 100 {
+		t.Fatal("system voltage estimate missing")
+	}
 	send(c, "battery/512", "CustomName", "SmartShunt")
 	send(c, "battery/512", "Dc/0/Voltage", 47.2)
-	if c.GetState().TelemetryAvailable["battery_soc"] || c.GetState().Batteries[0].TelemetryAvailable["soc"] {
-		t.Fatal("voltage fabricated SOC")
+	if c.GetState().BatterySOC != 50 || c.GetState().Batteries[0].TelemetryAvailable["soc"] {
+		t.Fatal("bank estimate must not fabricate individual battery SOC")
 	}
 	send(c, "battery/512", "Soc", 63)
 	send(c, "battery/512", "Dc/0/Current", -2)
-	if c.GetState().BatteryPower != -94.4 {
-		t.Fatal("V*I power fallback missing")
-	}
-	send(c, "system/0", "Dc/Battery/Soc", 0)
-	send(c, "system/0", "Dc/Battery/Voltage", 51)
-	if c.GetState().BatterySOC != 0 || c.GetState().BatteryVoltage != 51 {
-		t.Fatal("selected system battery did not win")
+	if c.GetState().BatteryPower != -94.4 || c.GetState().Batteries[0].SOC != 63 {
+		t.Fatal("real shunt metrics missing")
 	}
 	send(c, "battery/513", "Dc/0/Voltage", 48)
-	send(c, "system/0", "Dc/Battery/Voltage", nil)
-	if c.GetState().TelemetryAvailable["battery_voltage"] {
-		t.Fatal("ambiguous batteries silently selected")
+	if c.GetState().BatterySOC != 50 || c.GetState().BatteryVoltage != 47.2 {
+		t.Fatal("SmartShunt did not win")
 	}
-	send(c, "system/0", "Dc/Battery/Instance", 512)
-	if c.GetState().BatteryVoltage != 47.2 {
-		t.Fatal("selected battery instance not used")
+	send(c, "battery/512", "Connected", 0)
+	if c.GetState().BatterySOC != 100 {
+		t.Fatal("disconnected shunt did not fall back to system voltage")
+	}
+	send(c, "system/0", "Dc/Battery/Voltage", nil)
+	send(c, "battery/513", "Dc/0/Voltage", nil)
+	if c.GetState().TelemetryAvailable["battery_soc"] {
+		t.Fatal("missing voltage retained bank estimate")
 	}
 }
 
@@ -134,7 +138,7 @@ func TestPVAndACLoadTotalsNeverDoubleCount(t *testing.T) {
 		send(c, kind, "Ac/L1/Power", 110)
 	}
 	st := c.GetState()
-	if st.PVInverterTotal != 600 || st.Loads["ac_load_80"] != 600 {
+	if st.PVInverterTotal != 600 || st.Loads["80"] != 600 {
 		t.Fatal("L1 overwrote total or phases double counted")
 	}
 	send(c, "pvinverter/10", "Ac/Power", nil)
@@ -147,7 +151,7 @@ func TestPVAndACLoadTotalsNeverDoubleCount(t *testing.T) {
 		t.Fatalf("solar components: %+v", st)
 	}
 	send(c, "acload/80", "CustomName", "Oven")
-	if st = c.GetState(); len(st.Loads) != 1 || st.Loads["Oven"] != 600 {
+	if st = c.GetState(); len(st.Loads) != 1 || st.Loads["80"] != 600 {
 		t.Fatalf("rename left stale map keys: %v", st.Loads)
 	}
 	c.onCerboLiveMessage(nil, &fakeMessage{topic: "N/p1/acload/80/Ac/Power", payload: nil})
