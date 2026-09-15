@@ -101,8 +101,19 @@ type Charger struct {
 	Power              float64         `json:"power"`
 }
 
+// CerboDevice identifies an available vehicle or charging station discovered on Cerbo.
+type CerboDevice struct {
+	Kind     string   `json:"kind"`
+	Instance int      `json:"instance"`
+	Name     string   `json:"name"`
+	SOC      *float64 `json:"soc,omitempty"`
+	Power    *float64 `json:"power,omitempty"`
+}
+
 // State represents complete dashboard state
 type State struct {
+	NativeESSObserved   bool                   `json:"-"`
+	InverterAvailable   *bool                  `json:"inverter_available,omitempty"`
 	UIConfig            map[string]interface{} `json:"ui_config,omitempty"`
 	DVCCLimits          map[string]interface{} `json:"dvcc_limits"`
 	Limits              map[string]interface{} `json:"limits,omitempty"`
@@ -174,9 +185,14 @@ type State struct {
 	// EV power is watts; ev_charging_kw is explicitly kilowatts.
 	// Sourced from Cerbo MQTT (N/<portal>/ev/<i>/... and
 	// N/<portal>/evcharger/<i>/...), never from Home Assistant.
-	CarSOC       float64 `json:"car_soc"`
-	EVChargingKW float64 `json:"ev_charging_kw"`
-	EVPower      float64 `json:"ev_power"`
+	CarChargingPower  float64       `json:"car_charging_power"`
+	CarSOC            float64       `json:"car_soc"`
+	EVChargingKW      float64       `json:"ev_charging_kw"`
+	EVPower           float64       `json:"ev_power"`
+	EVChargingPower   float64       `json:"ev_charging_power"`
+	EVPresent         bool          `json:"ev_present"`
+	EVChargerPresent  bool          `json:"evcharger_present"`
+	DiscoveredWaterEV []CerboDevice `json:"discovered_water_ev"`
 
 	// Water data - dbus-pump via Cerbo MQTT (level %, valve/pump running).
 	// No omitempty: a closed valve / empty tank are valid states that must

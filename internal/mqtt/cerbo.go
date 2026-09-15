@@ -23,7 +23,7 @@ var inverterStates = map[int]string{0: "Off", 1: "Low Power", 2: "Fault", 3: "Bu
 // CerboOptions selects explicitly configured device instances; zero is a valid instance.
 type CerboOptions struct{ TankInstance, PumpInstance, ValveInstance, EVInstance, EVChargerInstance int }
 
-var directFields = []string{"g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "ev_charging_kw", "car_soc", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode"}
+var directFields = []string{"g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power", "car_soc", "ev_present", "evcharger_present", "discovered_water_ev", "ess_mode", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode"}
 
 func emptyAvailability() map[string]bool {
 	m := map[string]bool{}
@@ -383,7 +383,7 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 		inst      int
 		path, key string
 		scale     float64
-	}{{"tank", o.TankInstance, "Level", "water_level", 1}, {"ev", o.EVInstance, "Soc", "car_soc", 1}, {"ev", o.EVInstance, "Ac/Power", "ev_power", 1}, {"evcharger", o.EVChargerInstance, "Ac/Power", "ev_charging_kw", .001}, {"pump", o.PumpInstance, "State", "pump_switch", 1}, {"pump", o.ValveInstance, "State", "water_valve", 1}, {"pump", o.PumpInstance, "Mode", "pump_mode", 1}, {"pump", o.ValveInstance, "Mode", "water_valve_mode", 1}} {
+	}{{"tank", o.TankInstance, "Level", "water_level", 1}, {"pump", o.PumpInstance, "State", "pump_switch", 1}, {"pump", o.ValveInstance, "State", "water_valve", 1}, {"pump", o.PumpInstance, "Mode", "pump_mode", 1}, {"pump", o.ValveInstance, "Mode", "water_valve_mode", 1}} {
 		d := devices(all, f.kind)[strconv.Itoa(f.inst)]
 		if n, ok := d.num(f.path); ok {
 			switch f.key {
@@ -396,6 +396,8 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 			}
 		}
 	}
+	applyEVOverlay(all, o, out)
+	applyESSOverlay(all, out)
 	return out
 }
 
@@ -434,6 +436,12 @@ func clearStateField(st *state.State, key string) {
 func (c *Client) applyCerboOverlays() {
 	c.initCerboMaps()
 	out := cerboOverlay(c.cerboLeaves, c.options())
+	for path := range c.cerboLeaves["settings"] {
+		if strings.HasSuffix(path, "/Settings/CGwacs/Hub4Mode") {
+			c.cerboOwned["ess_mode"] = true
+		}
+	}
+	c.state.NativeESSObserved = c.cerboOwned["ess_mode"]
 	for key := range c.cerboOwned {
 		if _, ok := out[key]; !ok {
 			clearStateField(c.state, key)
@@ -471,6 +479,10 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 			c.state.TelemetryAvailable[key] = true
 		}
 	}
+	if !c.cerboOwned["ess_mode"] {
+		c.state.TelemetryAvailable["ess_mode"] = false
+	}
+	ApplyControllerSnapshot(c.state, data)
 	c.state.DashboardVersion = version.GetCurrent()
 	c.applyCerboOverlays()
 }
@@ -485,7 +497,7 @@ func CerboSnapshotToState(all map[string]map[string]interface{}, o CerboOptions)
 
 func supportedKind(kind string) bool {
 	switch kind {
-	case "system", "grid", "battery", "solarcharger", "pvinverter", "vebus", "acload", "tank", "pump", "ev", "evcharger":
+	case "system", "grid", "battery", "solarcharger", "pvinverter", "vebus", "acload", "tank", "pump", "ev", "evcharger", "settings":
 		return true
 	}
 	return false
@@ -660,6 +672,7 @@ func nativeFilters(portal string) []string {
 	for _, kind := range []string{"system", "grid", "battery", "solarcharger", "pvinverter", "vebus", "acload", "tank", "pump", "ev", "evcharger", "platform"} {
 		out = append(out, fmt.Sprintf("N/%s/%s/+/#", portal, kind))
 	}
+	out = append(out, fmt.Sprintf("N/%s/settings/+/Settings/CGwacs/Hub4Mode", portal), fmt.Sprintf("N/%s/settings/+/Settings/CGwacs/BatteryLife/State", portal))
 	out = append(out, fmt.Sprintf("N/%s/+/Alarms/#", portal), fmt.Sprintf("N/%s/heartbeat", portal), fmt.Sprintf("N/%s/keepalive", portal))
 	return out
 }
@@ -714,6 +727,7 @@ func (c *Client) startKeepalive() {
 			case <-stop:
 				return
 			case <-ticker.C:
+				c.refreshControllerFreshness(time.Now())
 				c.publishKeepalive(true)
 			}
 		}
@@ -730,11 +744,12 @@ func (c *Client) stopKeepalive() {
 func (c *Client) PortalID() string { c.stateMu.RLock(); defer c.stateMu.RUnlock(); return c.portalID }
 
 // invalidateCerbo makes a connection loss visible immediately, including legacy
-// physical readings that arrived before direct telemetry. Controller state stays.
+// physical readings that arrived before direct telemetry, and controller flags.
 func (c *Client) invalidateCerbo() {
 	c.stateMu.Lock()
 	c.initCerboMaps()
 	c.cerboLeaves = nil
+	ApplyControllerSnapshot(c.state, nil)
 	for _, key := range directFields {
 		clearStateField(c.state, key)
 		c.state.TelemetryAvailable[key] = false

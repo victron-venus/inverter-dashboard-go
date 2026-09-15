@@ -59,6 +59,7 @@ type Client struct {
 	// present to distinguish unavailable measurements from undiscovered data.
 	cerboLeaves           map[string]map[string]interface{}
 	cerboOwned            map[string]bool
+	controllerLastSeen    time.Time
 	cameraTopic           string
 	keepaliveStop         chan struct{}
 	keepaliveMu           sync.Mutex
@@ -98,8 +99,10 @@ func NewClient(broker string, port int) *Client {
 			Console:          make([]string, 0),
 			CarSOC:           0,
 		},
-		consoleLines:    make([]string, 0),
-		maxConsoleLines: 50,
+		consoleLines:      make([]string, 0),
+		maxConsoleLines:   50,
+		evInstance:        -1,
+		evchargerInstance: -1,
 	}
 
 	// Clean sessions lose subscriptions on reconnect. Subscribe runs outside
@@ -165,6 +168,11 @@ func (c *Client) SetGatewayConnected(v bool) {
 	// Failed gateway polls have no ApplyState call. Push their transport
 	// transition to existing WebSockets while retaining the last snapshot.
 	if changed {
+		if !v {
+			c.stateMu.Lock()
+			c.clearOptionalTelemetry()
+			c.stateMu.Unlock()
+		}
 		c.triggerHandler()
 	}
 }
@@ -185,6 +193,10 @@ func (c *Client) ApplyState(st *state.State) {
 		return
 	}
 	c.stateMu.Lock()
+	if st.InverterAvailable != nil {
+		// The gateway owns freshness for its controller envelope.
+		c.controllerLastSeen = time.Time{}
+	}
 	prev := c.state
 	if prev != nil {
 		if st.Version == "" {
@@ -204,43 +216,43 @@ func (c *Client) ApplyState(st *state.State) {
 		if st.CameraEvent == nil {
 			st.CameraEvent = prev.CameraEvent
 		}
-		if st.SolarForecast == nil {
+		if st.InverterAvailable == nil && st.SolarForecast == nil {
 			st.SolarForecast = prev.SolarForecast
 		}
-		if st.Booleans == nil {
+		if st.InverterAvailable == nil && st.Booleans == nil {
 			st.Booleans = prev.Booleans
 			st.OnlyCharging, st.NoFeed, st.HouseSupport = prev.OnlyCharging, prev.NoFeed, prev.HouseSupport
 			st.ChargeBattery, st.DoNotSupplyCharger = prev.ChargeBattery, prev.DoNotSupplyCharger
 			st.SetLimitToEVCharger, st.MinimizeCharging, st.DryRun = prev.SetLimitToEVCharger, prev.MinimizeCharging, prev.DryRun
 		}
-		if reflect.ValueOf(st.DailyStats).IsZero() {
+		if st.InverterAvailable == nil && reflect.ValueOf(st.DailyStats).IsZero() {
 			st.DailyStats = prev.DailyStats
 		}
-		if reflect.ValueOf(st.ESSMode).IsZero() {
+		if st.InverterAvailable == nil && reflect.ValueOf(st.ESSMode).IsZero() && !st.NativeESSObserved && !st.TelemetryAvailable["ess_mode"] {
 			st.ESSMode = prev.ESSMode
 		}
-		if st.UIConfig == nil {
+		if st.InverterAvailable == nil && st.UIConfig == nil {
 			st.UIConfig = prev.UIConfig
 		}
-		if st.DVCCLimits == nil {
+		if st.InverterAvailable == nil && st.DVCCLimits == nil {
 			st.DVCCLimits = prev.DVCCLimits
 		}
-		if st.Limits == nil {
+		if st.InverterAvailable == nil && st.Limits == nil {
 			st.Limits = prev.Limits
 		}
-		if st.Perf == nil {
+		if st.InverterAvailable == nil && st.Perf == nil {
 			st.Perf = prev.Perf
 		}
-		if st.LoopInterval == 0 {
+		if st.InverterAvailable == nil && st.LoopInterval == 0 {
 			st.LoopInterval = prev.LoopInterval
 		}
-		if st.GridControlValid == nil {
+		if st.InverterAvailable == nil && st.GridControlValid == nil {
 			st.GridControlValid, st.GridControlReason = prev.GridControlValid, prev.GridControlReason
 			st.GridLossState, st.GridLossHoldSeconds = prev.GridLossState, prev.GridLossHoldSeconds
 			st.GridLossElapsed, st.GridLossRemaining = prev.GridLossElapsed, prev.GridLossRemaining
 			st.GridLossZeroApplied = prev.GridLossZeroApplied
 		}
-		if st.Features == nil {
+		if st.InverterAvailable == nil && st.Features == nil {
 			st.Features = prev.Features
 		}
 	}
@@ -259,8 +271,9 @@ func (c *Client) LastStateTime() time.Time {
 	return c.lastStateTime
 }
 func (c *Client) GetState() *state.State {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	c.expireOptionalTelemetry(time.Now())
 	return c.state.Clone()
 }
 
@@ -525,9 +538,11 @@ func (c *Client) Disconnect() {
 
 func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 	var data map[string]interface{}
-	if err := json.Unmarshal(msg.Payload(), &data); err != nil {
-		log.Printf("Failed to unmarshal state message: %v", err)
-		return
+	if len(msg.Payload()) > 0 {
+		if err := json.Unmarshal(msg.Payload(), &data); err != nil {
+			log.Printf("Failed to unmarshal state message: %v", err)
+			return
+		}
 	}
 
 	c.lastStateMu.Lock()
@@ -535,6 +550,7 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 	c.lastStateMu.Unlock()
 
 	c.stateMu.Lock()
+	c.controllerLastSeen = time.Now()
 	c.mergeDaemonState(data)
 	st := c.state.Clone()
 	c.stateMu.Unlock()

@@ -26,13 +26,13 @@ func TestFormatESSMode(t *testing.T) {
 
 func TestFormatHeaderToggles(t *testing.T) {
 	toggles := FormatHeaderToggles()
-	if len(toggles) != 8 {
-		t.Errorf("Expected 8 toggles, got %d", len(toggles))
+	if len(toggles) != 7 {
+		t.Errorf("Expected 7 toggles, got %d", len(toggles))
 	}
 
 	// Check first toggle
-	if toggles[0]["id"] != "dry_run" {
-		t.Errorf("First toggle id = %q, want %q", toggles[0]["id"], "dry_run")
+	if toggles[0]["id"] != "only_charging" {
+		t.Errorf("First toggle id = %q, want %q", toggles[0]["id"], "only_charging")
 	}
 
 	// Check all toggles have required fields

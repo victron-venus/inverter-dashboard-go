@@ -1,0 +1,12 @@
+{
+  "repository": "victron-venus/inverter-dashboard-vue",
+  "commit": "ee72070",
+  "normalization": "JavaScript files end with one LF; otherwise copied from dist",
+  "sha256": {
+    "assets/echarts-vendor-CeLn-8Oq.js": "348447d6efec73333c06ed199754689a62a0a4d7c43996111109d96d1d49f68e",
+    "assets/index-BjpFTIot.css": "76066f2948c2185207b42dcdfaca06b464a7f2ef248bee470aa8c271b1ced684",
+    "assets/index-Ddd_SyRj.js": "8439d0eaf4a498810bd39447077c05abfead822039e359eee3ba7a58c662e58f",
+    "assets/zrender-vendor-C_sG5LXb.js": "02dad97a4b518db267ab241c22e9cb73c0d3d3c61068523992700eb9273094eb",
+    "index.html": "94e256e012a57382d0c7588d53e2ade474d3e2a8917fb6630ba5730aaa161adb"
+  }
+}

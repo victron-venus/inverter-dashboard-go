@@ -201,6 +201,10 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if !IsWhitelistedCommand(name) {
 		return fmt.Errorf("%w: %s", ErrCommandNotOnGateway, name)
 	}
+	body, err := normalizeControllerCommand(name, body)
+	if err != nil {
+		return err
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err

@@ -63,8 +63,9 @@ flowchart TD
 ### Direct Cerbo telemetry
 
 The dashboard reads `N/<portal>/...` notifications directly from the Cerbo broker.
-`inverter-control` supplies controller statistics, forecast, ESS mode and control flags;
-it is not required to relay grid, consumption, battery, solar, circuits, water or EV telemetry.
+`inverter-control` supplies controller statistics, forecast and control flags;
+ESS mode is also read from the two native `Settings/CGwacs` settings.
+The daemon is not required to relay grid, consumption, battery, solar, circuits, water or EV telemetry.
 
 Set `cerbo.portal_id` / `CERBO_PORTAL_ID` to the GX VRM portal ID for reliable startup.
 With an empty ID the dashboard discovers one portal from native MQTT traffic (the
@@ -132,18 +133,50 @@ readback. Gateway transport displays water telemetry without enabling these writ
 
 EV data comes **exclusively** from [dbus-ev](https://github.com/victron-venus/dbus-ev) (vehicle) and
 [dbus-evcharger](https://github.com/victron-venus/dbus-evcharger) (charger) via Cerbo MQTT — no Home Assistant involved.
-Enable it in the `cerbo:` section of `config.yaml` (or `CERBO_PORTAL_ID` env); instances
-(`ev_instance` / `evcharger_instance`, defaults 22/40) must match dbus-ev and dbus-evcharger's
-`local_config.py`.
+By default, both instance settings are `-1` (automatic). The dashboard discovers
+connected `ev` and `evcharger` services and selects the lowest instance with a valid
+SOC or AC power reading. Metadata-only services do not hide measured devices.
+`cerbo.ev_instance` / `EV_INSTANCE` and `cerbo.evcharger_instance` /
+`EVCHARGER_INSTANCE` can pin exact instances, including zero. An unavailable pinned
+instance shows unknown readings instead of silently selecting another vehicle.
 
-| Dashboard field | MQTT topic |
-|---|---|
-| `car_soc` | `N/<portal>/ev/<i>/Soc` |
-| `ev_charging_kw` | `N/<portal>/evcharger/<i>/Ac/Power` (W → kW) |
-| `ev_power` | `N/<portal>/ev/<i>/Ac/Power` (W) |
+`car_soc` is measured percent, including zero; auto discovery accepts `/Soc` on
+`evcharger` for older dbus-ev services. `ev_power` and `car_charging_power` are vehicle
+watts; `ev_charging_power` is wallbox watts and `ev_charging_kw` is its legacy kW
+alias. Total `/Ac/Power` takes precedence over the sum of available phase powers.
+`discovered_water_ev` lists each EV service's kind, instance, name and available SOC /
+power. `ev_present` and `evcharger_present` expose device presence independently of
+whether charging power is positive. Null readings, disconnected services and removal
+messages clear their measurements. Unchanged readings remain valid while the device
+is connected; MQTT change-only publishers do not need to repeat identical values.
+Gateway snapshots use the same discovery, selection and unit rules. EV control remains
+outside the dashboard's command surface.
 
-Car status (SOC, charging power) comes from dbus-ev; wallbox power from dbus-evcharger.
-The dashboard is read-only.
+### Inverter-control header
+
+The seven header flags belong to inverter-control, independently of Home Assistant.
+The dashboard uses `booleans` and `ui_config.header_toggles` from the retained
+`inverter/state` message. Missing metadata uses the standard seven labels; an explicit
+empty toggle list remains empty. Flag commands use canonical keys and explicit `on` /
+`off` values. DRY uses an explicit boolean, and the legacy ESS action uses an empty
+payload. State changes appear only after confirmed telemetry; the dashboard does not
+optimistically flip confirmed state or retry these HTTP commands.
+
+IGW supplies the same retained object under the snapshot's `inverter` key. An explicit
+`null` clears controller state; omission by older gateways preserves compatibility
+with a previously observed direct controller state. Native ESS settings override the
+controller's ESS copy when available. Missing settings never invent an active ESS
+mode. `controller_controls_available` requires both a connected source and available
+controller state. Native ESS telemetry remains readable without the controller;
+controller commands stay unavailable in that case. Direct controller state expires
+after 120 seconds of silence, and disconnects clear its flags. IGW applies its own
+controller freshness limit and emits `inverter: null` when stale.
+
+IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.host`
+in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
+
+The embedded SPA is built from `inverter-dashboard-vue` commit `ee72070`; its asset
+receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
 
 ## Features
 
