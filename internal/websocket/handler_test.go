@@ -216,6 +216,8 @@ func TestHandleMessage_PublishCommand(t *testing.T) {
 	defer resetClientsForTest()
 
 	mc := mockmqtt.NewClient()
+	dryRun := false
+	mc.SetState(&state.State{DryRun: &dryRun})
 	msg := Message{Action: "dry_run"}
 	err := handleMessage(msg, mc, nil)
 	if err != nil {

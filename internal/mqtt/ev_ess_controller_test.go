@@ -132,6 +132,32 @@ func TestIdleControllerExpiryBroadcasts(t *testing.T) {
 	}
 }
 
+func TestDirectDryRunFalseSurvivesCloneAndRetainedRemoval(t *testing.T) {
+	c := NewClient("", 0)
+	for _, sample := range []struct {
+		body string
+		want interface{}
+	}{
+		{`{"dry_run":false}`, false},
+		{`{"dry_run":true}`, true},
+		{`{"dry_run":false}`, false},
+		{"", nil},
+	} {
+		controllerMessage(c, sample.body)
+		encoded, err := json.Marshal(c.GetState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(encoded, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if value, exists := payload["dry_run"]; !exists || value != sample.want {
+			t.Fatalf("dry_run=%v present=%v want %v", value, exists, sample.want)
+		}
+	}
+}
+
 func TestDaemonEVMirrorsNeverSupplyNativeReadingsAtStartup(t *testing.T) {
 	c := NewClient("localhost", 1883)
 	c.stateMu.Lock()

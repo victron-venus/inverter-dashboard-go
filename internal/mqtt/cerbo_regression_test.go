@@ -401,7 +401,7 @@ func TestGatewayTelemetryPreservesControllerState(t *testing.T) {
 	snapshot := CerboSnapshotToState(map[string]map[string]interface{}{"system": {"0/Ac/Grid/L1/Power": 25.0}}, CerboOptions{})
 	c.ApplyState(snapshot)
 	st := c.GetState()
-	if st.Booleans["no_feed"] != true || !st.DryRun || st.ESSMode.ModeName != "External control" || st.DailyStats.ProducedToday != 12.5 || st.UIConfig["title"] != "Home" || st.GT != 25 {
+	if st.Booleans["no_feed"] != true || st.DryRun == nil || !*st.DryRun || st.ESSMode.ModeName != "External control" || st.DailyStats.ProducedToday != 12.5 || st.UIConfig["title"] != "Home" || st.GT != 25 {
 		t.Fatalf("gateway snapshot erased controller metadata: %+v", st)
 	}
 }

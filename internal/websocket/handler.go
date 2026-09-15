@@ -305,17 +305,7 @@ func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) err
 	case "setpoint":
 		return mqttClient.PublishCommand("setpoint", map[string]interface{}{"value": msg.Value})
 	case "dry_run":
-		if err := requireController(mqttClient); err != nil {
-			return err
-		}
-		value, ok := msg.Value.(bool)
-		if msg.Value == nil {
-			value, ok = !mqttClient.GetState().DryRun, true
-		}
-		if !ok {
-			return fmt.Errorf("dry_run value must be boolean")
-		}
-		return mqttClient.PublishCommand("dry_run", map[string]interface{}{"value": value})
+		return handleDryRun(msg.Value, mqttClient)
 	case "limits":
 		return mqttClient.PublishCommand("limits", map[string]interface{}{
 			"min": msg.Min,
