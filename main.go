@@ -588,7 +588,6 @@ func apiStateHandler(mqttClient *mqtt.Client, haClients ...*homeassistant.Client
 		payload["ok"] = true
 		payload["has_mqtt_state"] = mqttClient.GetState() != nil
 		payload["portal_id"] = mqttClient.PortalID()
-		payload["mqtt_connected"] = mqttClient.IsConnected()
 		if st := mqttClient.GetState(); st != nil {
 			payload["control_version"] = st.Version
 		}
@@ -682,17 +681,24 @@ func apiSettingsPostHandler() gin.HandlerFunc {
 
 // Health check
 type healthResponse struct {
-	Status        string    `json:"status"`
-	Version       string    `json:"version"`
-	Timestamp     time.Time `json:"timestamp"`
-	Clients       int       `json:"websocket_clients"`
-	MQTTConnected bool      `json:"mqtt_connected"`
-	LastStateAge  string    `json:"last_state_age,omitempty"`
+	Status           string    `json:"status"`
+	Version          string    `json:"version"`
+	Timestamp        time.Time `json:"timestamp"`
+	Clients          int       `json:"websocket_clients"`
+	DataSource       string    `json:"data_source"`
+	MQTTConnected    bool      `json:"mqtt_connected"`
+	GatewayConnected bool      `json:"gateway_connected"`
+	NativeConnected  bool      `json:"native_connected"`
+	LastStateAge     string    `json:"last_state_age,omitempty"`
 }
 
 func healthHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		connected := mqttClient.IsConnected()
+		transport := mqttClient.TransportStatus()
+		connected, _ := transport["native_connected"].(bool)
+		mqttConnected, _ := transport["mqtt_connected"].(bool)
+		gatewayConnected, _ := transport["gateway_connected"].(bool)
+		dataSource, _ := transport["data_source"].(string)
 		lastState := mqttClient.LastStateTime()
 		age := time.Since(lastState)
 
@@ -702,12 +708,15 @@ func healthHandler(mqttClient *mqtt.Client) gin.HandlerFunc {
 		}
 
 		c.JSON(200, healthResponse{
-			Status:        status,
-			Version:       version.GetCurrent(),
-			Timestamp:     time.Now().UTC(),
-			Clients:       websocket.GetConnectedCount(),
-			MQTTConnected: connected,
-			LastStateAge:  age.Truncate(time.Second).String(),
+			Status:           status,
+			Version:          version.GetCurrent(),
+			Timestamp:        time.Now().UTC(),
+			Clients:          websocket.GetConnectedCount(),
+			DataSource:       dataSource,
+			MQTTConnected:    mqttConnected,
+			GatewayConnected: gatewayConnected,
+			NativeConnected:  connected,
+			LastStateAge:     age.Truncate(time.Second).String(),
 		})
 	}
 }

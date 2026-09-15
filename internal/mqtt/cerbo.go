@@ -798,6 +798,7 @@ func (c *Client) invalidateCerbo() {
 	c.stateMu.Lock()
 	c.initCerboMaps()
 	c.cerboLeaves = nil
+	c.nativeLastSeen = time.Time{}
 	ApplyControllerSnapshot(c.state, nil)
 	for _, key := range directFields {
 		clearStateField(c.state, key)

@@ -110,6 +110,34 @@ func TestTransportStatusDistinguishesIGWAndFreshness(t *testing.T) {
 	}
 }
 
+func TestMQTTReconnectRequiresNewNativeObservation(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.SetWaterConfig("p1", 21, 1, 2)
+	c.client = &recordingBroker{}
+	send(c, "system/0", "Ac/Grid/L1/Power", 42)
+	assertQuality := func(want string) {
+		t.Helper()
+		telemetry := c.TransportStatus()["telemetry"].(map[string]interface{})
+		if telemetry["quality"] != want {
+			t.Fatalf("telemetry quality = %v, want %s", telemetry["quality"], want)
+		}
+		if want == "unknown" && telemetry["observed_at"] != "" {
+			t.Fatal("invalidated native observation still has a timestamp")
+		}
+	}
+	assertQuality("live")
+	c.client = &reconnectingBroker{}
+	c.invalidateCerbo()
+	assertQuality("unknown")
+	c.client = &recordingBroker{}
+	if !c.IsConnected() {
+		t.Fatal("broker did not reconnect")
+	}
+	assertQuality("unknown")
+	send(c, "system/0", "Ac/Grid/L1/Power", 43)
+	assertQuality("live")
+}
+
 func TestWaterRejectsInvalidModesAndPreservesPercent(t *testing.T) {
 	c := NewClient("localhost", 1883)
 	c.SetWaterConfig("p1", 21, 1, 2)
