@@ -1,16 +1,10 @@
 package homeassistant
 
-import "strings"
+import "github.com/victron-venus/inverter-dashboard-go/internal/state"
 
 // IsControlFlag recognizes controller-owned keys and their legacy HA aliases.
 func IsControlFlag(key string) bool {
-	parts := strings.Split(strings.TrimSpace(key), ".")
-	switch parts[len(parts)-1] {
-	case "only_charging", "no_feed", "house_support", "charge_battery",
-		"do_not_supply_charger", "set_limit_to_ev_charger", "minimize_charging":
-		return true
-	}
-	return false
+	return state.IsControlFlag(key)
 }
 
 // IsMQTTOwnedKey protects Cerbo telemetry and controller state from old HA mirrors.

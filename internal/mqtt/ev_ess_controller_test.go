@@ -131,3 +131,28 @@ func TestIdleControllerExpiryBroadcasts(t *testing.T) {
 		t.Fatal("idle controller expiry did not reach existing clients")
 	}
 }
+
+func TestDaemonEVMirrorsNeverSupplyNativeReadingsAtStartup(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.stateMu.Lock()
+	c.mergeDaemonState(map[string]interface{}{
+		"car_soc": 99.0, "ev_power": 7400.0, "car_charging_power": 7400.0,
+		"ev_charging_kw": 7.4, "ev_charging_power": 7400.0, "ev_present": true,
+		"evcharger_present": true, "discovered_water_ev": []interface{}{map[string]interface{}{"kind": "ev", "instance": 22}},
+		"booleans":  map[string]interface{}{"only_charging": true},
+		"ui_config": "malformed optional metadata",
+	})
+	c.stateMu.Unlock()
+	st := c.GetState()
+	if st.Booleans["only_charging"] != true {
+		t.Fatal("malformed metadata suppressed valid flags")
+	}
+	for _, key := range []string{"car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power"} {
+		if st.TelemetryAvailable[key] {
+			t.Errorf("daemon mirror became native telemetry: %s", key)
+		}
+	}
+	if len(st.DiscoveredWaterEV) != 0 {
+		t.Fatal("daemon supplied native device inventory")
+	}
+}

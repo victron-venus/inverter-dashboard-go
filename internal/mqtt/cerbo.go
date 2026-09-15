@@ -462,17 +462,19 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 	c.initCerboMaps()
 	clean := map[string]interface{}{}
 	for key, value := range data {
-		if !c.cerboOwned[key] && key != "telemetry_available" {
-			clean[key] = value
+		if c.cerboOwned[key] || key == "telemetry_available" || isNativeEVField(key) {
+			continue
 		}
-	}
-	raw, err := json.Marshal(clean)
-	if err != nil {
-		return
-	}
-	if err = json.Unmarshal(raw, c.state); err != nil {
-		log.Printf("Invalid inverter/state: %v", err)
-		return
+		// One malformed optional field must not suppress valid controller flags.
+		raw, err := json.Marshal(map[string]interface{}{key: value})
+		if err != nil {
+			continue
+		}
+		if err = json.Unmarshal(raw, c.state); err != nil {
+			log.Printf("Invalid inverter/state field: %v", err)
+			continue
+		}
+		clean[key] = value
 	}
 	for _, key := range directFields {
 		if v, ok := clean[key]; ok && v != nil {
@@ -485,6 +487,15 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 	ApplyControllerSnapshot(c.state, data)
 	c.state.DashboardVersion = version.GetCurrent()
 	c.applyCerboOverlays()
+}
+
+func isNativeEVField(key string) bool {
+	switch key {
+	case "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
+		"ev_present", "evcharger_present", "discovered_water_ev":
+		return true
+	}
+	return false
 }
 
 // CerboSnapshotToState maps a complete gateway snapshot with the exact LAN
