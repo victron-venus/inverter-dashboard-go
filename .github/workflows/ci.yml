@@ -8,7 +8,7 @@ permissions:
 jobs:
   ci:
     name: CI
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@58b0879de83172ce521edf2af552d65e3cac3599
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@1e17ee4e0717242d7c8d74f3f9b19c452eee5b24
     with:
       go-version: '1.26.6'
       # working-directory: '.'  # default
