@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -75,6 +76,8 @@ var (
 	// Connected clients
 	clients   = make(map[*websocket.Conn]bool)
 	clientsMu sync.RWMutex
+	// Serialize frames without holding the registry lock used by health checks.
+	writesMu sync.Mutex
 
 	latestVersion string
 	latestMu      sync.RWMutex
@@ -135,13 +138,18 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 		return
 	}
 
-	// Register and initialize under the same lock used by broadcasts so an
-	// MQTT update cannot write to this connection during its initial frame.
+	// Serialize initialization with broadcasts, but keep registry reads available
+	// while a peer is slow or stops reading its initial frame.
+	writesMu.Lock()
 	clientsMu.Lock()
 	clients[conn] = true
 	clientCount := len(clients)
-	err = sendInitialState(conn, mqttClient, haClient)
 	clientsMu.Unlock()
+	err = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	if err == nil {
+		err = sendInitialState(conn, mqttClient, haClient)
+	}
+	writesMu.Unlock()
 
 	log.Printf("WebSocket client connected (%d total)", clientCount)
 
@@ -428,10 +436,11 @@ func handlePress(entityID string, mqttClient MQTTCommander, haClient HAClient) e
 func removeClient(conn *websocket.Conn) {
 	clientsMu.Lock()
 	delete(clients, conn)
+	remaining := len(clients)
 	clientsMu.Unlock()
 
 	conn.Close()
-	log.Printf("WebSocket client disconnected (%d remaining)", len(clients))
+	log.Printf("WebSocket client disconnected (%d remaining)", remaining)
 }
 
 // SetLatestVersion sets the latest version (called from version checker)
@@ -462,24 +471,33 @@ func getKeys(m map[string]interface{}) []string {
 func BroadcastState(mqttClient MQTTCommander, haClient HAClient, overlay homeassistant.Overlay) error {
 	payload := buildPayload(mqttClient, haClient, overlay)
 
-	// Broadcast to all clients with per-client exception handling (matches Python)
-	// Use write lock to prevent concurrent websocket writes
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+	// Gorilla allows one concurrent writer per connection. Registry reads must
+	// remain available during network writes, including slow or failed peers.
+	writesMu.Lock()
+	defer writesMu.Unlock()
+	clientsMu.RLock()
+	peers := make([]*websocket.Conn, 0, len(clients))
+	for conn := range clients {
+		peers = append(peers, conn)
+	}
+	clientsMu.RUnlock()
 
 	message, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	log.Printf("Broadcasting to %d clients", len(clients))
+	log.Printf("Broadcasting to %d clients", len(peers))
 
 	// Send to each client individually, catching errors per client (matches Python try/except)
-	for conn := range clients {
-		if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+	for _, conn := range peers {
+		err := conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		if err == nil {
+			err = conn.WriteMessage(websocket.TextMessage, message)
+		}
+		if err != nil {
 			log.Printf("Failed to send to client: %v", err)
-			delete(clients, conn)
-			conn.Close()
+			removeClient(conn)
 		}
 	}
 
