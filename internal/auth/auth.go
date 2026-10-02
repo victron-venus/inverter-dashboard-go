@@ -14,9 +14,19 @@ import (
 // "Authorization: Bearer <secret>" header or a "?token=<secret>" query param
 // (the latter keeps browser and WebSocket URLs simple). When secret is empty
 // the middleware is a no-op, matching Python's unset-DASHBOARD_SECRET mode.
+// /health, /metrics, and /assets/* stay open (probes + SPA static files).
 func Middleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if secret == "" {
+			c.Next()
+			return
+		}
+
+		path := c.Request.URL.Path
+		// /health and /metrics: probes. /assets and /assets/* only: hashed Vue SPA
+		// files; browsers request them without inheriting ?token=. This restores the
+		// existing Python StaticFiles contract (not a broader unauthenticated surface).
+		if path == "/health" || path == "/metrics" || path == "/assets" || strings.HasPrefix(path, "/assets/") {
 			c.Next()
 			return
 		}
@@ -60,6 +70,7 @@ func respondError(c *gin.Context, status int, msg string) {
 		c.Data(status, "text/html; charset=utf-8", []byte(
 			"<h1>Inverter Dashboard</h1><p>"+msg+". Append <code>?token=YOUR_SECRET</code> "+
 				"to the URL or send an <code>Authorization: Bearer</code> header.</p>"))
+		c.Abort()
 		return
 	}
 	c.AbortWithStatusJSON(status, gin.H{"error": msg})
