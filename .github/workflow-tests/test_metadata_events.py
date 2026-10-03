@@ -175,7 +175,9 @@ class MetadataEventsTests(unittest.TestCase):
             pr["draft"] = draft
             if same_repo:
                 pr["head"]["repo"]["full_name"] = data["github"]["repository"]
-            with self.subTest(author=author, draft=draft, event=event, same_repo=same_repo):
+            with self.subTest(
+                author=author, draft=draft, event=event, same_repo=same_repo
+            ):
                 self.assertEqual(bool(evaluate(condition, data)), expected)
 
 
