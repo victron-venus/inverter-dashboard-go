@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -153,6 +154,11 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 	// Initialize HTTP client with timeout
 	client.httpClient = &http.Client{
 		Timeout: 20 * time.Second,
+		// A configured HA endpoint must not redirect authenticated requests to
+		// another destination or replay service commands at a different path.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	// Validate and set configured flag
@@ -170,20 +176,74 @@ func (c *Client) validateConfig() bool {
 		return false
 	}
 
-	_, err := url.Parse(c.httpURL)
-	return err == nil
+	endpoint, err := normalizeHomeAssistantURL(c.httpURL)
+	if err != nil {
+		return false
+	}
+	c.httpURL = endpoint
+	return true
 }
 
-// OverrideCredentials applies settings-file HA URL/token on top of config.yaml
-// (startup only; wins over the yaml values).
-func (c *Client) OverrideCredentials(url, token string) {
-	if url != "" {
-		c.httpURL = url
+// normalizeHomeAssistantURL accepts operator-configured HTTP(S) endpoints,
+// including LAN and loopback hosts. Credentials and URL routing ambiguity are
+// rejected before the bearer token is attached to a request.
+func normalizeHomeAssistantURL(raw string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.Opaque != "" {
+		return "", fmt.Errorf("Home Assistant URL must be an absolute HTTP(S) URL")
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
+		return "", fmt.Errorf("Home Assistant URL must not contain userinfo, a query, or a fragment")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", fmt.Errorf("Home Assistant URL has an invalid port")
+		}
+	} else if strings.HasSuffix(u.Host, ":") {
+		return "", fmt.Errorf("Home Assistant URL has an invalid port")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
+}
+
+// OverrideCredentials applies a settings-file token at startup. Settings may
+// identify the configured HA endpoint, but cannot choose a new request target:
+// the destination is trusted only when supplied through config.yaml.
+func (c *Client) OverrideCredentials(rawURL, token string) error {
+	if rawURL != "" {
+		endpoint, err := normalizeHomeAssistantURL(rawURL)
+		trustedEndpoint, trustedErr := normalizeHomeAssistantURL(c.httpURL)
+		if err != nil || trustedErr != nil || endpoint != trustedEndpoint {
+			return fmt.Errorf("settings Home Assistant URL must match config.yaml")
+		}
 	}
 	if token != "" {
 		c.token = token
 	}
 	c.configured = c.validateConfig()
+	return nil
+}
+
+// newAPIRequest builds paths underneath the operator-configured HA endpoint.
+// Dynamic entity/service names are escaped as path segments, never as a URL.
+func (c *Client) newAPIRequest(ctx context.Context, method string, body io.Reader, segments ...string) (*http.Request, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("HA not configured")
+	}
+	endpoint := c.httpURL + "/api"
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." || strings.ContainsAny(segment, "/\\") {
+			return nil, fmt.Errorf("invalid Home Assistant API path segment")
+		}
+		endpoint += "/" + url.PathEscape(segment)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
 }
 
 func (c *Client) IsDirectMode() bool {
@@ -349,12 +409,10 @@ func (c *Client) getEntityDoc(ctx context.Context, entityID string) (*EntityStat
 	if c.httpClient == nil {
 		return nil, fmt.Errorf("http client not initialized")
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
+	req, err := c.newAPIRequest(ctx, http.MethodGet, nil, "states", entityID)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -444,31 +502,10 @@ func parseStateToSeconds(raw string) int {
 
 // getEntityState fetches the current state of a single entity
 func (c *Client) getEntityState(ctx context.Context, entityID string) (string, error) {
-	if c.httpClient == nil {
-		return "", fmt.Errorf("http client not initialized")
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/states/%s", c.httpURL, url.QueryEscape(entityID)), nil)
+	entity, err := c.getEntityDoc(ctx, entityID)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	var entity EntityState
-	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
-		return "", err
-	}
-
 	return entity.State, nil
 }
 
@@ -494,43 +531,11 @@ func (c *Client) ToggleEntity(entityID string) error {
 }
 
 func (c *Client) callServiceDomain(service, entityID string) error {
-	if c.httpClient == nil {
-		return fmt.Errorf("http client not initialized")
+	domain, action, ok := strings.Cut(service, "/")
+	if !ok {
+		return fmt.Errorf("invalid Home Assistant service")
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	body := map[string]interface{}{
-		"entity_id": entityID,
-	}
-
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request body: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		fmt.Sprintf("%s/api/services/%s", c.httpURL, service),
-		bytes.NewReader(bodyBytes))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("service call failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("service call returned HTTP %d", resp.StatusCode)
-	}
-
-	return nil
+	return c.callService(domain, action, entityID)
 }
 
 func (c *Client) TurnEntity(entityID string, turnOn bool) error {
@@ -588,15 +593,10 @@ func (c *Client) callServiceData(domain, service, entityID string, fields map[st
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		fmt.Sprintf("%s/api/services/%s/%s", c.httpURL, domain, service),
-		bytes.NewReader(bodyBytes))
+	req, err := c.newAPIRequest(ctx, http.MethodPost, bytes.NewReader(bodyBytes), "services", domain, service)
 	if err != nil {
 		return err
 	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
