@@ -15,7 +15,7 @@ import (
 func TestHomeAssistantURLValidation(t *testing.T) {
 	for _, endpoint := range []string{
 		"http://homeassistant.local:8123", "http://192.168.1.20:8123/",
-		"http://127.0.0.1:8123", "http://[::1]:8123", "https://ha.example.com/homeassistant/",
+		"http://127.0.0.1:8123", "http://[::1]:8123", "https://ha.example.com/homeassistant/", "HTTPS://ha.example.com",
 	} {
 		t.Run(endpoint, func(t *testing.T) {
 			c := NewClient(&config.HomeAssistantConfig{URL: endpoint, Token: "token", DirectControls: true})

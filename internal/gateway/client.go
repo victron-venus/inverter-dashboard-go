@@ -8,13 +8,12 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/victron-venus/inverter-dashboard-go/internal/httpendpoint"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
 
@@ -81,23 +80,14 @@ func NewClient(cfg Config, apply func(*state.State), onStatus func(connected boo
 // normalizeURL rejects insecure or ambiguous endpoints before adding credentials.
 // Error messages deliberately omit the input, which may contain URL credentials.
 func normalizeURL(raw string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u == nil || !strings.EqualFold(u.Scheme, "https") || u.Hostname() == "" || u.Opaque != "" {
+	endpoint, err := httpendpoint.Normalize(raw)
+	if err != nil {
+		return "", fmt.Errorf("gateway %w", err)
+	}
+	if !strings.HasPrefix(endpoint, "https://") {
 		return "", fmt.Errorf("gateway URL must be an absolute HTTPS URL")
 	}
-	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
-		return "", fmt.Errorf("gateway URL must not contain userinfo, a query, or a fragment")
-	}
-	if port := u.Port(); port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return "", fmt.Errorf("gateway URL has an invalid port")
-		}
-	} else if strings.HasSuffix(u.Host, ":") {
-		return "", fmt.Errorf("gateway URL has an invalid port")
-	}
-	u.Scheme = "https"
-	return strings.TrimRight(u.String(), "/"), nil
+	return endpoint, nil
 }
 
 // IsConnected reports whether the last poll succeeded.

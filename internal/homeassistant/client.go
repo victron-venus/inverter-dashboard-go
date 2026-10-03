@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
+	"github.com/victron-venus/inverter-dashboard-go/internal/httpendpoint"
 	"time"
 )
 
@@ -188,22 +189,11 @@ func (c *Client) validateConfig() bool {
 // including LAN and loopback hosts. Credentials and URL routing ambiguity are
 // rejected before the bearer token is attached to a request.
 func normalizeHomeAssistantURL(raw string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.Opaque != "" {
-		return "", fmt.Errorf("Home Assistant URL must be an absolute HTTP(S) URL")
+	endpoint, err := httpendpoint.Normalize(raw)
+	if err != nil {
+		return "", fmt.Errorf("Home Assistant %w", err)
 	}
-	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
-		return "", fmt.Errorf("Home Assistant URL must not contain userinfo, a query, or a fragment")
-	}
-	if port := u.Port(); port != "" {
-		n, err := strconv.Atoi(port)
-		if err != nil || n < 1 || n > 65535 {
-			return "", fmt.Errorf("Home Assistant URL has an invalid port")
-		}
-	} else if strings.HasSuffix(u.Host, ":") {
-		return "", fmt.Errorf("Home Assistant URL has an invalid port")
-	}
-	return strings.TrimRight(u.String(), "/"), nil
+	return endpoint, nil
 }
 
 // OverrideCredentials applies a settings-file token at startup. Settings may

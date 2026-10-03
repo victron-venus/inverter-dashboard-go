@@ -35,6 +35,16 @@ func TestNewClientRejectsUnsafeURLs(t *testing.T) {
 	}
 }
 
+func TestGatewayAcceptsNormalizedHTTPSURL(t *testing.T) {
+	c, err := NewClient(Config{URL: "HTTPS://gateway.example:9151/", APIToken: "token"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.cfg.URL != "https://gateway.example:9151" {
+		t.Fatalf("unexpected normalized gateway URL: %q", c.cfg.URL)
+	}
+}
+
 func TestNewClientRejectsIncompleteCredentials(t *testing.T) {
 	for _, cfg := range []Config{
 		{}, {AccessClientID: "id"}, {AccessClientSecret: "secret"},
