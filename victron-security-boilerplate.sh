@@ -39,7 +39,7 @@ if [ -f "go.mod" ]; then
   go install github.com/google/osv-scanner/cmd/osv-scanner@1e295ee11c5e107886e58bacb04228325082146f 2>/dev/null || echo "  ⚠ osv-scanner install failed"
 elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
   echo "  🐍 Python project detected"
-  # Install Python security tools
+  # Install Bandit; dependency review runs in the copied GitHub workflow.
   python3 -m pip install --require-hashes --only-binary=:all: -r "${SCRIPT_DIR}/scripts/requirements-security-tools.txt" 2>/dev/null || echo "  ⚠ Python tools install failed"
   # Create Python security workflow if needed
   if [ ! -f ".github/workflows/python-security.yml" ]; then
