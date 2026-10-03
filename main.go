@@ -165,10 +165,12 @@ func main() {
 
 		haClient = homeassistant.NewClient(cfg.HomeAssistant)
 		if ov := settings.Overrides(); haClient != nil && len(ov) > 0 {
-			haClient.OverrideCredentials(
+			if err := haClient.OverrideCredentials(
 				strVal(ov["ha_url"]),
 				strVal(ov["ha_token"]),
-			)
+			); err != nil {
+				logger.Warn(logging.DefaultContext().With("component", "homeassistant"), "Ignoring invalid Home Assistant settings override", "error", err)
+			}
 		}
 		logger.Info(logging.DefaultContext().With("component", "homeassistant"), "HA client created",
 			"configured", haClient != nil && haClient.IsDirectMode(),
