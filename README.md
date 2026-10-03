@@ -328,6 +328,13 @@ Live MQTT monitoring and WebSocket updates work without Home Assistant. Leave
 Home Assistant unconfigured for an MQTT-only setup; no placeholder HA server or
 credentials are required.
 
+The Home Assistant destination is trusted only from `config.yaml`.
+HTTP and HTTPS endpoints on your LAN, including loopback, are supported. Saved
+UI settings can override the token at startup, but `ha_url` must match the
+configured destination (including scheme, port, and base path). To move HA,
+update `config.yaml` and clear or update the saved `ha_url`, then
+restart the dashboard. HA API redirects are rejected; configure the final URL.
+
 Enable direct Home Assistant integration for enhanced control:
 
 ```yaml
@@ -355,8 +362,6 @@ You can override configuration using environment variables:
 - `MQTT_HOST` - MQTT broker host
 - `MQTT_PORT` - MQTT broker port
 - `WEB_PORT` - Web server port
-- `HA_URL` - Home Assistant URL
-- `HA_TOKEN` - Home Assistant token
 
 ### Example
 
