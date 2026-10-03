@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 REPO_PATH="${1:?usage: $0 <repository-path>}"
 cd "$REPO_PATH"
 
@@ -32,20 +34,20 @@ done
 # Check if Go or Python project
 if [ -f "go.mod" ]; then
   echo "  📦 Go project detected"
-  # Install Go security tools
-  go install golang.org/x/vuln/cmd/govulncheck@latest 2>/dev/null || echo "  ⚠ govulncheck install failed"
-  go install github.com/google/osv-scanner/cmd/osv-scanner@latest 2>/dev/null || echo "  ⚠ osv-scanner install failed"
+  # Pinned govulncheck v1.7.0 and OSV Scanner v1.9.2; Go verifies module checksums.
+  go install golang.org/x/vuln/cmd/govulncheck@617f44b718537dccdea1915395650e0529e3b72e 2>/dev/null || echo "  ⚠ govulncheck install failed"
+  go install github.com/google/osv-scanner/cmd/osv-scanner@1e295ee11c5e107886e58bacb04228325082146f 2>/dev/null || echo "  ⚠ osv-scanner install failed"
 elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
   echo "  🐍 Python project detected"
   # Install Python security tools
-  pip install bandit safety 2>/dev/null || echo "  ⚠ Python tools install failed"
+  python3 -m pip install --require-hashes --only-binary=:all: -r "${SCRIPT_DIR}/scripts/requirements-security-tools.txt" 2>/dev/null || echo "  ⚠ Python tools install failed"
   # Create Python security workflow if needed
   if [ ! -f ".github/workflows/python-security.yml" ]; then
     cp ~/victron/inverter-dashboard-go/.github/workflows/python-security.yml .github/workflows/ 2>/dev/null || echo "  ⚠ Python workflow not found"
   fi
 fi
 
-go install github.com/zricethezav/gitleaks/v8@latest 2>/dev/null || echo "  ⚠ gitleaks install failed"
+go install github.com/zricethezav/gitleaks/v8@8d1f98c7967eb1e79cb44ac6241a124e145d2165 2>/dev/null || echo "  ⚠ gitleaks install failed"
 
 echo ""
 echo "📋 Security summary for $(basename $PWD):"
