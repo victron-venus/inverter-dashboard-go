@@ -29,14 +29,18 @@ type Config struct {
 
 // Client polls GET /v1/snapshot and can POST /v1/commands/{name}.
 type Client struct {
-	cfg        Config
-	http       *http.Client
-	apply      func(*state.State)
-	onStatus   func(connected bool)
-	connected  atomic.Bool
-	stopCh     chan struct{}
-	stopOnce   sync.Once
-	mapOptions MapOptions
+	cfg         Config
+	http        *http.Client
+	apply       func(*state.State)
+	onStatus    func(connected bool)
+	connected   atomic.Bool
+	ctx         context.Context
+	cancel      context.CancelFunc
+	done        chan struct{}
+	lifecycleMu sync.Mutex
+	started     bool
+	stopped     bool
+	mapOptions  MapOptions
 }
 
 // NewClient builds an IGW HTTPS client. apply receives mapped dashboard state.
@@ -60,6 +64,7 @@ func NewClient(cfg Config, apply func(*state.State), onStatus func(connected boo
 	}
 	cfg.URL = base
 	cfg.PollInterval = interval
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		cfg: cfg,
 		http: &http.Client{
@@ -72,7 +77,9 @@ func NewClient(cfg Config, apply func(*state.State), onStatus func(connected boo
 		},
 		apply:      apply,
 		onStatus:   onStatus,
-		stopCh:     make(chan struct{}),
+		ctx:        ctx,
+		cancel:     cancel,
+		done:       make(chan struct{}),
 		mapOptions: cfg.MapOptions,
 	}, nil
 }
@@ -95,17 +102,37 @@ func (c *Client) IsConnected() bool {
 	return c.connected.Load()
 }
 
-// Start begins the background poll loop. Non-blocking.
+// Start begins a single background poll loop. A stopped client cannot restart.
 func (c *Client) Start() {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.started || c.stopped {
+		return
+	}
+	c.started = true
 	go c.pollLoop()
 }
 
-// Stop ends the poll loop.
+// Stop cancels the active poll and waits for all poll callbacks to return.
+// Callbacks must not call Stop synchronously. Once Stop returns, switching
+// telemetry sources cannot be overwritten by a late gateway snapshot.
 func (c *Client) Stop() {
-	c.stopOnce.Do(func() { close(c.stopCh) })
+	c.lifecycleMu.Lock()
+	if !c.stopped {
+		c.stopped = true
+		c.cancel()
+		if !c.started {
+			close(c.done)
+		}
+	}
+	c.lifecycleMu.Unlock()
+	<-c.done
+	c.http.CloseIdleConnections()
 }
 
 func (c *Client) pollLoop() {
+	defer close(c.done)
+	defer c.connected.Store(false)
 	ticker := time.NewTicker(c.cfg.PollInterval)
 	defer ticker.Stop()
 
@@ -113,8 +140,7 @@ func (c *Client) pollLoop() {
 
 	for {
 		select {
-		case <-c.stopCh:
-			c.connected.Store(false)
+		case <-c.ctx.Done():
 			log.Printf("[gateway] poller stopped")
 			return
 		case <-ticker.C:
@@ -124,7 +150,13 @@ func (c *Client) pollLoop() {
 }
 
 func (c *Client) pollOnce() {
-	snap, err := c.FetchSnapshot(context.Background())
+	if c.ctx.Err() != nil {
+		return
+	}
+	snap, err := c.FetchSnapshot(c.ctx)
+	if c.ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		was := c.connected.Swap(false)
 		log.Printf("[gateway] poll failed: %v", err)
@@ -143,7 +175,7 @@ func (c *Client) pollOnce() {
 	if c.onStatus != nil {
 		c.onStatus(true)
 	}
-	if c.apply != nil {
+	if c.apply != nil && c.ctx.Err() == nil {
 		c.apply(mapped)
 	}
 }
