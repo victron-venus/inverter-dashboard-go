@@ -1,18 +1,18 @@
 {
   "repository": "https://github.com/victron-venus/inverter-dashboard-vue",
-  "commit": "0eb03e7232cfb4439f735cc63d0090c9176ff261",
+  "commit": "064f4aec422976c4f32441f9fde36f0fb3d13cde",
   "normalization": "Copied byte-for-byte from the reviewed SPA build; no normalization",
-  "source_manifest_sha256": "23f04fc6645adace15e3b87911e4d7bc5ae4ae3bbf293ae212e5d90ab6102dcc",
+  "source_manifest_sha256": "a386c3108223de20bddd9e8003a203fb9103d7d9c87bebc07728e9bc9913b06c",
   "package_version": "2.2.5",
   "package_lock_sha256": "28611e00ff5dd261358c9a98a14d52789a46e0a0f07179c87b78556c26014622",
   "build_command": "npm ci --ignore-scripts --no-audit --no-fund && npm run build:all",
   "node_version": "v26.8.2",
   "npm_version": "11.19.1",
   "sha256": {
-    "assets/IntervalEnergy-BhSqNnaP.js": "88793d587396c39709d9de08818047de68eafe32e91c3a796078f612f258e98d",
+    "assets/IntervalEnergy-BniMtCCH.js": "188c65ce2f7506a4f1d37fed841fb53b9331bca1e6d47c18ac58f2a9fdbe8e09",
     "assets/IntervalEnergy-DZnd1PxA.css": "e7f34ba776c8465c821faeccfd40203716db53f77b6724a27b6b1a34d943e6e6",
     "assets/TariffEditor-BO5kDYMX.css": "da8d36a6d5f19db14033cc91657ff5edcd96c748c4383a6e2167d8cb641b456c",
-    "assets/TariffEditor-FCmKeGoX.js": "eace93cae67409386bfcd1888de0288b49349fae0d3bd97ecd7a84f01a9924a4",
+    "assets/TariffEditor-Dx0UTofW.js": "15a9291978b9a2801701c95709fe5e03c188f000b9acda552087fcfda7a4980c",
     "assets/af-DK_CjRn6-CZxsvT2y.js": "64444f1b04dc073f3f18373562ada6b2a4488622473107f20cbc7fdde2a3ab61",
     "assets/as-BPtSu6VN-F6qyW8uH.js": "f38c1478b3f9294230fe1169dc56fad6225b30b4c6b876ab49a69052b000e44d",
     "assets/be-CrQ0smca-BYVdQd18.js": "c90eaaf2d0ea76dbf230c0ba18a587a37e7f8caf54227cccb0355e631ce9fb77",
@@ -48,8 +48,8 @@
     "assets/hy-e995ysyO-Cjfrs2ZM.js": "7317db9acff410a62390e3a6af8ea4115dce0313e18b723f1d303da61fbdb8e4",
     "assets/ia-Cr4TJH0c-B1i9kDPT.js": "f89d957a91e09ba6507906795938db76fff09a5a2a67decee9d59bcddd6bd5ed",
     "assets/id-DifDyWg9-C3Hzl2m4.js": "6d9e56f7dc42978594aaaa4a53482112afd08d83f5a3ee787ee730054a660668",
-    "assets/index-B6yhhtn9.js": "fb5f6061d0cf8348626051276ab161e19d0e55ce8f1292debd603dc288542034",
     "assets/index-BTZPxu0l.css": "9dd55d33ce5ad858a77f42e9c22fe1b01939a763fb74b9ee128fcfe51c02b4fc",
+    "assets/index-Bc7OqX69.js": "fcc535a868e9e197ed8476ac8a26167b4f9578a77fa406049ad7ed12c4fea9fe",
     "assets/is-BT8UVRze-DWEBuJpb.js": "63cb2f5b5f26d66d381ac2873f292d530da5fa03a705df0ea32cc982e03b1711",
     "assets/it-Bt_Meacx-HiFRunf5.js": "1f69316bc40b4651a18c2431fb9b92cd7b7d4a895b8cabb5814b83c0dd8ed35c",
     "assets/ka-jyoLzyDE-BU45urC7.js": "6f278c88127773f8a989ec3d98746551699e84fecfb1eeb60bba6bd472b67174",
@@ -95,6 +95,6 @@
     "assets/uk-Dir3oxLs-DGVpthWV.js": "cfef314b43a1283cad7952019d10ed6f8eac839b8e35b350a5c85fffca98578f",
     "assets/zh-latn-pinyin-BdYb-Ey_-CW52gdb_.js": "71266c481f0fc3f94a43064d29f52d421855b39f2e79503eda2763b0c194150a",
     "assets/zrender-vendor-C0VjOGMM.js": "bc5b4ba9030fcc7aa915da7cce288b3c052d0eba91be54b2710bceb8bd33dc3e",
-    "index.html": "0bb3b48a5a5b4e717f972c89b1fea6edf044f77aea787e215819dee09a60a23e"
+    "index.html": "098efe365ea624a5087af218e962bf6b163d62ef2a0a1412ad1de37d894de9fd"
   }
 }
