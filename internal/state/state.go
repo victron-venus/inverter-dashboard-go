@@ -55,10 +55,15 @@ type Battery struct {
 
 // ESSMode represents ESS mode with parsed fields
 type ESSMode struct {
-	BatteryLifeState int    `json:"battery_life_state"`
-	Hub4Mode         int    `json:"hub4_mode"`
-	IsExternal       bool   `json:"is_external"`
-	ModeName         string `json:"mode_name"`
+	Selected           string `json:"selected,omitempty"`
+	SelectionSupported bool   `json:"selection_supported"`
+	RequestID          string `json:"request_id,omitempty"`
+	Error              string `json:"error,omitempty"`
+	VebusMode          *int   `json:"vebus_mode,omitempty"`
+	BatteryLifeState   int    `json:"battery_life_state"`
+	Hub4Mode           int    `json:"hub4_mode"`
+	IsExternal         bool   `json:"is_external"`
+	ModeName           string `json:"mode_name"`
 }
 
 // SolarForecast is computed upstream by inverter-control and passed through
@@ -135,11 +140,13 @@ type State struct {
 	WaterPumpMode       int             `json:"water_pump_mode"`
 	GatewayCapabilities map[string]bool `json:"gateway_capabilities,omitempty"`
 	// Using interface for booleans to match reference
-	Booleans      map[string]interface{} `json:"booleans"`
-	Features      map[string]interface{} `json:"features"`
-	DailyStats    DailyStats             `json:"daily_stats"`
-	ESSMode       ESSMode                `json:"ess_mode"`
-	SolarForecast *SolarForecast         `json:"solar_forecast,omitempty"`
+	Booleans                 map[string]interface{} `json:"booleans"`
+	Features                 map[string]interface{} `json:"features"`
+	DailyStats               DailyStats             `json:"daily_stats"`
+	ESSMode                  ESSMode                `json:"ess_mode"`
+	ESSModeObservedAt        *float64               `json:"ess_mode_observed_at"`
+	ESSModeControlsAvailable bool                   `json:"ess_mode_controls_available"`
+	SolarForecast            *SolarForecast         `json:"solar_forecast,omitempty"`
 
 	// Core metrics
 	SolarTotal        float64        `json:"solar_total"`

@@ -44,19 +44,20 @@ type HAClient interface {
 
 // Message represents a WebSocket message from client
 type Message struct {
-	State    interface{}            `json:"state,omitempty"`
-	Action   string                 `json:"action"`
-	Entity   string                 `json:"entity,omitempty"`
-	ID       string                 `json:"id,omitempty"`
-	Value    interface{}            `json:"value,omitempty"`
-	Position interface{}            `json:"position,omitempty"`
-	MPAction string                 `json:"mp_action,omitempty"`
-	Which    string                 `json:"which,omitempty"`
-	Mode     interface{}            `json:"mode,omitempty"`
-	Min      float64                `json:"min,omitempty"`
-	Max      float64                `json:"max,omitempty"`
-	Interval float64                `json:"interval,omitempty"`
-	Settings map[string]interface{} `json:"settings,omitempty"`
+	State     interface{}            `json:"state,omitempty"`
+	Action    string                 `json:"action"`
+	RequestID string                 `json:"request_id,omitempty"`
+	Entity    string                 `json:"entity,omitempty"`
+	ID        string                 `json:"id,omitempty"`
+	Value     interface{}            `json:"value,omitempty"`
+	Position  interface{}            `json:"position,omitempty"`
+	MPAction  string                 `json:"mp_action,omitempty"`
+	Which     string                 `json:"which,omitempty"`
+	Mode      interface{}            `json:"mode,omitempty"`
+	Min       float64                `json:"min,omitempty"`
+	Max       float64                `json:"max,omitempty"`
+	Interval  float64                `json:"interval,omitempty"`
+	Settings  map[string]interface{} `json:"settings,omitempty"`
 }
 
 // State represents the complete state sent to clients
@@ -175,6 +176,20 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 		// Handle the action
 		if err := handleMessage(msg, mqttClient, haClient); err != nil {
 			log.Printf("Failed to handle message: %v", err)
+			if msg.Action == "set_ess_mode" {
+				writesMu.Lock()
+				writeErr := conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+				if writeErr == nil {
+					writeErr = conn.WriteJSON(map[string]interface{}{
+						"type": "command_error", "action": msg.Action, "request_id": msg.RequestID,
+						"error": "ESS selection was not confirmed; check live connection and retry.",
+					})
+				}
+				writesMu.Unlock()
+				if writeErr != nil {
+					break
+				}
+			}
 		}
 
 		var broadcastOverlay homeassistant.Overlay
@@ -212,6 +227,7 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 	}
 	payload := mergeStates(mqttState, overlay, managedKeys)
 	uiConfig := mergeUIConfig(payload["ui_config"], haClient)
+	mergeHomeButtonStates(payload, uiConfig, overlay, haClient != nil && haClient.IsDirectMode())
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
@@ -251,6 +267,8 @@ func mergeUIConfig(controller interface{}, haClient HAClient) map[string]interfa
 			uiConfig[key] = value
 		}
 	}
+	// Only operator configuration selects Home entities, including an empty list.
+	uiConfig["home_buttons"] = []homeassistant.Button{}
 	if haClient != nil {
 		for key, value := range haClient.GetUIConfig() {
 			uiConfig[key] = value
@@ -260,6 +278,26 @@ func mergeUIConfig(controller interface{}, haClient HAClient) map[string]interfa
 		}
 	}
 	return uiConfig
+}
+
+func mergeHomeButtonStates(payload, uiConfig map[string]interface{}, overlay homeassistant.Overlay, direct bool) {
+	buttons, _ := uiConfig["home_buttons"].([]homeassistant.Button)
+	booleans, _ := payload["booleans"].(map[string]interface{})
+	if booleans == nil {
+		booleans = make(map[string]interface{})
+		payload["booleans"] = booleans
+	}
+	for _, button := range buttons {
+		if homeassistant.IsMQTTOwnedKey(button.StateKey) {
+			continue
+		}
+		booleans[button.StateKey] = nil
+		if direct && overlay.HADirectConnected {
+			if value, ok := overlay.AdditionalFields[button.StateKey].(bool); ok {
+				booleans[button.StateKey] = value
+			}
+		}
+	}
 }
 
 // sendInitialState sends the same complete snapshot returned by /api/state.
@@ -330,6 +368,18 @@ func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) err
 			"min": msg.Min,
 			"max": msg.Max,
 		})
+	case "set_ess_mode":
+		payload := map[string]interface{}{"mode": msg.Mode, "request_id": msg.RequestID}
+		if err := state.ValidateESSSelection(payload); err != nil {
+			return err
+		}
+		if err := requireController(mqttClient); err != nil {
+			return err
+		}
+		if capability, ok := mqttClient.(interface{ CanSelectESSMode() bool }); !ok || !capability.CanSelectESSMode() {
+			return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
+		}
+		return mqttClient.PublishCommand("set_ess_mode", payload)
 	case "ess_mode":
 		if err := requireController(mqttClient); err != nil {
 			return err
@@ -378,6 +428,9 @@ func handleToggle(entityID string, mqttClient MQTTCommander, haClient HAClient) 
 	if state.IsControlFlag(entityID) {
 		return handleControllerToggle(entityID, nil, mqttClient)
 	}
+	if strings.Contains(entityID, ".") && (haClient == nil || !haClient.IsDirectMode() || !haClient.IsToggleAllowed(entityID)) {
+		return fmt.Errorf("home entity is not configured for direct Home Assistant control")
+	}
 	if strings.HasPrefix(entityID, "button.") {
 		return handlePress(entityID, mqttClient, haClient)
 	}
@@ -419,6 +472,9 @@ func handleToggle(entityID string, mqttClient MQTTCommander, haClient HAClient) 
 func handlePress(entityID string, mqttClient MQTTCommander, haClient HAClient) error {
 	if entityID == "" {
 		return fmt.Errorf("entity ID required for press")
+	}
+	if strings.Contains(entityID, ".") && (haClient == nil || !haClient.IsDirectMode()) {
+		return fmt.Errorf("home entity is not configured for direct Home Assistant control")
 	}
 
 	if haClient != nil && haClient.IsDirectMode() {

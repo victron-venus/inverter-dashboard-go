@@ -13,9 +13,17 @@ var controllerFields = []string{"booleans", "features", "ess_mode", "dry_run", "
 // ApplyControllerSnapshot accepts the retained inverter-control state without
 // giving it ownership of native Cerbo telemetry. A null snapshot clears flags.
 func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
+	st.ESSModeObservedAt = nil
 	available := len(data) > 0
 	st.InverterAvailable = &available
 	applyControllerFields(st, data)
+	if raw, ok := data["ess_mode"].(map[string]interface{}); ok {
+		encoded, err := json.Marshal(raw)
+		var mode state.ESSMode
+		if err == nil && json.Unmarshal(encoded, &mode) == nil && mode.SelectionSupported {
+			st.ESSMode = mode
+		}
+	}
 	st.DryRun = nil
 	if enabled, ok := data["dry_run"].(bool); ok {
 		st.DryRun = &enabled
@@ -96,6 +104,8 @@ func (c *Client) expireOptionalTelemetry(now time.Time) bool {
 			c.state.TelemetryAvailable["ess_mode"] = false
 		}
 		ApplyControllerSnapshot(c.state, nil)
+		c.controllerESSMode = nil
+		c.controllerESSObserved = nil
 		c.controllerLastSeen = time.Time{}
 		return true
 	}
@@ -112,6 +122,8 @@ func (c *Client) refreshControllerFreshness(now time.Time) {
 }
 
 func (c *Client) clearOptionalTelemetry() {
+	c.controllerESSMode = nil
+	c.controllerESSObserved = nil
 	c.initCerboMaps()
 	for _, key := range []string{"ess_mode", "ev_power", "car_charging_power", "car_soc", "ev_charging_kw", "ev_charging_power", "ev_present", "evcharger_present", "discovered_water_ev"} {
 		clearStateField(c.state, key)

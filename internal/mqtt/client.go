@@ -60,6 +60,8 @@ type Client struct {
 	cerboLeaves           map[string]map[string]interface{}
 	cerboOwned            map[string]bool
 	controllerLastSeen    time.Time
+	controllerESSMode     *state.ESSMode
+	controllerESSObserved *float64
 	nativeLastSeen        time.Time
 	cameraTopic           string
 	keepaliveStop         chan struct{}
@@ -279,10 +281,13 @@ func (c *Client) LastStateTime() time.Time {
 	return c.lastStateTime
 }
 func (c *Client) GetState() *state.State {
+	ready := c.CanSelectESSMode()
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	c.expireOptionalTelemetry(time.Now())
-	return c.state.Clone()
+	out := c.state.Clone()
+	out.ESSModeControlsAvailable = ready
+	return out
 }
 
 // GetCmdBufferStats returns command buffer statistics
@@ -461,6 +466,11 @@ func toFloat(v interface{}) (float64, bool) {
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {
+	if action == "set_ess_mode" {
+		if err := c.validateESSCommand(payload); err != nil {
+			return err
+		}
+	}
 	c.gatewayMu.RLock()
 	fn := c.gatewayPublish
 	c.gatewayMu.RUnlock()
@@ -523,6 +533,9 @@ func (c *Client) publishCerboAlarmCommand(action string) error {
 // PublishCommandAsync publishes a command asynchronously via the command buffer.
 // Returns immediately; the command will be sent when the broker is available.
 func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
+	if action == "set_ess_mode" {
+		return c.PublishCommand(action, payload)
+	}
 	if c.cmdBuffer == nil {
 		return fmt.Errorf("command buffer not initialized")
 	}
@@ -559,7 +572,9 @@ func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
 
 	c.stateMu.Lock()
 	c.controllerLastSeen = time.Now()
+	c.observeESSMode(data, msg.Retained())
 	c.mergeDaemonState(data)
+	c.state.ESSModeObservedAt = c.controllerESSObserved
 	st := c.state.Clone()
 	c.stateMu.Unlock()
 

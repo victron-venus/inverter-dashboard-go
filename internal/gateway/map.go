@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
@@ -157,10 +158,8 @@ func (ps platformSlot) toNotification() (state.Notification, bool) {
 	if desc == "" {
 		return state.Notification{}, false
 	}
-	// Prefer Active=true when known; if Active absent still show (desktop parity).
-	if ps.active != nil && !*ps.active {
-		return state.Notification{}, false
-	}
+	// GUIv2 keeps inactive but unacknowledged warnings. Active describes the
+	// physical condition; only acknowledgement removes its pending banner.
 	level := "alarm"
 	if ps.hasType {
 		switch ps.notifType {
@@ -308,6 +307,10 @@ func SnapshotToState(snap *Snapshot, opt MapOptions) *state.State {
 	st.Notifications = mapNotifications(leaves)
 	if snap.InverterPresent || snap.Inverter != nil {
 		mqtt.ApplyControllerSnapshot(st, snap.Inverter)
+		if _, ok := snap.Inverter["ess_mode"].(map[string]interface{}); ok {
+			at := float64(time.Now().UnixMilli()) / 1000
+			st.ESSModeObservedAt = &at
+		}
 	}
 
 	return st

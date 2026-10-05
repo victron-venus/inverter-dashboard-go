@@ -199,6 +199,36 @@ func TestGatewayReplayNotificationEventTime(t *testing.T) {
 	}
 }
 
+func TestGatewayInactiveUnacknowledgedWarningsRemainVisible(t *testing.T) {
+	for _, inactive := range []any{false, 0} {
+		platform := map[string]any{
+			"0/Notifications/1/Description":  "Internal failure",
+			"0/Notifications/1/DeviceName":   "JBD Battery Chain 1",
+			"0/Notifications/1/DateTime":     1791226020,
+			"0/Notifications/1/Active":       inactive,
+			"0/Notifications/1/Acknowledged": false,
+			"0/Notifications/1/Silenced":     true,
+			"0/Notifications/2/Description":  "Acknowledged history",
+			"0/Notifications/2/Active":       inactive,
+			"0/Notifications/2/Acknowledged": true,
+		}
+		payload, err := json.Marshal(map[string]any{"platform": platform})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snap Snapshot
+		if err := json.Unmarshal(payload, &snap); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			got := SnapshotToState(&snap, MapOptions{}).Notifications
+			if len(got) != 1 || got[0].Title != "Internal failure" || got[0].Ts != "2026-10-05T18:47:00Z" {
+				t.Fatalf("inactive unacknowledged warning disappeared or acknowledged history shown: %+v", got)
+			}
+		}
+	}
+}
+
 func TestSnapshotToStateAlarmFallbackWhenNoPlatform(t *testing.T) {
 	snap := loadFixture(t, "snapshot_platform_notifs.json")
 	snap.Platform = nil

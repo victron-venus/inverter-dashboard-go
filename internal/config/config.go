@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -67,10 +68,11 @@ type GitHubConfig struct {
 }
 
 type EntityConfig struct {
-	Key    string `yaml:"key"`
-	Entity string `yaml:"entity"`
-	Label  string `yaml:"label"`
-	Order  int    `yaml:"order"`
+	Key     string `yaml:"key"`
+	Entity  string `yaml:"entity"`
+	Label   string `yaml:"label"`
+	Order   int    `yaml:"order"`
+	Enabled *bool  `yaml:"enabled"`
 }
 
 type BooleanEntityConfig struct {
@@ -120,7 +122,13 @@ func defaultLabel(key string) string {
 // convertMapToEntitySlice converts a map[string]interface{} from YAML to []EntityConfig
 func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 	var result []EntityConfig
-	for key, value := range input {
+	keys := make([]string, 0, len(input))
+	for key := range input {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := input[key]
 		btn := EntityConfig{
 			Key:   key,
 			Order: 0,
@@ -152,6 +160,9 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 			}
 
 		case map[string]interface{}:
+			if enabled, ok := v["enabled"].(bool); ok && !enabled {
+				continue
+			}
 			if entityID, ok := v["entity"].(string); ok {
 				btn.Entity = entityID
 			}
@@ -168,6 +179,10 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 				btn.Order = int(order)
 			}
 		}
+		btn.Entity = strings.TrimSpace(btn.Entity)
+		if btn.Entity == "" || strings.TrimSpace(key) == "" {
+			continue
+		}
 
 		if btn.Label == "" {
 			btn.Label = defaultLabel(key)
@@ -176,6 +191,34 @@ func convertMapToEntitySlice(input map[string]interface{}) []EntityConfig {
 		result = append(result, btn)
 	}
 	return result
+}
+
+// YAML mappings retain declaration order; a Go map would shuffle equal-ranked buttons.
+func switchEntitiesFromYAML(node yaml.Node) ([]EntityConfig, error) {
+	if node.Kind == yaml.AliasNode && node.Alias != nil {
+		return switchEntitiesFromYAML(*node.Alias)
+	}
+	if node.Kind == 0 || (node.Kind == yaml.ScalarNode && node.Tag == "!!null") {
+		return nil, nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("switch_entities must be a mapping")
+	}
+	// Keep the usual YAML map validation, aliases and merge-key semantics.
+	var values map[string]interface{}
+	if err := node.Decode(&values); err != nil {
+		return nil, fmt.Errorf("invalid switch entities: %w", err)
+	}
+	var result []EntityConfig
+	for i := 0; i < len(node.Content); i += 2 {
+		key := node.Content[i].Value
+		if value, ok := values[key]; ok {
+			result = append(result, convertMapToEntitySlice(map[string]interface{}{key: value})...)
+			delete(values, key)
+		}
+	}
+	result = append(result, convertMapToEntitySlice(values)...)
+	return result, nil
 }
 
 // HomeAssistantConfig from config.yaml
@@ -307,7 +350,7 @@ func loadConfigYAML(cfg *Config) error {
 			DirectControls      *bool                  `yaml:"direct_controls"`
 			PollIntervalSeconds float64                `yaml:"poll_interval_seconds"`
 			BooleanEntities     map[string]interface{} `yaml:"boolean_entities"`
-			SwitchEntities      map[string]interface{} `yaml:"switch_entities"`
+			SwitchEntities      yaml.Node              `yaml:"switch_entities"`
 			ApplianceEntities   map[string]string      `yaml:"appliance_entities"`
 			VueSensors          map[string]string      `yaml:"vue_sensors"`
 			FilteredEntities    *struct {
@@ -391,6 +434,10 @@ func loadConfigYAML(cfg *Config) error {
 	}
 
 	if top.HomeAssistant != nil {
+		switchEntities, err := switchEntitiesFromYAML(top.HomeAssistant.SwitchEntities)
+		if err != nil {
+			return err
+		}
 		// Default DirectControls to true (Python behavior), unless explicitly set to false
 		directControls := true
 		if top.HomeAssistant.DirectControls != nil {
@@ -402,7 +449,7 @@ func loadConfigYAML(cfg *Config) error {
 			DirectControls:    directControls,
 			PollInterval:      pollOrDefault(top.HomeAssistant.PollIntervalSeconds),
 			BooleanEntities:   convertMapToBooleanEntitySlice(top.HomeAssistant.BooleanEntities),
-			SwitchEntities:    convertMapToEntitySlice(top.HomeAssistant.SwitchEntities),
+			SwitchEntities:    switchEntities,
 			ApplianceEntities: top.HomeAssistant.ApplianceEntities,
 			VueSensors:        top.HomeAssistant.VueSensors,
 		}

@@ -246,9 +246,7 @@ func (ps *platformSlotState) toNotification() (state.Notification, bool) {
 	if desc == "" {
 		return state.Notification{}, false
 	}
-	if ps.active != nil && !*ps.active {
-		return state.Notification{}, false
-	}
+	// Like Desktop/GUIv2, an inactive condition can still need acknowledgement.
 	level := "alarm"
 	if ps.hasType {
 		switch ps.notifType {
