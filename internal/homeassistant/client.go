@@ -191,7 +191,7 @@ func (c *Client) validateConfig() bool {
 func normalizeHomeAssistantURL(raw string) (string, error) {
 	endpoint, err := httpendpoint.Normalize(raw)
 	if err != nil {
-		return "", fmt.Errorf("Home Assistant %w", err)
+		return "", fmt.Errorf("invalid Home Assistant URL: %w", err)
 	}
 	return endpoint, nil
 }
@@ -592,7 +592,13 @@ func (c *Client) callServiceData(domain, service, entityID string, fields map[st
 	if err != nil {
 		return fmt.Errorf("service call failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// A cleanup failure must not make an accepted service command look
+		// failed and encourage the caller to send it again.
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close Home Assistant service response: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("service call returned HTTP %d", resp.StatusCode)

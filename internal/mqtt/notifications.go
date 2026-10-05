@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -289,7 +290,20 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 		Value interface{} `json:"value"`
 	}
 	if len(msg.Payload()) > 0 {
-		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		var err error
+		if field == "DateTime" {
+			// Preserve the original number until its exact integrality check.
+			// json.Valid retains Unmarshal's rejection of trailing JSON values.
+			if !json.Valid(msg.Payload()) {
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(msg.Payload()))
+			decoder.UseNumber()
+			err = decoder.Decode(&payload)
+		} else {
+			err = json.Unmarshal(msg.Payload(), &payload)
+		}
+		if err != nil {
 			return
 		}
 	}

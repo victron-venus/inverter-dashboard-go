@@ -113,6 +113,31 @@ func TestPlatformInvalidDateTimeClearsPreviousTime(t *testing.T) {
 	}
 }
 
+func TestPlatformRawJSONDateTimePrecision(t *testing.T) {
+	c := newTestClient()
+	c.SetWaterConfig("p1", 21, 1, 2)
+	send(c, "platform/0", "Notifications/1/Description", "Internal failure")
+	send(c, "platform/0", "Notifications/1/Type", 2)
+	send(c, "system/0", "Ac/Grid/L1/Power", 100.25)
+	for _, tc := range []struct{ raw, want string }{
+		{"1791226020", "2026-10-05T18:47:00Z"},
+		{"1791226020.000000001", ""},
+		{"1791226020.0", "2026-10-05T18:47:00Z"},
+	} {
+		c.onCerboLiveMessage(nil, &fakeMessage{
+			topic:   "N/p1/platform/0/Notifications/1/DateTime",
+			payload: []byte(`{"value":` + tc.raw + `}`),
+		})
+		st := c.GetState()
+		if len(st.Notifications) != 1 || st.Notifications[0].Ts != tc.want {
+			t.Fatalf("raw DateTime %s = %+v, want %q", tc.raw, st.Notifications, tc.want)
+		}
+		if st.Notifications[0].Level != "info" || st.G1 != 100.25 {
+			t.Fatal("DateTime precision handling changed other numeric fields")
+		}
+	}
+}
+
 func TestNotificationRingCapped(t *testing.T) {
 	c := newTestClient()
 	for i := 0; i < maxNotifications+10; i++ {

@@ -7,8 +7,7 @@ import (
 
 func TestGetEnvDefault(t *testing.T) {
 	// Test with env set
-	os.Setenv("TEST_KEY", "test_value")
-	defer os.Unsetenv("TEST_KEY")
+	t.Setenv("TEST_KEY", "test_value")
 
 	got := getEnvDefault("TEST_KEY", "default")
 	if got != "test_value" {
@@ -24,8 +23,7 @@ func TestGetEnvDefault(t *testing.T) {
 
 func TestGetEnvIntDefault(t *testing.T) {
 	// Test with env set to valid int
-	os.Setenv("TEST_INT_KEY", "8080")
-	defer os.Unsetenv("TEST_INT_KEY")
+	t.Setenv("TEST_INT_KEY", "8080")
 
 	got := getEnvIntDefault("TEST_INT_KEY", 3000)
 	if got != 8080 {
@@ -39,8 +37,7 @@ func TestGetEnvIntDefault(t *testing.T) {
 	}
 
 	// Test with invalid int - should return default
-	os.Setenv("INVALID_INT_KEY", "not-a-number")
-	defer os.Unsetenv("INVALID_INT_KEY")
+	t.Setenv("INVALID_INT_KEY", "not-a-number")
 
 	got = getEnvIntDefault("INVALID_INT_KEY", 3000)
 	if got != 3000 {
@@ -74,21 +71,16 @@ homeassistant:
   vue_sensors:
     "Garage": "sensor.garage_power"
 `
-	tmpFile := "config_test_tmp.yaml"
+	t.Chdir(t.TempDir())
+	tmpFile := "config.yaml"
 	if err := os.WriteFile(tmpFile, []byte(yamlContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpFile)
 
-	// Override the hardcoded yamlFile path
-	// Since loadConfigYAML uses hardcoded "config.yaml", we need a different approach.
-	// Test the Config struct defaults and env overrides instead.
+	// Explicit YAML settings override environment defaults.
+	t.Setenv("MQTT_HOST", "from-env")
 
-	// Set env vars to test they don't get overridden when YAML doesn't set them
-	os.Setenv("MQTT_HOST", "from-env")
-	defer os.Unsetenv("MQTT_HOST")
-
-	// Test Load using env vars
+	// Load the isolated YAML fixture rather than a developer's local config.
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -98,11 +90,14 @@ homeassistant:
 	if cfg == nil {
 		t.Fatal("Load() returned nil")
 	}
-	if cfg.MQTT.Host == "" {
-		t.Error("MQTT.Host should not be empty")
+	if cfg.MQTT.Host != "192.168.1.100" {
+		t.Errorf("MQTT.Host = %q, want YAML value", cfg.MQTT.Host)
 	}
-	if cfg.Web.Port == 0 {
-		t.Error("Web.Port should not be 0")
+	if cfg.Web.Port != 9090 {
+		t.Errorf("Web.Port = %d, want 9090", cfg.Web.Port)
+	}
+	if cfg.HomeAssistant == nil || cfg.HomeAssistant.URL != "http://ha.local:8123" {
+		t.Fatalf("Home Assistant YAML config was not loaded: %+v", cfg.HomeAssistant)
 	}
 }
 

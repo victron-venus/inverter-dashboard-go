@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/json"
 	"math"
+	"math/big"
 	"strconv"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 // are preserved so clients can show clock skew honestly.
 func NotificationTime(value any) string {
 	var seconds float64
+	var exactText string
 	switch v := value.(type) {
 	case float64:
 		seconds = v
@@ -23,12 +25,14 @@ func NotificationTime(value any) string {
 	case int64:
 		seconds = float64(v)
 	case json.Number:
+		exactText = string(v)
 		var err error
 		seconds, err = v.Float64()
 		if err != nil {
 			return ""
 		}
 	case string:
+		exactText = v
 		var err error
 		seconds, err = strconv.ParseFloat(v, 64)
 		if err != nil {
@@ -42,6 +46,14 @@ func NotificationTime(value any) string {
 	const lastRFC3339Second = 253402300799 // 9999-12-31T23:59:59Z
 	if math.IsNaN(seconds) || seconds <= 0 || seconds > lastRFC3339Second || math.Trunc(seconds) != seconds {
 		return ""
+	}
+	if exactText != "" {
+		// Check text before accepting float64's rounded value. Preserve numeric
+		// decimal/exponent forms, but reject even fractions smaller than an ULP.
+		exact, ok := new(big.Rat).SetString(exactText)
+		if !ok || !exact.IsInt() {
+			return ""
+		}
 	}
 	return time.Unix(int64(seconds), 0).UTC().Format(time.RFC3339)
 }

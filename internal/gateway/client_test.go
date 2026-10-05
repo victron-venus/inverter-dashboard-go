@@ -13,6 +13,40 @@ import (
 	"testing"
 )
 
+func TestSnapshotRawJSONDateTimePrecision(t *testing.T) {
+	for _, tc := range []struct{ raw, want string }{
+		{"1791226020", "2026-10-05T18:47:00Z"},
+		{"1791226020.000000001", ""},
+		{"1791226020.0", "2026-10-05T18:47:00Z"},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/v1/snapshot" {
+					t.Error("unexpected snapshot request")
+				}
+				_, _ = io.WriteString(w, `{"system":{"0/Ac/Grid/L1/Power":100.25},"platform":{"0/Notifications/1/Description":"Internal failure","0/Notifications/1/Type":2,"0/Notifications/1/DateTime":`+tc.raw+`}}`)
+			}))
+			defer server.Close()
+			client, err := NewClient(Config{URL: server.URL, APIToken: "test"}, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.http.Transport = server.Client().Transport
+			snapshot, err := client.FetchSnapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := SnapshotToState(snapshot, MapOptions{})
+			if len(st.Notifications) != 1 || st.Notifications[0].Ts != tc.want {
+				t.Fatalf("raw DateTime %s = %+v, want %q", tc.raw, st.Notifications, tc.want)
+			}
+			if st.Notifications[0].Level != "info" || st.G1 != 100.25 {
+				t.Fatal("DateTime precision handling changed other numeric fields")
+			}
+		})
+	}
+}
+
 func TestNewClientRejectsUnsafeURLs(t *testing.T) {
 	for _, raw := range []string{
 		"", "gateway.example", "//gateway.example", "http://gateway.example",

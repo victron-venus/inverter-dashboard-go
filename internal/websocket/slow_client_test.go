@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -32,12 +33,20 @@ func TestSlowPeerDoesNotBlockHealthClientCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer peer.Close()
+	defer func() {
+		if err := peer.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close peer: %v", err)
+		}
+	}()
 	if tcp, ok := peer.UnderlyingConn().(*net.TCPConn); ok {
 		_ = tcp.SetReadBuffer(1024)
 	}
 	conn := <-upgraded
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close connection: %v", err)
+		}
+	}()
 	clientsMu.Lock()
 	clients[conn] = true
 	clientsMu.Unlock()

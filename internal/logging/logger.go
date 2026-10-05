@@ -120,7 +120,7 @@ func (l *Logger) log(ctx context.Context, logCtx Context, level slog.Level, msg 
 		args = append(args, k, v)
 	}
 
-	l.Logger.Log(ctx, level, msg, args...)
+	l.Log(ctx, level, msg, args...)
 }
 
 // Context carries request-scoped context for logging
