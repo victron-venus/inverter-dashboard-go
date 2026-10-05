@@ -1,7 +1,12 @@
 package html
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"strings"
 	"testing"
 )
@@ -42,5 +47,43 @@ func TestVueUIEmbedded(t *testing.T) {
 	// prodY regression: DailyStats must bind produced_yesterday (PR #99 left it undeclared).
 	if !strings.Contains(string(data), "produced_yesterday") {
 		t.Fatal("embedded SPA missing produced_yesterday (DailyStats prodY)")
+	}
+}
+
+func TestVueUISourceReceipt(t *testing.T) {
+	data, err := os.ReadFile("vue-ui-source.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt struct {
+		Commit string            `json:"commit"`
+		SHA256 map[string]string `json:"sha256"`
+	}
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.Commit) != 40 || len(receipt.SHA256) == 0 {
+		t.Fatal("source receipt must identify the exact source commit and embedded assets")
+	}
+	err = fs.WalkDir(vueUIFS, "vue-ui", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, err := vueUIFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimPrefix(path, "vue-ui/")
+		if got := fmt.Sprintf("%x", sha256.Sum256(data)); got != receipt.SHA256[name] {
+			t.Errorf("embedded asset %s does not match its source receipt", name)
+		}
+		delete(receipt.SHA256, name)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipt.SHA256) != 0 {
+		t.Errorf("source receipt references absent assets: %v", receipt.SHA256)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
@@ -75,7 +74,7 @@ type platformSlot struct {
 	description  string
 	deviceName   string
 	service      string
-	dateTime     int64
+	dateTime     string
 	notifType    int64
 	hasType      bool
 	acknowledged bool
@@ -117,9 +116,7 @@ func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
 				ps.service = strings.TrimSpace(str)
 			}
 		case "DateTime":
-			if n, ok := num(raw); ok {
-				ps.dateTime = int64(n)
-			}
+			ps.dateTime = state.NotificationTime(raw)
 		case "Type":
 			if n, ok := num(raw); ok {
 				ps.notifType = int64(n)
@@ -179,17 +176,13 @@ func (ps platformSlot) toNotification() (state.Notification, bool) {
 	if body == "" {
 		body = ps.service
 	}
-	ts := ""
-	if ps.dateTime > 0 {
-		ts = time.Unix(ps.dateTime, 0).UTC().Format(time.RFC3339)
-	}
 	return state.Notification{
 		ID:     fmt.Sprintf("victron-platform-%d-%d", ps.inst, ps.slot),
 		Level:  level,
 		Title:  desc,
 		Body:   body,
 		Source: "victron",
-		Ts:     ts,
+		Ts:     ps.dateTime,
 	}, true
 }
 

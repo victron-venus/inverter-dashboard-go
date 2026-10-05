@@ -153,6 +153,50 @@ func TestSnapshotToStatePlatformNotifications(t *testing.T) {
 	if n.Body != "Lynx Smart BMS" {
 		t.Errorf("body = %q", n.Body)
 	}
+	if n.Ts != "2025-09-11T00:20:00Z" {
+		t.Errorf("source event timestamp = %q", n.Ts)
+	}
+}
+
+func TestGatewayReplayNotificationEventTime(t *testing.T) {
+	for _, tc := range []struct {
+		value any
+		want  string
+	}{
+		{1791226020, "2026-10-05T18:47:00Z"},
+		{"1791226020", "2026-10-05T18:47:00Z"},
+		{253402300799.0, "9999-12-31T23:59:59Z"},
+		{nil, ""}, {true, ""}, {0, ""}, {-1, ""},
+		{1791226020.5, ""}, {"invalid", ""}, {"NaN", ""}, {253402300800.0, ""},
+	} {
+		platform := map[string]any{
+			"0/Notifications/1/Description": "Internal failure",
+			"0/Notifications/1/DateTime":    tc.value,
+			"0/Notifications/1/Active":      true,
+		}
+		payload, err := json.Marshal(map[string]any{"platform": platform})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snap Snapshot
+		if err := json.Unmarshal(payload, &snap); err != nil {
+			t.Fatal(err)
+		}
+		// IGW polling, including after reconnect, maps the same snapshot again.
+		for range 2 {
+			got := SnapshotToState(&snap, MapOptions{}).Notifications
+			if len(got) != 1 || got[0].Ts != tc.want {
+				t.Fatalf("DateTime %v mapped to %+v, want source time %q", tc.value, got, tc.want)
+			}
+		}
+	}
+	var snap Snapshot
+	if err := json.Unmarshal([]byte(`{"platform":{"0/Notifications/1/Description":"Partial replay"}}`), &snap); err != nil {
+		t.Fatal(err)
+	}
+	if got := SnapshotToState(&snap, MapOptions{}).Notifications; len(got) != 1 || got[0].Ts != "" {
+		t.Fatalf("missing DateTime must remain unknown: %+v", got)
+	}
 }
 
 func TestSnapshotToStateAlarmFallbackWhenNoPlatform(t *testing.T) {
@@ -164,6 +208,9 @@ func TestSnapshotToStateAlarmFallbackWhenNoPlatform(t *testing.T) {
 	}
 	found := false
 	for _, n := range st.Notifications {
+		if n.Ts != "" {
+			t.Errorf("raw alarm received an invented time: %q", n.Ts)
+		}
 		if n.Level == "alarm" || n.Level == "warning" {
 			found = true
 			if !strings.HasPrefix(n.ID, "victron-") {
