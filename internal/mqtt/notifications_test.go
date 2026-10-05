@@ -113,6 +113,33 @@ func TestPlatformInvalidDateTimeClearsPreviousTime(t *testing.T) {
 	}
 }
 
+func TestInactiveUnacknowledgedPlatformWarningRemainsVisible(t *testing.T) {
+	for _, inactive := range []any{false, 0} {
+		c := newTestClient()
+		publish := func(field string, value any) {
+			c.onPlatformNotificationMessage(nil, cerboMsg("N/p1/platform/0/Notifications/1/"+field, value))
+		}
+		for field, value := range map[string]any{
+			"Description": "Internal failure", "DeviceName": "JBD Battery Chain 1",
+			"DateTime": 1791226020, "Type": 1, "Active": inactive,
+			"Acknowledged": false, "Silenced": true,
+		} {
+			publish(field, value)
+		}
+		for range 2 {
+			got := c.GetState().Notifications
+			if len(got) != 1 || got[0].Title != "Internal failure" || got[0].Ts != "2026-10-05T18:47:00Z" {
+				t.Fatalf("inactive unacknowledged warning disappeared or changed event time: %+v", got)
+			}
+			publish("Active", inactive)
+		}
+		publish("Acknowledged", true)
+		if got := c.GetState().Notifications; len(got) != 0 {
+			t.Fatalf("acknowledged history must not be shown: %+v", got)
+		}
+	}
+}
+
 func TestPlatformRawJSONDateTimePrecision(t *testing.T) {
 	c := newTestClient()
 	c.SetWaterConfig("p1", 21, 1, 2)

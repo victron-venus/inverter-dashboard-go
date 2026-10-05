@@ -25,6 +25,9 @@ import (
 func convertConfigSwitchEntities(entities []config.EntityConfig) []Button {
 	result := make([]Button, 0, len(entities))
 	for _, entity := range entities {
+		if (entity.Enabled != nil && !*entity.Enabled) || entity.Entity == "" || !haOwnsField(entity.Key, entity.Entity) {
+			continue
+		}
 		btn := Button{
 			ID:       strings.ReplaceAll(entity.Key, "_", "-"),
 			Label:    entity.Label,
@@ -38,7 +41,7 @@ func convertConfigSwitchEntities(entities []config.EntityConfig) []Button {
 		result = append(result, btn)
 	}
 	// Sort by order to maintain consistent ordering
-	sort.Slice(result, func(i, j int) bool {
+	sort.SliceStable(result, func(i, j int) bool {
 		return result[i].Order < result[j].Order
 	})
 	return result
@@ -242,14 +245,14 @@ func (c *Client) IsDirectMode() bool {
 
 func (c *Client) GetUIConfig() map[string]interface{} {
 	if !c.configured || len(c.switchEntities) == 0 {
-		return map[string]interface{}{}
+		return map[string]interface{}{"home_buttons": []Button{}}
 	}
 
 	buttons := make([]Button, len(c.switchEntities))
 	copy(buttons, c.switchEntities)
 
 	// Sort buttons by order to prevent shuffle
-	sort.Slice(buttons, func(i, j int) bool {
+	sort.SliceStable(buttons, func(i, j int) bool {
 		return buttons[i].Order < buttons[j].Order
 	})
 
@@ -338,9 +341,10 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		}
 		state, err := fetchEntityState(btn.Entity)
 		if err != nil {
+			result.AdditionalFields[btn.StateKey] = nil
 			continue
 		}
-		result.AdditionalFields[btn.StateKey] = isOn(state)
+		result.AdditionalFields[btn.StateKey] = homeSwitchState(state)
 	}
 
 	// Water (level/valve/pump) and EV data come from Cerbo MQTT - not HA.
@@ -431,6 +435,18 @@ func isOn(state string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// Home unknown/unavailable readings must not appear as an observed off state.
+func homeSwitchState(raw string) interface{} {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "on", "true", "yes", "1":
+		return true
+	case "off", "false", "no", "0":
+		return false
+	default:
+		return nil
 	}
 }
 

@@ -71,13 +71,11 @@ homeassistant:
     minimize_charging: "input_boolean.minimize_charging"
 
   # Switch entities for home automation buttons
-  # Format: key: [entity_id, "Display Label"]
-  switch_entities:
-    home_recliner: ["switch.recliner_recliner", "Recliner"]
-    home_garage: ["switch.garage_opener_l", "Garage"]
-    laundry_outlet: ["switch.laundry_zigbee_switch", "Laundry"]
-    garage_light: ["light.garage", "Garage light"]
-    heater: ["switch.heater_l", "Heater"]
+  # Format: key: [entity_id, "Display Label"], or a mapping:
+  # home_example: {entity: "switch.example", label: "Example", order: 0, enabled: true}
+  # Empty means no Home buttons. Equal orders preserve YAML declaration order.
+  # Disabled entries are not displayed, polled or permitted as Home toggle targets.
+  switch_entities: {}
 
   # Appliance entities for timers and power monitoring
   # These are polled from HA instead of MQTT when configured

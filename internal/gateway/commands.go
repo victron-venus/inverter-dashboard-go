@@ -21,6 +21,7 @@ var whitelistedCommands = map[string]struct{}{
 	"water_mode":                    {},
 	"dry_run":                       {},
 	"ess_mode":                      {},
+	"set_ess_mode":                  {},
 	"silence_alarm":                 {},
 	"acknowledge_all_notifications": {},
 }
@@ -35,7 +36,7 @@ func IsWhitelistedCommand(name string) bool {
 // Returns ok=false when the action has no IGW equivalent (most inverter/cmd/*).
 func MapDashboardAction(action string) (string, bool) {
 	switch action {
-	case "water_mode", "silence_alarm", "acknowledge_all_notifications", "toggle", "dry_run", "ess_mode":
+	case "water_mode", "silence_alarm", "acknowledge_all_notifications", "toggle", "dry_run", "ess_mode", "set_ess_mode":
 		return action, true
 	case "dismiss_banner", "acknowledge_victron_banner":
 		// Desktop/UI aliases — IGW only exposes AcknowledgeAll.
@@ -46,6 +47,9 @@ func MapDashboardAction(action string) (string, bool) {
 }
 
 func normalizeControllerCommand(name string, body any) (any, error) {
+	if name == "set_ess_mode" {
+		return body, state.ValidateESSSelection(body)
+	}
 	if name != "toggle" && name != "dry_run" && name != "ess_mode" && name != "water_mode" {
 		return body, nil
 	}

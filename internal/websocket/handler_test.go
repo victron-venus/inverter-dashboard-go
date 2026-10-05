@@ -348,25 +348,21 @@ func TestHandleToggle_EmptyEntity(t *testing.T) {
 	}
 }
 
-func TestHandleToggle_FallsBackToMQTT(t *testing.T) {
+func TestHandleToggle_RejectsDisabledDirectHA(t *testing.T) {
 	resetClientsForTest()
 	defer resetClientsForTest()
 
 	mc := mockmqtt.NewClient()
 	hc := mockha.NewClient()
-	// HA not direct mode → falls back to MQTT
+	// Home entities must never fall back to a physical MQTT command.
 	hc.SetDirectMode(false)
 
 	err := handleToggle("light.foo", mc, hc)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("disabled direct HA must reject Home toggles")
 	}
-	pub := mc.Published()
-	if len(pub) != 1 || pub[0].Action != "toggle" {
-		t.Errorf("toggle not published via MQTT")
-	}
-	if pub[0].Payload["entity"] != "light.foo" {
-		t.Errorf("entity=%v, want light.foo", pub[0].Payload["entity"])
+	if pub := mc.Published(); len(pub) != 0 {
+		t.Fatalf("rejected Home toggle reached MQTT: %v", pub)
 	}
 }
 
@@ -396,16 +392,16 @@ func TestHandleToggle_HANotToggleAllowed(t *testing.T) {
 	mc := mockmqtt.NewClient()
 	hc := mockha.NewClient()
 	hc.SetDirectMode(true)
-	// Not in toggleAllowed map → falls back to MQTT
+	// An unconfigured Home target must not escape the HA allowlist via MQTT.
 	hc.SetToggleAllowed("light.foo", false)
 
 	err := handleToggle("light.foo", mc, hc)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("unconfigured Home toggle was accepted")
 	}
 	pub := mc.Published()
-	if len(pub) != 1 || pub[0].Action != "toggle" {
-		t.Errorf("toggle not published via MQTT fallback")
+	if len(pub) != 0 {
+		t.Errorf("unconfigured Home toggle reached MQTT: %v", pub)
 	}
 }
 
@@ -424,7 +420,7 @@ func TestHandlePress_EmptyEntity(t *testing.T) {
 	}
 }
 
-func TestHandlePress_FallsBackToMQTT(t *testing.T) {
+func TestHandlePress_RejectsDisabledDirectHA(t *testing.T) {
 	resetClientsForTest()
 	defer resetClientsForTest()
 
@@ -433,15 +429,12 @@ func TestHandlePress_FallsBackToMQTT(t *testing.T) {
 	hc.SetDirectMode(false) // not direct mode
 
 	err := handlePress("button.foo", mc, hc)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("Home press was accepted without direct HA")
 	}
 	pub := mc.Published()
-	if len(pub) != 1 || pub[0].Action != "press" {
-		t.Errorf("press not published via MQTT")
-	}
-	if pub[0].Payload["entity"] != "button.foo" {
-		t.Errorf("entity=%v, want button.foo", pub[0].Payload["entity"])
+	if len(pub) != 0 {
+		t.Errorf("Home press reached MQTT without direct HA: %v", pub)
 	}
 }
 

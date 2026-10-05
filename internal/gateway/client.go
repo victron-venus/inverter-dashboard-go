@@ -227,6 +227,29 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if err != nil {
 		return err
 	}
+	if name == "set_ess_mode" {
+		// Cancel both the check and write when this source is replaced; commands
+		// must not escape a stopped gateway after a slow snapshot response.
+		commandCtx, cancel := context.WithCancel(ctx)
+		stop := context.AfterFunc(c.ctx, cancel)
+		defer cancel()
+		defer stop()
+		ctx = commandCtx
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		snap, fetchErr := c.FetchSnapshot(ctx)
+		if fetchErr != nil {
+			return fetchErr
+		}
+		st := SnapshotToState(snap, c.mapOptions)
+		if !snap.Capabilities["set_ess_mode"] || !state.ESSSelectionReady(st, time.Now()) {
+			return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err

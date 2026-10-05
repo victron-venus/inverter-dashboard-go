@@ -489,6 +489,9 @@ func (c *Client) applyCerboOverlays() {
 	}
 	raw, _ := json.Marshal(out)
 	_ = json.Unmarshal(raw, c.state)
+	if c.controllerESSMode != nil && c.controllerESSMode.SelectionSupported {
+		c.state.ESSMode = *c.controllerESSMode
+	}
 }
 func (c *Client) mergeDaemonState(data map[string]interface{}) {
 	c.initCerboMaps()
@@ -524,7 +527,7 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 func isNativeSectionField(key string) bool {
 	switch key {
 	case "loads", "load_names", "water_level", "pump_switch", "water_valve", "pump_mode", "water_pump_mode", "water_valve_mode", "battery_soc", "gateway_capabilities", "telemetry", "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
-		"ev_present", "evcharger_present", "discovered_water_ev":
+		"ev_present", "evcharger_present", "discovered_water_ev", "ess_mode_observed_at", "ess_mode_controls_available":
 		return true
 	}
 	return false
