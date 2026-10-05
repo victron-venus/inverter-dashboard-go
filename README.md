@@ -79,6 +79,12 @@ Every 45 seconds a `suppress-republish` keepalive maintains streaming without re
 all values. Clean-session reconnects reinstall subscriptions, invalidate the old device
 inventory and request a new snapshot. No wildcard request topics are published.
 
+Notification banners and history use the original event time, including replayed
+`platform/.../Notifications/.../DateTime` values from MQTT or IGW. Missing or invalid
+event times stay unavailable; raw `Alarms/*` values carry no event timestamp. Banner
+ages refresh while idle and after browser resume, with the full local date, time and
+time zone available on each known timestamp. Future source times show their exact date.
+
 Systemcalc supplies consumption and preferred grid/battery aggregates. Grid-meter
 phases are the grid fallback; VE.Bus active-input power is used only when systemcalc
 identifies that input as grid/shore, never for generator/output power. All three phases
@@ -175,7 +181,7 @@ controller freshness limit and emits `inverter: null` when stale.
 IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.host`
 in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
 
-The embedded SPA is built from `inverter-dashboard-vue` commit `ee72070`; its asset
+The embedded SPA is built from `inverter-dashboard-vue` commit `e79054130cca49f919c89e6491bb67769882f3ba`; its asset
 receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
 
 ## Features

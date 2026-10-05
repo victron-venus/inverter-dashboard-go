@@ -2,8 +2,10 @@ package websocket
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -439,8 +441,15 @@ func removeClient(conn *websocket.Conn) {
 	remaining := len(clients)
 	clientsMu.Unlock()
 
-	conn.Close()
+	closeConnection(conn)
 	log.Printf("WebSocket client disconnected (%d remaining)", remaining)
+}
+
+func closeConnection(conn *websocket.Conn) {
+	// A failed broadcast and the read loop can both remove the same peer.
+	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		log.Printf("Failed to close WebSocket connection: %v", err)
+	}
 }
 
 // SetLatestVersion sets the latest version (called from version checker)
@@ -525,7 +534,7 @@ func CloseAll() {
 	defer clientsMu.Unlock()
 
 	for conn := range clients {
-		conn.Close()
+		closeConnection(conn)
 		delete(clients, conn)
 	}
 }

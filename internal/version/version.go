@@ -63,7 +63,11 @@ func readVersionFile() string {
 		}
 		return "dev"
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Failed to close VERSION file: %v", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	if scanner.Scan() {
@@ -93,7 +97,11 @@ func CheckLatest(rawURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch version: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close version response: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)

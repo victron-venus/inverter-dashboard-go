@@ -79,6 +79,37 @@ func TestCheckLatestNonOKStatus(t *testing.T) {
 	}
 }
 
+type versionCleanupBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *versionCleanupBody) Close() error {
+	b.closed = true
+	return fmt.Errorf("response cleanup failed")
+}
+
+func TestCheckLatestCleanupPreservesResult(t *testing.T) {
+	oldClient := http.DefaultClient
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+		body := &versionCleanupBody{Reader: strings.NewReader("2.0.0\n")}
+		http.DefaultClient = &http.Client{Transport: &mockRoundTripper{
+			mockResp: &http.Response{StatusCode: status, Body: body},
+		}}
+		latest, err := CheckLatest("https://example.com")
+		if status == http.StatusOK && (err != nil || latest != "2.0.0") {
+			t.Fatalf("cleanup replaced fetched version %q: %v", latest, err)
+		}
+		if status != http.StatusOK && (err == nil || !strings.Contains(err.Error(), "unexpected status code: 503")) {
+			t.Fatalf("cleanup replaced response status: %v", err)
+		}
+		if !body.closed {
+			t.Fatal("version response was not closed")
+		}
+	}
+}
+
 func TestGetLatestCachedAndSetLatestCached(t *testing.T) {
 	original := GetLatestCached()
 	t.Cleanup(func() { SetLatestCached(original) })

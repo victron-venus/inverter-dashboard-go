@@ -45,7 +45,11 @@ func TestHTTPAndWebSocketAgreeOnGatewayTransport(t *testing.T) {
 	client := mqtt.NewClient("", 0)
 	client.EnableGatewayMode()
 	client.SetGatewayConnected(true)
-	client.ApplyState(&state.State{G3: 42})
+	notifications := []state.Notification{
+		{ID: "victron-platform-0-1", Title: "Old replay", Ts: "2026-10-05T11:47:00-07:00"},
+		{ID: "victron-platform-0-2", Title: "Partial replay"},
+	}
+	client.ApplyState(&state.State{G3: 42, Notifications: notifications})
 	router := gin.New()
 	router.GET("/api/state", apiStateHandler(client))
 	router.GET("/health", healthHandler(client))
@@ -74,6 +78,16 @@ func TestHTTPAndWebSocketAgreeOnGatewayTransport(t *testing.T) {
 		}
 		httpPayload := getEndpointPayload(t, server, "/api/state")
 		healthPayload := getEndpointPayload(t, server, "/health")
+		for endpoint, payload := range map[string]map[string]interface{}{"WebSocket": socketPayload, "/api/state": httpPayload} {
+			got, err := json.Marshal(payload["notifications"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded []state.Notification
+			if err := json.Unmarshal(got, &decoded); err != nil || !reflect.DeepEqual(decoded, notifications) {
+				t.Errorf("%s replaced event time during reconnect: %s (error %v)", endpoint, got, err)
+			}
+		}
 		for endpoint, payload := range map[string]map[string]interface{}{
 			"WebSocket": socketPayload, "/api/state": httpPayload, "/health": healthPayload,
 		} {

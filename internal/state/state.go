@@ -79,7 +79,7 @@ type Notification struct {
 	Title  string `json:"title"`
 	Body   string `json:"body"`
 	Source string `json:"source"`
-	Ts     string `json:"ts,omitempty"`
+	Ts     string `json:"ts,omitempty"` // Source event time; omitted when unknown, never receipt time.
 }
 
 // CameraEvent is the latest camera event from the optional Frigate topic

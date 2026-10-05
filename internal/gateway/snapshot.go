@@ -1,6 +1,10 @@
 package gateway
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
 
 // Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
 // Keys are "<instance>/<DBusPath>" (e.g. "0/Ac/Grid/L1/Power").
@@ -42,6 +46,25 @@ func decodeLeaves(raw map[string]json.RawMessage) leafMap {
 	return out
 }
 
+func decodePlatformLeaves(raw map[string]json.RawMessage) leafMap {
+	out := decodeLeaves(raw)
+	for key, value := range raw {
+		parts := strings.Split(key, "/")
+		if len(parts) < 4 || parts[1] != "Notifications" || parts[3] != "DateTime" || !json.Valid(value) {
+			continue
+		}
+		// Only event time needs exact numeric text. Keep all other leaves in
+		// the float64 representation expected by the existing telemetry maps.
+		decoder := json.NewDecoder(bytes.NewReader(value))
+		decoder.UseNumber()
+		var exact any
+		if err := decoder.Decode(&exact); err == nil {
+			out[key] = exact
+		}
+	}
+	return out
+}
+
 func (s *Snapshot) decoded() snapshotLeaves {
 	return snapshotLeaves{
 		Grid:         decodeLeaves(s.Grid),
@@ -55,7 +78,7 @@ func (s *Snapshot) decoded() snapshotLeaves {
 		EV:           decodeLeaves(s.EV),
 		EVCharger:    decodeLeaves(s.EVCharger),
 		ACLoad:       decodeLeaves(s.ACLoad),
-		Platform:     decodeLeaves(s.Platform),
+		Platform:     decodePlatformLeaves(s.Platform),
 		Settings:     decodeLeaves(s.Settings),
 	}
 }

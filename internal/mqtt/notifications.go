@@ -1,12 +1,12 @@
 package mqtt
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
@@ -227,7 +227,7 @@ type platformSlotState struct {
 	description  string
 	deviceName   string
 	service      string
-	dateTime     int64
+	dateTime     string
 	notifType    int64
 	hasType      bool
 	active       *bool
@@ -262,17 +262,13 @@ func (ps *platformSlotState) toNotification() (state.Notification, bool) {
 	if body == "" {
 		body = ps.service
 	}
-	ts := ""
-	if ps.dateTime > 0 {
-		ts = time.Unix(ps.dateTime, 0).UTC().Format(time.RFC3339)
-	}
 	return state.Notification{
 		ID:     ps.bannerID(),
 		Level:  level,
 		Title:  desc,
 		Body:   body,
 		Source: "victron",
-		Ts:     ts,
+		Ts:     ps.dateTime,
 	}, true
 }
 
@@ -294,7 +290,20 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 		Value interface{} `json:"value"`
 	}
 	if len(msg.Payload()) > 0 {
-		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
+		var err error
+		if field == "DateTime" {
+			// Preserve the original number until its exact integrality check.
+			// json.Valid retains Unmarshal's rejection of trailing JSON values.
+			if !json.Valid(msg.Payload()) {
+				return
+			}
+			decoder := json.NewDecoder(bytes.NewReader(msg.Payload()))
+			decoder.UseNumber()
+			err = decoder.Decode(&payload)
+		} else {
+			err = json.Unmarshal(msg.Payload(), &payload)
+		}
+		if err != nil {
 			return
 		}
 	}
@@ -321,7 +330,7 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 		case "Service":
 			ps.service = ""
 		case "DateTime":
-			ps.dateTime = 0
+			ps.dateTime = ""
 		case "Type":
 			ps.hasType = false
 		case "Acknowledged":
@@ -344,9 +353,7 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 			ps.service = strings.TrimSpace(str)
 		}
 	case "DateTime":
-		if n, ok := toFloat(payload.Value); ok {
-			ps.dateTime = int64(n)
-		}
+		ps.dateTime = state.NotificationTime(payload.Value)
 	case "Type":
 		if n, ok := toFloat(payload.Value); ok {
 			ps.notifType = int64(n)
