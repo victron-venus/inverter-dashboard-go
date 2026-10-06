@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -138,6 +140,39 @@ func TestFailedPersistenceDoesNotApplyOrReportSuccess(t *testing.T) {
 	matches, err := filepath.Glob(".dashboard-settings-*")
 	if err != nil || len(matches) != 0 {
 		t.Fatal("temporary settings leaked")
+	}
+}
+
+func TestDirectorySyncFailurePreservesReplacedSettingsForNextPatch(t *testing.T) {
+	withTempDir(t)
+	Init("", "Cerbo", 1883)
+	syncFailure := errors.New("injected directory sync failure")
+	err := applyWithReplacer(map[string]interface{}{"show_ev": false}, func(from, to string) (bool, error) {
+		if err := os.Rename(from, to); err != nil {
+			return false, err
+		}
+		return true, syncFailure
+	})
+	if !errors.Is(err, syncFailure) {
+		t.Fatalf("unconfirmed durability must report its error: %v", err)
+	}
+	if Get()["show_ev"] != false {
+		t.Fatal("memory must match the successfully replaced file")
+	}
+	data, err := os.ReadFile(settingsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]interface{}
+	if err := json.Unmarshal(data, &stored); err != nil || stored["show_ev"] != false {
+		t.Fatal("replacement did not reach the visible file")
+	}
+	if err := Apply(map[string]interface{}{"show_dryer": false}); err != nil {
+		t.Fatal(err)
+	}
+	Init("", "Cerbo", 1883)
+	if Get()["show_ev"] != false || Get()["show_dryer"] != false {
+		t.Fatal("subsequent patch lost the already replaced settings")
 	}
 }
 

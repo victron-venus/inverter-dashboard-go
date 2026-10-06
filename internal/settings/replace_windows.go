@@ -6,14 +6,15 @@ import "golang.org/x/sys/windows"
 
 // Windows does not expose directory Sync through os.File. Request an atomic
 // replacement with write-through instead; errors are returned to the caller.
-func replaceDurably(from, to string) error {
+func replaceDurably(from, to string) (bool, error) {
 	src, err := windows.UTF16PtrFromString(from)
 	if err != nil {
-		return err
+		return false, err
 	}
 	dst, err := windows.UTF16PtrFromString(to)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return windows.MoveFileEx(src, dst, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	err = windows.MoveFileEx(src, dst, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	return err == nil, err
 }

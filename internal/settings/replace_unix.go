@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 )
 
-func replaceDurably(from, to string) error {
+func replaceDurably(from, to string) (bool, error) {
 	if err := os.Rename(from, to); err != nil {
-		return err
+		return false, err
 	}
 	dir, err := os.Open(filepath.Dir(to))
 	if err != nil {
-		return err
+		return true, err
 	}
 	defer func() { _ = dir.Close() }()
-	return dir.Sync()
+	return true, dir.Sync()
 }

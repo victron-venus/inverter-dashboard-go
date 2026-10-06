@@ -144,6 +144,10 @@ func Get() map[string]interface{} {
 // Apply validates the patch against the allowlist, merge-writes the file,
 // and hot-applies. Unknown keys or wrong types return an error naming the key.
 func Apply(patch map[string]interface{}) error {
+	return applyWithReplacer(patch, replaceDurably)
+}
+
+func applyWithReplacer(patch map[string]interface{}, replace func(string, string) (bool, error)) error {
 	mu.Lock()
 	defer mu.Unlock()
 	clean := make(map[string]interface{}, len(patch))
@@ -195,10 +199,16 @@ func Apply(patch map[string]interface{}) error {
 	if err = file.Close(); err != nil {
 		return fmt.Errorf("close dashboard settings: %w", err)
 	}
-	if err = replaceDurably(tmp, target); err != nil {
+	replaced, err := replace(tmp, target)
+	if replaced {
+		// A directory flush can fail after replacement. Keep subsequent reads and
+		// merge patches consistent with the visible file, while reporting that
+		// its durability was not confirmed.
+		current = next
+	}
+	if err != nil {
 		return fmt.Errorf("replace dashboard settings: %w", err)
 	}
-	current = next
 	return nil
 }
 

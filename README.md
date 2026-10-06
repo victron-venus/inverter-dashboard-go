@@ -182,8 +182,8 @@ IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.ho
 in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
 
 The embedded SPA is copied unchanged from the verified official
-`inverter-dashboard-vue` release `v2.2.7-beta.8`, source commit
-`74abcfb13eb543c5b64c6b36932344b69d2c3c0b`. Its asset and release provenance
+`inverter-dashboard-vue` release `v2.2.7-beta.9`, source commit
+`3d4a03fd3401334ac9e69f6d103caff41dc243ae`. Its asset and release provenance
 receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
 
 ## Features
