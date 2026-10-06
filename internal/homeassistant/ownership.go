@@ -14,7 +14,7 @@ func IsMQTTOwnedKey(key string) bool {
 		return true
 	}
 	switch key {
-	case "g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp",
+	case "ha_controls_available", "ha_observed_at", "setpoint_override", "setpoint_override_observed_at", "setpoint_override_controls_available", "electricity_tariff_observed_at", "electricity_tariff_controls_available", "grid_l1_available", "grid_l2_available", "grid_l3_available", "grid_backup", "grid_using_backup", "grid_backup_observed_at", "g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp",
 		"battery_soc", "battery_voltage", "battery_current", "battery_power", "battery_socs", "batteries",
 		"solar_total", "pv_total", "mppt_total", "mppt_data", "mppt_individual", "mppt_chargers",
 		"pv_inverter_total", "pv_inverter_individual", "pv_inverter_powers", "pv_inverters",

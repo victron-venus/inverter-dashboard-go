@@ -8,12 +8,18 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
 
-var controllerFields = []string{"booleans", "features", "ess_mode", "dry_run", "daily_stats", "solar_forecast", "ui_config", "dvcc_limits", "limits", "perf", "loop_interval", "grid_control_valid", "grid_control_reason", "grid_loss_state", "grid_loss_hold_seconds", "grid_loss_elapsed", "grid_loss_remaining", "grid_loss_zero_applied", "version", "uptime"}
+var controllerFields = []string{"grid_backup", "grid_using_backup", "booleans", "features", "ess_mode", "dry_run", "daily_stats", "solar_forecast", "ui_config", "dvcc_limits", "limits", "perf", "loop_interval", "grid_control_valid", "grid_control_reason", "grid_loss_state", "grid_loss_hold_seconds", "grid_loss_elapsed", "grid_loss_remaining", "grid_loss_zero_applied", "version", "uptime"}
 
 // ApplyControllerSnapshot accepts the retained inverter-control state without
 // giving it ownership of native Cerbo telemetry. A null snapshot clears flags.
 func ApplyControllerSnapshot(st *state.State, data map[string]interface{}) {
 	st.ESSModeObservedAt = nil
+	st.GridBackupObservedAt = nil
+	if len(data) == 0 {
+		st.SetpointOverride = nil
+		st.SetpointOverrideObservedAt = nil
+		st.ElectricityTariffObservedAt = nil
+	}
 	available := len(data) > 0
 	st.InverterAvailable = &available
 	applyControllerFields(st, data)
@@ -91,7 +97,7 @@ func (c *Client) CanControlInverter() bool {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	c.expireOptionalTelemetry(time.Now())
-	return c.state.InverterAvailable != nil && *c.state.InverterAvailable
+	return c.controllerControlReady(time.Now())
 }
 
 const optionalTelemetryTTL = 120 * time.Second
@@ -99,7 +105,7 @@ const optionalTelemetryTTL = 120 * time.Second
 // Expiry prevents a silent daemon from leaving active controls on a still-connected dashboard.
 func (c *Client) expireOptionalTelemetry(now time.Time) bool {
 	c.initCerboMaps()
-	if !c.controllerLastSeen.IsZero() && now.Sub(c.controllerLastSeen) > optionalTelemetryTTL {
+	if !c.controllerLastSeen.IsZero() && (now.Sub(c.controllerLastSeen) < 0 || now.Sub(c.controllerLastSeen) > optionalTelemetryTTL) {
 		if !c.cerboOwned["ess_mode"] {
 			c.state.TelemetryAvailable["ess_mode"] = false
 		}
@@ -107,6 +113,7 @@ func (c *Client) expireOptionalTelemetry(now time.Time) bool {
 		c.controllerESSMode = nil
 		c.controllerESSObserved = nil
 		c.controllerLastSeen = time.Time{}
+		c.controllerLiveAt = time.Time{}
 		return true
 	}
 	return false
@@ -131,4 +138,18 @@ func (c *Client) clearOptionalTelemetry() {
 	}
 	ApplyControllerSnapshot(c.state, nil)
 	c.controllerLastSeen = time.Time{}
+	c.controllerLiveAt = time.Time{}
+}
+
+// Display can retain a last observation longer than a command may use it.
+func (c *Client) controllerControlReady(now time.Time) bool {
+	age := now.Sub(c.controllerLiveAt)
+	return c.state.InverterAvailable != nil && *c.state.InverterAvailable && !c.controllerLiveAt.IsZero() && age >= 0 && age <= 30*time.Second
+}
+func genericControllerAction(action string) bool {
+	switch action {
+	case "toggle", "dry_run", "ess_mode", "setpoint", "limits", "loop_interval":
+		return true
+	}
+	return false
 }

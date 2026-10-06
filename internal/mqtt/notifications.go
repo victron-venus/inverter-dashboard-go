@@ -285,6 +285,7 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	c.applyPlatformNotification(msg, c.pushGenerationNow())
 }
 func (c *Client) applyPlatformNotification(msg mqtt.Message, generation uint64) {
+	session := c.mqttSession.Load()
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -321,6 +322,11 @@ func (c *Client) applyPlatformNotification(msg mqtt.Message, generation uint64) 
 		}
 	}
 
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		return
+	}
 	key := fmt.Sprintf("%d-%d", inst64, slot64)
 	c.platformMu.Lock()
 	c.platformNotifsSeen = true

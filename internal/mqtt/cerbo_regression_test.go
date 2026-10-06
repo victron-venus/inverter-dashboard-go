@@ -43,7 +43,7 @@ func TestFieldOwnershipZerosAndNull(t *testing.T) {
 	c.stateMu.Unlock()
 	send(c, "vebus/276", "ProductName", "MultiPlus")
 	send(c, "battery/512", "ProductName", "Battery")
-	if c.GetState().Setpoint != 100 || c.GetState().TelemetryAvailable["battery_soc"] || c.GetState().GT != 150 {
+	if c.GetState().Setpoint != 100 || c.GetState().TelemetryAvailable["battery_soc"] || c.GetState().GT != 0 || c.GetState().TelemetryAvailable["gt"] {
 		t.Fatal("device metadata stole unrelated fields")
 	}
 	send(c, "system/0", "Ac/Grid/L1/Power", 0)
@@ -91,8 +91,8 @@ func TestThreePhasePowerPrecedenceAndInvalidation(t *testing.T) {
 		t.Fatalf("phase totals: %+v", st)
 	}
 	send(c, "system/0", "Ac/Grid/L1/Power", nil)
-	if c.GetState().GT != 60 {
-		t.Fatal("null did not reveal lower priority direct meter")
+	if c.GetState().GT != 50 {
+		t.Fatal("explicit null resurrected lower priority direct meter")
 	}
 }
 

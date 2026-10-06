@@ -110,9 +110,11 @@ type Client struct {
 	filteredEntities  *FilteredEntityConfig
 
 	// Runtime state
-	overlay    Overlay
-	overlayMu  sync.RWMutex
-	configured bool
+	overlay        Overlay
+	overlayMu      sync.RWMutex
+	configured     bool
+	observedAt     time.Time
+	entityObserved map[string]time.Time
 
 	httpClient *http.Client
 }
@@ -309,7 +311,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 
 	result := Overlay{
 		Booleans:          make(map[string]bool),
-		HADirectConnected: true, // Always true when HA configured
+		HADirectConnected: false,
 		AdditionalFields:  make(map[string]interface{}),
 	}
 
@@ -318,8 +320,24 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	defer cancel()
 
 	// Helper to fetch a single entity state - now uses the new method below
+	observed := map[string]time.Time{}
+	hadResponse := false
+	fetchDoc := func(entityID string) (*EntityState, error) {
+		doc, err := c.getEntityDoc(ctx, entityID)
+		if err == nil && doc != nil {
+			hadResponse = true
+			if doc.State != "" && doc.State != "unavailable" && (doc.State != "unknown" || strings.HasPrefix(entityID, "scene.") || strings.HasPrefix(entityID, "button.")) {
+				observed[entityID] = time.Now()
+			}
+		}
+		return doc, err
+	}
 	fetchEntityState := func(entityID string) (string, error) {
-		return c.getEntityState(ctx, entityID)
+		doc, err := fetchDoc(entityID)
+		if err != nil {
+			return "", err
+		}
+		return doc.State, nil
 	}
 
 	// Fetch boolean entities
@@ -331,7 +349,9 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		if err != nil {
 			continue
 		}
-		result.Booleans[key] = isOn(state)
+		if value, ok := homeSwitchState(state).(bool); ok {
+			result.Booleans[key] = value
+		}
 	}
 
 	// Fetch switch entities
@@ -385,7 +405,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	if !filteredEmpty(c.filteredEntities) {
 		docs := make(map[string]*EntityState, len(filteredAll(c.filteredEntities)))
 		for _, id := range filteredAll(c.filteredEntities) {
-			if doc, err := c.getEntityDoc(ctx, id); err == nil && doc != nil {
+			if doc, err := fetchDoc(id); err == nil && doc != nil && !observed[id].IsZero() {
 				docs[id] = doc
 			}
 		}
@@ -393,7 +413,14 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	}
 
 	log.Printf("[HA CLIENT DEBUG] FetchStatesOnce completed, setting HADirectConnected=true")
-	result.HADirectConnected = true
+	result.HADirectConnected = hadResponse
+	c.overlayMu.Lock()
+	c.entityObserved = observed
+	c.observedAt = time.Time{}
+	if hadResponse {
+		c.observedAt = time.Now()
+	}
+	c.overlayMu.Unlock()
 	log.Printf("[HA CLIENT DEBUG] Final AdditionalFields: %+v", result.AdditionalFields)
 	return result, nil
 }
@@ -604,6 +631,9 @@ func (c *Client) callServiceData(domain, service, entityID string, fields map[st
 		return err
 	}
 
+	if !c.entityControlReady(entityID) {
+		return fmt.Errorf("wait for a current Home Assistant observation")
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("service call failed: %w", err)
@@ -667,4 +697,28 @@ func (c *Client) GetManagedKeys() []string {
 		}
 	}
 	return keys
+}
+
+// Control freshness uses Go's monotonic component and is never supplied by HA.
+func (c *Client) ControlsAvailable() bool {
+	c.overlayMu.RLock()
+	defer c.overlayMu.RUnlock()
+	age := time.Since(c.observedAt)
+	return c.IsDirectMode() && !c.observedAt.IsZero() && age >= 0 && age <= 30*time.Second
+}
+func (c *Client) ObservedAt() *float64 {
+	c.overlayMu.RLock()
+	defer c.overlayMu.RUnlock()
+	if c.observedAt.IsZero() {
+		return nil
+	}
+	at := float64(c.observedAt.UnixMilli()) / 1000
+	return &at
+}
+func (c *Client) entityControlReady(entity string) bool {
+	c.overlayMu.RLock()
+	defer c.overlayMu.RUnlock()
+	at := c.entityObserved[entity]
+	age := time.Since(at)
+	return c.IsDirectMode() && !at.IsZero() && age >= 0 && age <= 30*time.Second
 }

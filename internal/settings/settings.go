@@ -5,24 +5,41 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
 const settingsFile = "dashboard_settings.json"
 
+func storagePath() string {
+	if explicit := os.Getenv("INVERTER_DASHBOARD_SETTINGS_FILE"); explicit != "" {
+		return explicit
+	}
+	return settingsFile
+}
+
 // ALLOWED_KEYS with types; anything else is rejected.
 var allowed = map[string]string{
-	"camera_topic":      "string",
-	"show_ev":           "bool",
-	"show_washer":       "bool",
-	"show_dryer":        "bool",
-	"show_dishwasher":   "bool",
-	"show_home_section": "bool",
-	"show_ha_covers":    "bool",
-	"show_ha_media":     "bool",
-	"show_ha_scenes":    "bool",
-	"show_ha_weather":   "bool",
+	"camera_topic":          "string",
+	"show_ev":               "bool",
+	"show_washer":           "bool",
+	"show_dryer":            "bool",
+	"show_dishwasher":       "bool",
+	"show_home_section":     "bool",
+	"show_ha_covers":        "bool",
+	"show_ha_media":         "bool",
+	"show_ha_scenes":        "bool",
+	"show_ha_weather":       "bool",
+	"show_daily_stats":      "bool",
+	"show_header_toggles":   "bool",
+	"show_batteries":        "bool",
+	"show_solar_production": "bool",
+	"show_active_loads":     "bool",
+	"show_ha_sensors":       "bool",
+	"show_ha_numbers":       "bool",
 	// Connection overrides (applied at startup by main.go; restart required).
 	// Note: mqtt_username/mqtt_password intentionally absent — the go client
 	// connects anonymously (Cerbo broker); add when broker auth lands.
@@ -52,7 +69,7 @@ func Init(cameraTopicFromEnv string, mqttHost string, mqttPort int) {
 	mu.Lock()
 	defer mu.Unlock()
 	current = defaults()
-	data, err := os.ReadFile(settingsFile)
+	data, err := os.ReadFile(storagePath())
 	if err != nil {
 		return
 	}
@@ -69,20 +86,27 @@ func Init(cameraTopicFromEnv string, mqttHost string, mqttPort int) {
 
 func defaults() map[string]interface{} {
 	return map[string]interface{}{
-		"camera_topic":      cameraEnv,
-		"mqtt_host":         envDefaults["MQTT_HOST"],
-		"mqtt_port":         envDefaults["MQTT_PORT"],
-		"ha_url":            "",
-		"ha_token":          "",
-		"show_ev":           true,
-		"show_washer":       true,
-		"show_dryer":        true,
-		"show_dishwasher":   true,
-		"show_home_section": true,
-		"show_ha_covers":    true,
-		"show_ha_media":     true,
-		"show_ha_scenes":    true,
-		"show_ha_weather":   true,
+		"camera_topic":          cameraEnv,
+		"mqtt_host":             envDefaults["MQTT_HOST"],
+		"mqtt_port":             envDefaults["MQTT_PORT"],
+		"ha_url":                "",
+		"ha_token":              "",
+		"show_ev":               true,
+		"show_washer":           true,
+		"show_dryer":            true,
+		"show_dishwasher":       true,
+		"show_home_section":     true,
+		"show_ha_covers":        true,
+		"show_ha_media":         true,
+		"show_ha_scenes":        true,
+		"show_ha_weather":       true,
+		"show_daily_stats":      true,
+		"show_header_toggles":   true,
+		"show_batteries":        true,
+		"show_solar_production": true,
+		"show_active_loads":     true,
+		"show_ha_sensors":       true,
+		"show_ha_numbers":       true,
 	}
 }
 
@@ -92,9 +116,11 @@ func typeOK(key string, v interface{}) bool {
 		_, ok := v.(string) // empty allowed: clears the setting (e.g. disable camera)
 		return ok
 	case "int":
-		switch v.(type) {
-		case int, float64: // JSON numbers decode as float64
-			return true
+		switch n := v.(type) {
+		case int:
+			return n >= 1 && n <= 65535
+		case float64:
+			return !math.IsNaN(n) && !math.IsInf(n, 0) && n == math.Trunc(n) && n >= 1 && n <= 65535
 		}
 		return false
 	case "bool":
@@ -130,16 +156,49 @@ func Apply(patch map[string]interface{}) error {
 		}
 		clean[k] = v
 	}
-	for k, v := range clean {
-		current[k] = v
+	next := make(map[string]interface{}, len(current)+len(clean))
+	for k, v := range current {
+		next[k] = v
 	}
-	data, err := json.MarshalIndent(current, "", "  ")
-	if err == nil {
-		tmp := settingsFile + ".tmp"
-		if werr := os.WriteFile(tmp, data, 0o644); werr == nil {
-			_ = os.Rename(tmp, settingsFile)
+	for k, v := range clean {
+		// The public settings DTO uses a placeholder, never an actual replacement credential.
+		if k == "ha_token" && v == "***" {
+			continue
+		}
+		next[k] = v
+	}
+	data, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode dashboard settings: %w", err)
+	}
+	target := storagePath()
+	parent := filepath.Dir(target)
+	if os.Getenv("INVERTER_DASHBOARD_SETTINGS_FILE") != "" {
+		if err := os.MkdirAll(parent, 0700); err != nil {
+			return fmt.Errorf("create settings directory: %w", err)
 		}
 	}
+	file, err := os.CreateTemp(parent, ".dashboard-settings-*")
+	if err != nil {
+		return fmt.Errorf("create dashboard settings: %w", err)
+	}
+	tmp := file.Name()
+	defer func() { _ = os.Remove(tmp) }()
+	if _, err = file.Write(data); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write dashboard settings: %w", err)
+	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync dashboard settings: %w", err)
+	}
+	if err = file.Close(); err != nil {
+		return fmt.Errorf("close dashboard settings: %w", err)
+	}
+	if err = os.Rename(tmp, target); err != nil {
+		return fmt.Errorf("replace dashboard settings: %w", err)
+	}
+	current = next
 	return nil
 }
 

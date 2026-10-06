@@ -69,7 +69,11 @@ func TestRichHADispatchMakesRESTRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			mqtt := mockmqtt.NewClient()
-			if err := handleMessage(msg, mqtt, actionHAClient()); err != nil {
+			ha := actionHAClient()
+			if _, err := ha.FetchStatesOnce(); err != nil {
+				t.Fatal(err)
+			}
+			if err := handleMessage(msg, mqtt, ha); err != nil {
 				t.Fatal(err)
 			}
 			if posts != 1 || len(mqtt.Published()) != 0 {

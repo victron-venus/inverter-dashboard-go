@@ -4,13 +4,15 @@ import "encoding/json"
 
 // DailyStats represents daily statistics with money calculations
 type DailyStats struct {
-	SolarKWh   float64 `json:"solar_kwh"`
-	SolarMoney float64 `json:"solar_money"`
-	GridKWh    float64 `json:"grid_kwh"`
-	GridMoney  float64 `json:"grid_money"`
-	BattInKWh  float64 `json:"batt_in_kwh"`
-	BattOutKWh float64 `json:"batt_out_kwh"`
-	BattNetKWh float64 `json:"batt_net_kwh"`
+	// Native daily coverage/provenance is opaque here; clients validate the envelope.
+	GridEnergy json.RawMessage `json:"grid_energy"`
+	SolarKWh   float64         `json:"solar_kwh"`
+	SolarMoney float64         `json:"solar_money"`
+	GridKWh    float64         `json:"grid_kwh"`
+	GridMoney  float64         `json:"grid_money"`
+	BattInKWh  float64         `json:"batt_in_kwh"`
+	BattOutKWh float64         `json:"batt_out_kwh"`
+	BattNetKWh float64         `json:"batt_net_kwh"`
 	// Extra fields from reference
 	ProducedYesterday   float64   `json:"produced_yesterday"`
 	PVInverterDaily     []float64 `json:"pv_inverter_daily"`
@@ -123,7 +125,29 @@ type PushSample struct {
 	Value    *float64
 }
 
+type GridBackupStatus struct {
+	Enabled         bool     `json:"enabled"`
+	Available       bool     `json:"available"`
+	Service         *string  `json:"service"`
+	DeviceInstance  *uint32  `json:"device_instance"`
+	Name            *string  `json:"name"`
+	Power           *float64 `json:"power"`
+	MeasurementTime *float64 `json:"measurement_time"`
+	AgeSeconds      *float64 `json:"age_seconds"`
+}
+
 type State struct {
+	SetpointOverride                   *SetpointOverrideStatus `json:"setpoint_override"`
+	SetpointOverrideObservedAt         *float64                `json:"setpoint_override_observed_at"`
+	SetpointOverrideControlsAvailable  bool                    `json:"setpoint_override_controls_available"`
+	ElectricityTariffObservedAt        *float64                `json:"electricity_tariff_observed_at"`
+	ElectricityTariffControlsAvailable bool                    `json:"electricity_tariff_controls_available"`
+	GridL1Available                    *bool                   `json:"grid_l1_available,omitempty"`
+	GridL2Available                    *bool                   `json:"grid_l2_available,omitempty"`
+	GridL3Available                    *bool                   `json:"grid_l3_available,omitempty"`
+	GridBackup                         *GridBackupStatus       `json:"grid_backup"`
+	GridUsingBackup                    bool                    `json:"grid_using_backup"`
+	GridBackupObservedAt               *float64                `json:"grid_backup_observed_at"`
 	// PushSamples are private raw gateway observations; never decoded from controller JSON.
 	PushSamples         []PushSample           `json:"-"`
 	NativeESSObserved   bool                   `json:"-"`
