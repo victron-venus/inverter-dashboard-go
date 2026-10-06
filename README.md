@@ -560,19 +560,19 @@ curl -H "Authorization: Bearer <TOKEN>" \
 
 ## Related Projects
 
-This project is part of the Victron Venus OS integration suite:
+- [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) — shared frontend consumed by this backend.
+- [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) — Python backend for Docker and NAS deployments.
+- [inverter-desktop](https://github.com/victron-venus/inverter-desktop) — native Tauri client for the same Cerbo telemetry.
+- [inverter-control](https://github.com/victron-venus/inverter-control) — ESS controller and correlated command protocol.
+- [dbus-ev](https://github.com/victron-venus/dbus-ev) — maintained vehicle and optional Mercedes charger telemetry.
+- [dbus-pump](https://github.com/victron-venus/dbus-pump) — water tank, pump and valve services consumed through Cerbo MQTT.
+- [inverter-gateway](https://github.com/victron-venus/inverter-gateway) — authenticated HTTPS/SSE transport for gateway-mode deployments.
+- [inverter-web-vitrine](https://github.com/victron-venus/inverter-web-vitrine) — separate read-only public status page when a full dashboard is unnecessary.
 
-| Project | Description |
-|---------|-------------|
-| [inverter-control](https://github.com/victron-venus/inverter-control) | Advanced ESS external control system with grid-zero targeting |
-| [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) | Real-time web dashboard (Python/FastAPI) via MQTT |
-| **inverter-dashboard-go** (this) | High-performance Go rewrite of the web dashboard |
-| [inverter-desktop](https://github.com/victron-venus/inverter-desktop) | Native desktop application (Rust/Tauri) for system monitoring |
-| [dbus-mqtt-battery](https://github.com/victron-venus/dbus-mqtt-battery) | MQTT to D-Bus bridge for JBD BMS battery integration |
-| [dbus-tasmota-pv](https://github.com/victron-venus/dbus-tasmota-pv) | Tasmota smart plug integration as a PV inverter on D-Bus |
-| [esphome-jbd-bms-mqtt](https://github.com/victron-venus/esphome-jbd-bms-mqtt) | ESP32 Bluetooth monitor for JBD BMS batteries |
-| [inverter-monitoring](https://github.com/victron-venus/inverter-monitoring) | TIG (Telegraf, InfluxDB, Grafana) monitoring stack |
-| [terraform-github](https://github.com/4alvit/terraform-github) | Infrastructure as Code for the GitHub organization |
+Browse the [public project catalog](https://victron-venus.github.io/.github/projects.html)
+for other Venus OS packages and companion tools. Each project documents its own
+installation, compatibility and release requirements.
+
 
 ## Author
 
