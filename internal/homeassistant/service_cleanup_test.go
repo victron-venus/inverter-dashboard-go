@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 )
@@ -23,7 +24,8 @@ func (b *serviceCleanupBody) Close() error {
 func TestServiceCleanupPreservesCommandResult(t *testing.T) {
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		body := &serviceCleanupBody{Reader: strings.NewReader("")}
-		c := NewClient(&config.HomeAssistantConfig{URL: "http://ha.test", Token: "test"})
+		c := NewClient(&config.HomeAssistantConfig{URL: "http://ha.test", Token: "test", DirectControls: true})
+		c.entityObserved = map[string]time.Time{"light.test": time.Now()}
 		requests := 0
 		c.httpClient = &http.Client{Transport: ownershipTransport(func(_ *http.Request) (*http.Response, error) {
 			requests++

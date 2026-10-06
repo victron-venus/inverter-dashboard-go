@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"strings"
 )
 
@@ -101,6 +102,13 @@ func (s *Snapshot) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	_, decoded.InverterPresent = fields["inverter"]
+	if decoded.InverterPresent {
+		var err error
+		decoded.Inverter, err = state.DecodeControllerState(fields["inverter"])
+		if err != nil {
+			return err
+		}
+	}
 	*s = Snapshot(decoded)
 	return nil
 }

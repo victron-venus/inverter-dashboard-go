@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 )
@@ -98,6 +99,7 @@ func TestHomeAssistantServicePathsStayUnderAPI(t *testing.T) {
 	}))
 	defer ha.Close()
 	c := NewClient(&config.HomeAssistantConfig{URL: ha.URL + "/homeassistant/", Token: "configured-token", DirectControls: true})
+	c.entityObserved = map[string]time.Time{"switch.lamp": time.Now()}
 	if err := c.callService("switch", "turn_on", "switch.lamp"); err != nil {
 		t.Fatalf("service call failed: %v", err)
 	}

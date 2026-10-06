@@ -314,6 +314,19 @@ func SnapshotToState(snap *Snapshot, opt MapOptions) *state.State {
 	st.Notifications = mapNotifications(leaves)
 	if snap.InverterPresent || snap.Inverter != nil {
 		mqtt.ApplyControllerSnapshot(st, snap.Inverter)
+		at := float64(time.Now().UnixMilli()) / 1000
+		if snap.Capabilities["setpoint_override"] {
+			st.SetpointOverride = state.ParseOverrideStatus(snap.Inverter["setpoint_override"])
+			if st.SetpointOverride != nil {
+				st.SetpointOverrideObservedAt = &at
+			}
+		}
+		if snap.Capabilities["electricity_tariff"] {
+			st.ElectricityTariffObservedAt = &at
+		}
+		if st.GridBackup != nil {
+			st.GridBackupObservedAt = st.GridBackup.MeasurementTime
+		}
 		if _, ok := snap.Inverter["ess_mode"].(map[string]interface{}); ok {
 			at := float64(time.Now().UnixMilli()) / 1000
 			st.ESSModeObservedAt = &at

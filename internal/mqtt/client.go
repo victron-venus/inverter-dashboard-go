@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -66,6 +67,9 @@ type Client struct {
 	cerboLeaves           map[string]map[string]interface{}
 	cerboOwned            map[string]bool
 	controllerLastSeen    time.Time
+	controllerLiveAt      time.Time
+	waterModeObserved     map[string]time.Time
+	overrideReceipt       uint64
 	controllerESSMode     *state.ESSMode
 	controllerESSObserved *float64
 	nativeLastSeen        time.Time
@@ -161,6 +165,8 @@ func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
 	c.nativeLastSeen = time.Time{}
+	c.clearOptionalTelemetry()
+	c.waterModeObserved = nil
 	c.stateMu.Unlock()
 }
 
@@ -174,6 +180,8 @@ func (c *Client) DisableGatewayMode() {
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
 	c.nativeLastSeen = time.Time{}
+	c.clearOptionalTelemetry()
+	c.waterModeObserved = nil
 	c.stateMu.Unlock()
 }
 
@@ -221,8 +229,18 @@ func (c *Client) ApplyState(st *state.State) {
 	if st.InverterAvailable != nil {
 		// The gateway owns freshness for its controller envelope.
 		c.controllerLastSeen = time.Time{}
+		c.controllerLiveAt = time.Time{}
+		if *st.InverterAvailable {
+			c.controllerLiveAt = time.Now()
+		}
 	}
 	c.nativeLastSeen = time.Now()
+	c.waterModeObserved = map[string]time.Time{}
+	for _, key := range []string{"pump_mode", "water_valve_mode"} {
+		if st.TelemetryAvailable[key] {
+			c.waterModeObserved[key] = time.Now()
+		}
+	}
 	prev := c.state
 	if prev != nil {
 		if st.Version == "" {
@@ -298,11 +316,15 @@ func (c *Client) LastStateTime() time.Time {
 }
 func (c *Client) GetState() *state.State {
 	ready := c.CanSelectESSMode()
+	overrideReady := c.CanControllerCommand("setpoint_override", nil)
+	tariffReady := c.CanControllerCommand("electricity_tariff", nil)
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	c.expireOptionalTelemetry(time.Now())
 	out := c.state.Clone()
 	out.ESSModeControlsAvailable = ready
+	out.SetpointOverrideControlsAvailable = overrideReady
+	out.ElectricityTariffControlsAvailable = tariffReady
 	return out
 }
 
@@ -435,7 +457,7 @@ func (c *Client) Subscribe() error {
 		topic   string
 		handler mqtt.MessageHandler
 	}{
-		{"inverter/state", c.onStateMessage}, {"inverter/console", c.onConsoleMessage},
+		{"inverter/state", c.bindControllerCallback(session, false)}, {"inverter/setpoint_override", c.bindControllerCallback(session, true)}, {"inverter/console", c.onConsoleMessage},
 		{"inverter/notifications", c.bindPushCallback(session, false)}, {"inverter/portal", c.onPortalMessage},
 	} {
 		if token := c.client.Subscribe(sub.topic, 0, sub.handler); token.Wait() && token.Error() != nil {
@@ -484,22 +506,32 @@ func toFloat(v interface{}) (float64, bool) {
 }
 
 func (c *Client) PublishCommand(action string, payload interface{}) error {
+	generation, session := c.pushGenerationNow(), c.mqttSession.Load()
+	if action == "setpoint_override" || action == "electricity_tariff" {
+		return c.publishControllerCommand(action, payload)
+	}
 	if action == "set_ess_mode" {
 		if err := c.validateESSCommand(payload); err != nil {
 			return err
 		}
 	}
 	c.gatewayMu.RLock()
+	if generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		c.gatewayMu.RUnlock()
+		return fmt.Errorf("command source changed")
+	}
 	fn := c.gatewayPublish
-	c.gatewayMu.RUnlock()
 	if fn != nil {
+		c.gatewayMu.RUnlock()
 		return fn(action, payload)
 	}
+
+	c.gatewayMu.RUnlock()
 
 	// Banner ack/silence against Cerbo MQTT when not on IGW.
 	if action == "acknowledge_all_notifications" || action == "silence_alarm" ||
 		action == "dismiss_banner" || action == "acknowledge_victron_banner" {
-		return c.publishCerboAlarmCommand(action)
+		return c.publishCerboAlarmCommand(action, generation, session)
 	}
 
 	topic := fmt.Sprintf("inverter/cmd/%s", action)
@@ -513,23 +545,51 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	} else {
 		message = []byte("{}")
 	}
-	if c.client == nil || !c.client.IsConnectionOpen() {
-		return fmt.Errorf("mqtt not connected")
+	c.gatewayMu.RLock()
+	if generation != c.pushGenerationNow() || session != c.mqttSession.Load() || c.gatewayMode || c.client == nil || !c.client.IsConnectionOpen() {
+		c.gatewayMu.RUnlock()
+		return fmt.Errorf("mqtt source unavailable")
 	}
-	if token := c.client.Publish(topic, 0, false, message); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish command: %w", token.Error())
+	c.stateMu.RLock()
+	ready := true
+	if action == "set_ess_mode" {
+		ready = state.ESSSelectionReady(c.state, time.Now())
 	}
+	if genericControllerAction(action) {
+		ready = c.controllerControlReady(time.Now())
+	}
+	if !ready {
+		c.stateMu.RUnlock()
+		c.gatewayMu.RUnlock()
+		return fmt.Errorf("wait for current controller telemetry")
+	}
+	token := c.client.Publish(topic, 0, false, message)
+	c.stateMu.RUnlock()
+	c.gatewayMu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
+	}
+
 	log.Printf("Published command to %s", topic)
 	return nil
 }
 
 // publishCerboAlarmCommand writes Venus-platform AcknowledgeAll or vebus SilenceAlarm.
-func (c *Client) publishCerboAlarmCommand(action string) error {
+func (c *Client) publishCerboAlarmCommand(action string, generation, session uint64) error {
+	c.gatewayMu.RLock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		c.gatewayMu.RUnlock()
+		return fmt.Errorf("alarm source changed")
+	}
 	portal := c.PortalID()
-	if portal == "" {
+	if !validPortal(portal) {
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("cerbo portal id required for %s", action)
 	}
 	if c.client == nil || !c.client.IsConnectionOpen() {
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("mqtt not connected")
 	}
 	var topic, body string
@@ -541,8 +601,12 @@ func (c *Client) publishCerboAlarmCommand(action string) error {
 		topic = fmt.Sprintf("W/%s/platform/0/Notifications/AcknowledgeAll", portal)
 		body = `{"value":1}`
 	}
-	if token := c.client.Publish(topic, 0, false, body); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish %s: %w", action, token.Error())
+	token := c.client.Publish(topic, 0, false, body)
+	c.gatewayMu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
 	}
 	log.Printf("Published Cerbo command %s to %s", action, topic)
 	return nil
@@ -551,7 +615,7 @@ func (c *Client) publishCerboAlarmCommand(action string) error {
 // PublishCommandAsync publishes a command asynchronously via the command buffer.
 // Returns immediately; the command will be sent when the broker is available.
 func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
-	if action == "set_ess_mode" {
+	if action == "set_ess_mode" || action == "setpoint_override" || action == "electricity_tariff" {
 		return c.PublishCommand(action, payload)
 	}
 	if c.cmdBuffer == nil {
@@ -577,33 +641,8 @@ func (c *Client) Disconnect() {
 	}
 }
 
-func (c *Client) onStateMessage(client mqtt.Client, msg mqtt.Message) {
-	var data map[string]interface{}
-	if len(msg.Payload()) > 0 {
-		if err := json.Unmarshal(msg.Payload(), &data); err != nil {
-			log.Printf("Failed to unmarshal state message: %v", err)
-			return
-		}
-	}
-
-	c.lastStateMu.Lock()
-	c.lastStateTime = time.Now()
-	c.lastStateMu.Unlock()
-
-	c.stateMu.Lock()
-	c.controllerLastSeen = time.Now()
-	c.observeESSMode(data, msg.Retained())
-	c.mergeDaemonState(data)
-	c.state.ESSModeObservedAt = c.controllerESSObserved
-	st := c.state.Clone()
-	c.stateMu.Unlock()
-
-	// Log values
-	log.Printf("State update - solar: %.2fW, grid: %.2fW, battery: %.2f%%, cons: %.2fW",
-		st.SolarTotal, st.GT, st.BatterySOC, st.TT)
-
-	// Trigger handler asynchronously (matches Python's asyncio pattern)
-	c.triggerHandler()
+func (c *Client) onStateMessage(_ mqtt.Client, msg mqtt.Message) {
+	c.applyControllerMessage(msg, c.mqttSession.Load(), c.pushGenerationNow(), false)
 }
 func (c *Client) onConsoleMessage(client mqtt.Client, msg mqtt.Message) {
 	line := string(msg.Payload())
