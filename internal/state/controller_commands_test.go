@@ -87,3 +87,18 @@ func TestTariffEnvelopeAndRevisionGuard(t *testing.T) {
 		t.Fatal("rounded wire fraction accepted")
 	}
 }
+
+func TestTariffBoundUsesExactWireEncoding(t *testing.T) {
+	body := map[string]interface{}{"request_id": "id", "revision": strings.Repeat("a", 64), "plan": map[string]interface{}{"name": strings.Repeat("<>&é", 15000)}}
+	encoded, err := EncodeControllerCommand(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ValidateTariff(body) != nil || len(encoded) > 100000 || strings.Contains(string(encoded), `\u003c`) {
+		t.Fatal("wire encoding expanded accepted UTF8 envelope")
+	}
+	var decoded map[string]interface{}
+	if json.Unmarshal(encoded, &decoded) != nil || decoded["plan"].(map[string]interface{})["name"] != body["plan"].(map[string]interface{})["name"] {
+		t.Fatal("wire encoding changed tariff data")
+	}
+}

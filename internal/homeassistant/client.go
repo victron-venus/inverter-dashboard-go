@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -115,6 +116,7 @@ type Client struct {
 	configured     bool
 	observedAt     time.Time
 	entityObserved map[string]time.Time
+	numberRanges   map[string][2]float64
 
 	httpClient *http.Client
 }
@@ -321,6 +323,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 
 	// Helper to fetch a single entity state - now uses the new method below
 	observed := map[string]time.Time{}
+	ranges := map[string][2]float64{}
 	hadResponse := false
 	fetchDoc := func(entityID string) (*EntityState, error) {
 		doc, err := c.getEntityDoc(ctx, entityID)
@@ -410,12 +413,27 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 			}
 		}
 		result.AdditionalFields["ha_filtered"] = BuildFilteredDisplays(docs, c.filteredEntities)
+		for _, id := range c.filteredEntities.Numbers {
+			doc := docs[id]
+			if doc == nil {
+				continue
+			}
+			minimum, _ := attrFloat(*doc, "min")
+			maximum, _ := attrFloat(*doc, "max")
+			if minimum == 0 && maximum == 0 {
+				maximum = 100
+			}
+			if !math.IsNaN(minimum) && !math.IsInf(minimum, 0) && !math.IsNaN(maximum) && !math.IsInf(maximum, 0) && minimum <= maximum {
+				ranges[id] = [2]float64{minimum, maximum}
+			}
+		}
 	}
 
 	log.Printf("[HA CLIENT DEBUG] FetchStatesOnce completed, setting HADirectConnected=true")
 	result.HADirectConnected = hadResponse
 	c.overlayMu.Lock()
 	c.entityObserved = observed
+	c.numberRanges = ranges
 	c.observedAt = time.Time{}
 	if hadResponse {
 		c.observedAt = time.Now()
@@ -631,6 +649,15 @@ func (c *Client) callServiceData(domain, service, entityID string, fields map[st
 		return err
 	}
 
+	if service == "set_value" && (domain == "number" || domain == "input_number") {
+		value, valid := actionNumber(fields["value"])
+		c.overlayMu.RLock()
+		bounds, known := c.numberRanges[entityID]
+		c.overlayMu.RUnlock()
+		if !valid || !known || value < bounds[0] || value > bounds[1] {
+			return fmt.Errorf("number value outside current entity range")
+		}
+	}
 	if !c.entityControlReady(entityID) {
 		return fmt.Errorf("wait for a current Home Assistant observation")
 	}

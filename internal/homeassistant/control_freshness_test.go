@@ -53,3 +53,28 @@ func TestHAServiceRequiresKnownFreshCurrentEntity(t *testing.T) {
 		})
 	}
 }
+
+func TestHANumberServiceUsesObservedRange(t *testing.T) {
+	c := NewClient(&config.HomeAssistantConfig{URL: "http://ha.test", Token: "fixture", DirectControls: true, FilteredEntities: &config.FilteredEntityConfig{Numbers: []string{"number.limit"}}})
+	posts := 0
+	c.httpClient = &http.Client{Transport: ownershipTransport(func(r *http.Request) (*http.Response, error) {
+		body := `{"entity_id":"number.limit","state":"1","attributes":{"min":-2,"max":3,"step":0.5}}`
+		if r.Method == http.MethodPost {
+			posts++
+			body = `[]`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	if _, err := c.FetchStatesOnce(); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []float64{-2.5, -2, 1.5, 3, 3.5} {
+		err := c.PerformAction("number_set", "number.limit", map[string]interface{}{"value": value})
+		if (err == nil) != (value >= -2 && value <= 3) {
+			t.Fatalf("range check for %v: %v", value, err)
+		}
+	}
+	if posts != 3 {
+		t.Fatalf("unexpected physical service attempts: %d", posts)
+	}
+}

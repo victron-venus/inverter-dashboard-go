@@ -2,7 +2,6 @@ package mqtt
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -124,7 +123,7 @@ func (c *Client) publishControllerCommand(name string, payload any) error {
 		c.gatewayMu.RUnlock()
 		return fn(name, payload)
 	}
-	encoded, err := json.Marshal(payload)
+	encoded, err := state.EncodeControllerCommand(payload)
 	if err != nil {
 		c.gatewayMu.RUnlock()
 		return err
@@ -133,20 +132,16 @@ func (c *Client) publishControllerCommand(name string, payload any) error {
 	c.stateMu.RLock()
 	receipt := c.overrideReceipt
 	ready := state.ControllerCommandReady(c.state, name, payload, time.Now())
-	c.stateMu.RUnlock()
 	if !ready || c.gatewayMode || c.client == nil || !c.client.IsConnectionOpen() {
+		c.stateMu.RUnlock()
 		c.gatewayMu.RUnlock()
 		return errors.New("controller unavailable")
 	}
 	token := c.client.Publish("inverter/cmd/"+name, 0, false, encoded)
+	c.stateMu.RUnlock()
 	c.gatewayMu.RUnlock()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-token.Done():
-		if token.Error() != nil {
-			return errors.New("controller publish failed")
-		}
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
 	}
 	if name != "setpoint_override" {
 		return nil
@@ -154,18 +149,7 @@ func (c *Client) publishControllerCommand(name string, payload any) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		if generation != c.pushGenerationNow() || session != c.mqttSession.Load() || !c.CanControllerCommand(name, payload) {
-			return errors.New("controller source changed")
-		}
-		st := c.GetState()
-		c.stateMu.RLock()
-		newReceipt := c.overrideReceipt > receipt
-		c.stateMu.RUnlock()
-		confirmed, ackErr := state.OverrideAcknowledged(st, payload)
-		if !newReceipt {
-			confirmed = false
-			ackErr = nil
-		}
+		confirmed, ackErr := c.overrideAcknowledgement(ctx, generation, session, receipt, payload)
 		if ackErr != nil {
 			return ackErr
 		}
@@ -176,6 +160,59 @@ func (c *Client) publishControllerCommand(name string, payload any) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+		}
+	}
+}
+
+// Pair receipt serial, status, source and freshness atomically. A later retained
+// frame cannot lend its serial to an earlier matching status snapshot.
+func (c *Client) overrideAcknowledgement(ctx context.Context, generation, session, receipt uint64, payload any) (bool, error) {
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() || c.client == nil || !c.client.IsConnectionOpen() || !state.ControllerCommandReady(c.state, "setpoint_override", payload, time.Now()) {
+		return false, errors.New("controller source changed")
+	}
+	if c.overrideReceipt <= receipt {
+		return false, nil
+	}
+	confirmed, err := state.OverrideAcknowledged(c.state, payload)
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	return confirmed, err
+}
+
+func (c *Client) awaitPublish(ctx context.Context, token paho.Token, generation, session uint64) error {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+			return errors.New("command source changed")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			continue
+		case <-token.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+				return errors.New("command source changed")
+			}
+			if token.Error() != nil {
+				return errors.New("MQTT command publish failed")
+			}
+			return nil
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -130,5 +131,96 @@ func TestMatchingOverrideBeforePublishDoesNotAcknowledgeNewAttempt(t *testing.T)
 	<-done
 	if err == nil {
 		t.Fatal("old matching status acknowledged without a new observation")
+	}
+}
+
+type heldPublishToken struct{ done chan struct{} }
+
+func (t heldPublishToken) Wait() bool { <-t.done; return true }
+func (t heldPublishToken) WaitTimeout(d time.Duration) bool {
+	select {
+	case <-t.done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+func (t heldPublishToken) Done() <-chan struct{} { return t.done }
+func (t heldPublishToken) Error() error          { return nil }
+
+type heldPublishBroker struct {
+	essRecordingBroker
+	token     heldPublishToken
+	published chan struct{}
+}
+
+func (b *heldPublishBroker) Publish(topic string, qos byte, retained bool, payload interface{}) paho.Token {
+	b.essRecordingBroker.Publish(topic, qos, retained, payload)
+	close(b.published)
+	return b.token
+}
+
+func TestHeldNativePublishDoesNotBlockFailoverOrReportRetiredAcceptance(t *testing.T) {
+	for _, action := range []string{"dry_run", "water_mode", "electricity_tariff", "silence_alarm", "acknowledge_all_notifications"} {
+		t.Run(action, func(t *testing.T) {
+			c := NewClient("localhost", 1883)
+			b := &heldPublishBroker{token: heldPublishToken{make(chan struct{})}, published: make(chan struct{})}
+			c.client = b
+			c.SetWaterConfig("p1", 21, 3, 8)
+			controllerMessage(c, `{"dry_run":false,"ui_config":{"electricity_tariff_status":{"writable":true,"revision":"`+strings.Repeat("a", 64)+`"}}}`)
+			send(c, "pump/3", "Mode", 0)
+			result := make(chan error, 1)
+			go func() {
+				switch action {
+				case "water_mode":
+					result <- c.SetWaterMode("pump", 1)
+				case "electricity_tariff":
+					result <- c.PublishCommand(action, map[string]interface{}{"plan": nil, "revision": strings.Repeat("a", 64), "request_id": "id"})
+				default:
+					result <- c.PublishCommand(action, map[string]interface{}{"value": true})
+				}
+			}()
+			<-b.published
+			switched := make(chan struct{})
+			go func() { c.EnableGatewayMode(); close(switched) }()
+			select {
+			case <-switched:
+			case <-time.After(time.Second):
+				close(b.token.done)
+				t.Fatal("pending publish blocked failover")
+			}
+			close(b.token.done)
+			select {
+			case err := <-result:
+				if err == nil {
+					t.Fatal("retired source reported accepted")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("retired publish did not finish")
+			}
+		})
+	}
+}
+
+func TestPublishWaitHonorsDeadlineAndAtomicOverrideSnapshot(t *testing.T) {
+	c := NewClient("localhost", 1883)
+	c.client = &essRecordingBroker{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := c.awaitPublish(ctx, heldPublishToken{make(chan struct{})}, c.pushGenerationNow(), c.mqttSession.Load()); err == nil {
+		t.Fatal("held token ignored deadline")
+	}
+	controllerMessage(c, `{"setpoint_override":{"value":42,"request_id":"same","last_error":null}}`)
+	serial := c.overrideReceipt
+	c.onStateMessage(nil, &retainedESSMessage{&fakeMessage{payload: []byte(`{"setpoint_override":{"value":42,"request_id":"same","last_error":null}}`)}})
+	if ok, err := c.overrideAcknowledgement(context.Background(), c.pushGenerationNow(), c.mqttSession.Load(), serial, map[string]interface{}{"value": 42, "request_id": "same"}); ok || err == nil {
+		t.Fatal("later retained serial borrowed a live matching status")
+	}
+	controllerMessage(c, `{"setpoint_override":{"value":43,"request_id":"other","last_error":null}}`)
+	if ok, _ := c.overrideAcknowledgement(context.Background(), c.pushGenerationNow(), c.mqttSession.Load(), serial, map[string]interface{}{"value": 42, "request_id": "same"}); ok {
+		t.Fatal("later different receipt acknowledged old request")
+	}
+	if ok, err := c.overrideAcknowledgement(ctx, c.pushGenerationNow(), c.mqttSession.Load(), serial, map[string]interface{}{"value": 43, "request_id": "other"}); ok || err == nil {
+		t.Fatal("expired deadline accepted acknowledgement")
 	}
 }

@@ -227,17 +227,16 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if err != nil {
 		return err
 	}
+	// Every physical command is cancelled with its source, including alarm aliases.
+	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	stop := context.AfterFunc(c.ctx, cancel)
+	defer cancel()
+	defer stop()
+	ctx = commandCtx
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	if name == "set_ess_mode" || name == "setpoint_override" || name == "electricity_tariff" || name == "toggle" || name == "dry_run" || name == "ess_mode" || name == "water_mode" {
-		// Cancel both the check and write when this source is replaced; commands
-		// must not escape a stopped gateway after a slow snapshot response.
-		commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		stop := context.AfterFunc(c.ctx, cancel)
-		defer cancel()
-		defer stop()
-		ctx = commandCtx
-		if err := c.ctx.Err(); err != nil {
-			return err
-		}
 		snap, fetchErr := c.FetchSnapshot(ctx)
 		if fetchErr != nil {
 			return fetchErr
@@ -251,7 +250,7 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 			return err
 		}
 	}
-	payload, err := json.Marshal(body)
+	payload, err := state.EncodeControllerCommand(body)
 	if err != nil {
 		return err
 	}
@@ -277,7 +276,10 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if name == "setpoint_override" {
 		return c.awaitOverride(ctx, body)
 	}
-	return nil
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func truncate(s string, n int) string {

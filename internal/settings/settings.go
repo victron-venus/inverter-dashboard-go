@@ -195,7 +195,7 @@ func Apply(patch map[string]interface{}) error {
 	if err = file.Close(); err != nil {
 		return fmt.Errorf("close dashboard settings: %w", err)
 	}
-	if err = os.Rename(tmp, target); err != nil {
+	if err = replaceDurably(tmp, target); err != nil {
 		return fmt.Errorf("replace dashboard settings: %w", err)
 	}
 	current = next

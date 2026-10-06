@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -530,7 +531,7 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	// Banner ack/silence against Cerbo MQTT when not on IGW.
 	if action == "acknowledge_all_notifications" || action == "silence_alarm" ||
 		action == "dismiss_banner" || action == "acknowledge_victron_banner" {
-		return c.publishCerboAlarmCommand(action)
+		return c.publishCerboAlarmCommand(action, generation, session)
 	}
 
 	topic := fmt.Sprintf("inverter/cmd/%s", action)
@@ -545,8 +546,8 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 		message = []byte("{}")
 	}
 	c.gatewayMu.RLock()
-	defer c.gatewayMu.RUnlock()
 	if generation != c.pushGenerationNow() || session != c.mqttSession.Load() || c.gatewayMode || c.client == nil || !c.client.IsConnectionOpen() {
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("mqtt source unavailable")
 	}
 	c.stateMu.RLock()
@@ -557,24 +558,38 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	if genericControllerAction(action) {
 		ready = c.controllerControlReady(time.Now())
 	}
-	c.stateMu.RUnlock()
 	if !ready {
+		c.stateMu.RUnlock()
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("wait for current controller telemetry")
 	}
-	if token := c.client.Publish(topic, 0, false, message); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish command: %w", token.Error())
+	token := c.client.Publish(topic, 0, false, message)
+	c.stateMu.RUnlock()
+	c.gatewayMu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
 	}
+
 	log.Printf("Published command to %s", topic)
 	return nil
 }
 
 // publishCerboAlarmCommand writes Venus-platform AcknowledgeAll or vebus SilenceAlarm.
-func (c *Client) publishCerboAlarmCommand(action string) error {
+func (c *Client) publishCerboAlarmCommand(action string, generation, session uint64) error {
+	c.gatewayMu.RLock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		c.gatewayMu.RUnlock()
+		return fmt.Errorf("alarm source changed")
+	}
 	portal := c.PortalID()
-	if portal == "" {
+	if !validPortal(portal) {
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("cerbo portal id required for %s", action)
 	}
 	if c.client == nil || !c.client.IsConnectionOpen() {
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("mqtt not connected")
 	}
 	var topic, body string
@@ -586,8 +601,12 @@ func (c *Client) publishCerboAlarmCommand(action string) error {
 		topic = fmt.Sprintf("W/%s/platform/0/Notifications/AcknowledgeAll", portal)
 		body = `{"value":1}`
 	}
-	if token := c.client.Publish(topic, 0, false, body); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish %s: %w", action, token.Error())
+	token := c.client.Publish(topic, 0, false, body)
+	c.gatewayMu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
 	}
 	log.Printf("Published Cerbo command %s to %s", action, topic)
 	return nil

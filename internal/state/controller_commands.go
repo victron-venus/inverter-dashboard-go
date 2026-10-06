@@ -102,10 +102,8 @@ func ValidateTariff(payload any) error {
 	revision, _ := m["revision"].(string)
 	plan, present := m["plan"]
 	_, object := plan.(map[string]interface{})
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if !ValidRequestID(id) || !tariffRevision.MatchString(revision) || !present || (plan != nil && !object) || encoder.Encode(payload) != nil || encoded.Len()-1 > 100000 {
+	encoded, encodeErr := EncodeControllerCommand(payload)
+	if !ValidRequestID(id) || !tariffRevision.MatchString(revision) || !present || (plan != nil && !object) || encodeErr != nil || len(encoded) > 100000 {
 		return errors.New("invalid tariff command")
 	}
 	return nil
@@ -175,4 +173,16 @@ func DecodeControllerState(data []byte) (map[string]interface{}, error) {
 		values["setpoint_override"] = exact
 	}
 	return values, nil
+}
+
+// EncodeControllerCommand is also the size-validation encoding, so Unicode or
+// HTML-like plan text cannot expand after the bounded envelope was accepted.
+func EncodeControllerCommand(payload any) ([]byte, error) {
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(payload); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(encoded.Bytes(), []byte("\n")), nil
 }

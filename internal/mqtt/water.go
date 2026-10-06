@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -37,21 +38,29 @@ func (c *Client) SetWaterMode(which string, mode int) error {
 		}
 		return publish("water_mode", map[string]interface{}{"instance": instance, "mode": mode})
 	}
-	defer c.gatewayMu.RUnlock()
 	c.stateMu.RLock()
 	known := c.waterControlReady(which, time.Now())
-	c.stateMu.RUnlock()
 	if !known {
+		c.stateMu.RUnlock()
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("water observation is stale")
 	}
 	if c.client == nil || !c.client.IsConnectionOpen() {
+		c.stateMu.RUnlock()
+		c.gatewayMu.RUnlock()
 		return fmt.Errorf("mqtt not connected")
 	}
 	topic := fmt.Sprintf("W/%s/pump/%d/Mode", portal, instance)
 	body := fmt.Sprintf(`{"value":%d}`, mode)
-	if token := c.client.Publish(topic, 0, false, body); token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to publish water mode: %w", token.Error())
+	token := c.client.Publish(topic, 0, false, body)
+	c.stateMu.RUnlock()
+	c.gatewayMu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.awaitPublish(ctx, token, generation, session); err != nil {
+		return err
 	}
+
 	return nil
 }
 

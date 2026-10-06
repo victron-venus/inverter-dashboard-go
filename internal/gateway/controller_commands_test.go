@@ -103,3 +103,23 @@ func TestGatewayPreservesGridEnvelopeOriginalMeasurementTime(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredGatewayNeverSendsAlarmAlias(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(204) }))
+	defer srv.Close()
+	for _, name := range []string{"silence_alarm", "acknowledge_all_notifications"} {
+		c, err := NewClient(Config{URL: srv.URL, APIToken: "fixture"}, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.http.Transport = srv.Client().Transport
+		c.Stop()
+		if c.PostCommand(context.Background(), name, map[string]interface{}{}) == nil {
+			t.Fatal("retired source accepted alarm command")
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatal("retired source sent a physical alarm acknowledgement")
+	}
+}
