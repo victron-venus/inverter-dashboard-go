@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/victron-venus/inverter-dashboard-go/internal/push"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 )
@@ -644,6 +645,12 @@ func (c *Client) acceptPortal(portal string) bool {
 	return true
 }
 func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
+	c.applyCerboMessage(msg, c.pushGenerationNow())
+}
+func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
+	if generation != c.pushGenerationNow() {
+		return
+	}
 	parts := strings.Split(msg.Topic(), "/")
 	if len(parts) < 3 || parts[0] != "N" {
 		return
@@ -675,7 +682,7 @@ func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
 		return
 	} // heartbeat/keepalive discovery has no measurement leaf.
 	if parts[2] == "platform" && strings.Contains(msg.Topic(), "/Notifications/") {
-		c.onPlatformNotificationMessage(nil, msg)
+		c.applyPlatformNotification(msg, generation)
 		return
 	}
 	if strings.Contains(msg.Topic(), "/Alarms/") {
@@ -684,7 +691,19 @@ func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
 	}
 	c.stateMu.Lock()
 	changed := c.handleCerboDevice(msg.Topic(), msg.Payload())
+	changedPath := strings.Join(parts[2:], "/")
+	if len(msg.Payload()) == 0 && len(parts) == 4 {
+		changedPath += "/Connected"
+	}
+	samples := NativePushSamples(c.cerboLeaves, CerboOptions{PumpInstance: c.pumpInstance, ValveInstance: c.valveInstance, EVChargerInstance: c.evchargerInstance}, changedPath)
+	// Rejected numeric strings/bools are not fresh copies of the cached reading.
+	if !changed {
+		for i := range samples {
+			samples[i].Value = nil
+		}
+	}
 	c.stateMu.Unlock()
+	c.observePush("mqtt", generation, push.Observation{Samples: pushSamples(samples), Retained: msg.Retained()})
 	if changed {
 		c.lastStateMu.Lock()
 		c.lastStateTime = time.Now()
@@ -730,7 +749,7 @@ func nativeFilters(portal string) []string {
 }
 func (c *Client) subscribeNativeTopics(portal string) error {
 	for _, filter := range nativeFilters(portal) {
-		if token := c.client.Subscribe(filter, 0, c.onCerboLiveMessage); token.Wait() && token.Error() != nil {
+		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(c.mqttSession.Load(), true)); token.Wait() && token.Error() != nil {
 			return fmt.Errorf("subscribe %s: %w", filter, token.Error())
 		}
 	}
@@ -798,6 +817,7 @@ func (c *Client) PortalID() string { c.stateMu.RLock(); defer c.stateMu.RUnlock(
 // invalidateCerbo makes a connection loss visible immediately, including legacy
 // physical readings that arrived before direct telemetry, and controller flags.
 func (c *Client) invalidateCerbo() {
+	c.resetMQTTPush(false)
 	c.stateMu.Lock()
 	c.initCerboMaps()
 	c.cerboLeaves = nil

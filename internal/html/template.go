@@ -58,3 +58,14 @@ func GetDashboardHTML() string {
 	html = strings.Replace(html, "<!--JS_PLACEHOLDER-->", dashboardJS, 1)
 	return html
 }
+
+// GetNotificationAsset exposes only the three reviewed root push/PWA assets.
+func GetNotificationAsset(name string) ([]byte, bool) {
+	switch name {
+	case "notifications-sw.js", "manifest.webmanifest", "notification-icon.svg":
+	default:
+		return nil, false
+	}
+	data, err := vueUIFS.ReadFile("vue-ui/" + name)
+	return data, err == nil && len(data) > 0
+}
