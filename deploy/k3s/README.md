@@ -55,8 +55,10 @@ run many concurrent Cerbo MQTT clients (desktop + IGW + this pod) unless slots a
 
 ## Ingress / DNS
 
-Uses **Traefik on mp** (`ingressClassName: traefik-mp`, externalIP
-`192.168.151.107`). See `4alvit/k3s-self-healing` → `deployments/00-traefik-mp/`.
+The example targets a separately managed Traefik ingress controller
+(`ingressClassName: traefik-mp`). Confirm the ingress class, load-balancer address
+and DNS for your cluster before applying it; this repository does not provision
+the controller.
 
 - Host: `http://inverter-dashboard-go.mp.2560801.xyz`
 - OpenWRT (one line): `address=/mp.2560801.xyz/192.168.151.107`
