@@ -24,6 +24,7 @@ type Client struct {
 	pushMu           sync.Mutex
 	pushService      *push.Service
 	pushGeneration   uint64
+	mqttSession      atomic.Uint64
 	pushSource       string
 	client           mqtt.Client
 	broker           string
@@ -123,6 +124,7 @@ func NewClient(broker string, port int) *Client {
 		}
 	})
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		client.mqttSession.Add(1)
 		log.Printf("MQTT connection lost: %v", err)
 		client.stopKeepalive()
 		client.invalidateCerbo()
@@ -421,6 +423,7 @@ func (c *Client) Subscribe() error {
 	if portal := c.PortalID(); portal != "" && !validPortal(portal) {
 		return fmt.Errorf("invalid Cerbo portal id")
 	}
+	session := c.mqttSession.Add(1)
 	c.resetMQTTPush(true)
 	// A clean MQTT session needs a fresh device inventory. Old retained daemon
 	// values cannot resurrect readings that the previous Cerbo session owned.
@@ -433,7 +436,7 @@ func (c *Client) Subscribe() error {
 		handler mqtt.MessageHandler
 	}{
 		{"inverter/state", c.onStateMessage}, {"inverter/console", c.onConsoleMessage},
-		{"inverter/notifications", c.onNotificationMessage}, {"inverter/portal", c.onPortalMessage},
+		{"inverter/notifications", c.bindPushCallback(session, false)}, {"inverter/portal", c.onPortalMessage},
 	} {
 		if token := c.client.Subscribe(sub.topic, 0, sub.handler); token.Wait() && token.Error() != nil {
 			log.Printf("Optional controller subscription %s failed: %v", sub.topic, token.Error())
@@ -558,6 +561,7 @@ func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
 }
 
 func (c *Client) Disconnect() {
+	c.mqttSession.Add(1)
 	c.resetMQTTPush(false)
 	c.stopKeepalive()
 

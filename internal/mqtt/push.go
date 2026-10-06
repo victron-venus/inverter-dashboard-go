@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/victron-venus/inverter-dashboard-go/internal/push"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
@@ -171,5 +172,23 @@ func (c *Client) resetMQTTPush(connected bool) {
 	defer c.gatewayMu.RUnlock()
 	if !c.gatewayMode {
 		c.resetPush("mqtt", connected)
+	}
+}
+
+// Paho can already have routed a callback when a session disconnects. Bind the
+// subscription's session, not the epoch at the later time its callback runs.
+// The separate transport token also allows the current recovery-probe session
+// to become authoritative after gateway mode ends.
+func (c *Client) bindPushCallback(session uint64, native bool) mqtt.MessageHandler {
+	return func(_ mqtt.Client, msg mqtt.Message) {
+		generation := c.pushGenerationNow()
+		if c.mqttSession.Load() != session {
+			return
+		}
+		if native {
+			c.applyCerboMessage(msg, generation)
+		} else {
+			c.applyNotificationMessage(msg, generation)
+		}
 	}
 }

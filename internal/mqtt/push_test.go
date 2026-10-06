@@ -238,3 +238,61 @@ func TestRetiredNestedPlatformCallbackKeepsOriginalGeneration(t *testing.T) {
 		t.Fatal("retired nested callback relabelled as current")
 	}
 }
+
+func TestSubscribedCallbacksFromPriorSessionCannotCaptureNewEpoch(t *testing.T) {
+	c, service, count := pushWireFixture(t)
+	c.SetWaterConfig("test", 21, 1, 2)
+	broker := &recordingBroker{}
+	c.client = broker
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.stopKeepalive()
+	oldNative := broker.handlers["N/test/pump/+/#"]
+	oldPlatform := broker.handlers["N/test/platform/+/#"]
+	oldController := broker.handlers["inverter/notifications"]
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	service.Reset("mqtt", true, time.Now().Add(-20*time.Second))
+	oldNative(nil, waterMsg("N/test/pump/1/State", 0))
+	oldNative(nil, waterMsg("N/test/pump/1/State", 1))
+	oldPlatform(nil, waterMsg("N/test/platform/0/Notifications/0/Description", "retired"))
+	body, _ := json.Marshal(map[string]any{"id": "retired-controller", "level": "warning", "title": "retired", "source": "inverter-control", "ts": time.Now().Format(time.RFC3339Nano)})
+	oldController(nil, &fakeMessage{topic: "inverter/notifications", payload: body})
+	if count() != 0 || len(c.GetState().Notifications) != 0 {
+		t.Fatal("old subscription callback relabelled to new epoch")
+	}
+	current := broker.handlers["N/test/pump/+/#"]
+	current(nil, waterMsg("N/test/pump/1/State", 0))
+	current(nil, waterMsg("N/test/pump/1/State", 1))
+	if count() != 1 {
+		t.Fatal("current subscription did not process fresh event")
+	}
+}
+func TestRecoveryProbeSessionWorksAfterGatewaySourceSwitch(t *testing.T) {
+	c, _, count := pushWireFixture(t)
+	c.SetWaterConfig("test", 21, 1, 2)
+	c.client = &recordingBroker{}
+	c.EnableGatewayMode()
+	c.SetGatewayConnected(true)
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	defer c.stopKeepalive()
+	current := c.client.(*recordingBroker).handlers["N/test/pump/+/#"]
+	current(nil, waterMsg("N/test/pump/1/State", 0))
+	current(nil, waterMsg("N/test/pump/1/State", 1))
+	if count() != 0 {
+		t.Fatal("recovery probe became authoritative early")
+	}
+	c.DisableGatewayMode()
+	current(nil, waterMsg("N/test/pump/1/State", 0))
+	if count() != 0 {
+		t.Fatal("probe observation leaked across source epoch")
+	}
+	current(nil, waterMsg("N/test/pump/1/State", 1))
+	if count() != 1 {
+		t.Fatal("current probe subscription invalidated by source switch")
+	}
+}

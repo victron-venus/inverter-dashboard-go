@@ -645,7 +645,12 @@ func (c *Client) acceptPortal(portal string) bool {
 	return true
 }
 func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
-	generation := c.pushGenerationNow()
+	c.applyCerboMessage(msg, c.pushGenerationNow())
+}
+func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
+	if generation != c.pushGenerationNow() {
+		return
+	}
 	parts := strings.Split(msg.Topic(), "/")
 	if len(parts) < 3 || parts[0] != "N" {
 		return
@@ -744,7 +749,7 @@ func nativeFilters(portal string) []string {
 }
 func (c *Client) subscribeNativeTopics(portal string) error {
 	for _, filter := range nativeFilters(portal) {
-		if token := c.client.Subscribe(filter, 0, c.onCerboLiveMessage); token.Wait() && token.Error() != nil {
+		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(c.mqttSession.Load(), true)); token.Wait() && token.Error() != nil {
 			return fmt.Errorf("subscribe %s: %w", filter, token.Error())
 		}
 	}

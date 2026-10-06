@@ -21,7 +21,12 @@ const maxNotifications = 100
 // MqttNotification shape) and appends them to the shared state so clients
 // receive them on the next broadcast.
 func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
-	generation := c.pushGenerationNow()
+	c.applyNotificationMessage(msg, c.pushGenerationNow())
+}
+func (c *Client) applyNotificationMessage(msg mqtt.Message, generation uint64) {
+	if generation != c.pushGenerationNow() {
+		return
+	}
 	var raw struct {
 		ID     string `json:"id"`
 		Level  string `json:"level"`
