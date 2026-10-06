@@ -79,12 +79,14 @@ type SolarForecast struct {
 // inverter-control on inverter/notifications or synthesized from Victron
 // alarm transitions (N/<portal>/<service>/Alarms/<Name>, value 0/1/2).
 type Notification struct {
-	ID     string `json:"id"`
-	Level  string `json:"level"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	Source string `json:"source"`
-	Ts     string `json:"ts,omitempty"` // Source event time; omitted when unknown, never receipt time.
+	// PushIncomplete is source-owned metadata, never part of the public schema.
+	PushIncomplete bool   `json:"-"`
+	ID             string `json:"id"`
+	Level          string `json:"level"`
+	Title          string `json:"title"`
+	Body           string `json:"body"`
+	Source         string `json:"source"`
+	Ts             string `json:"ts,omitempty"` // Source event time; omitted when unknown, never receipt time.
 }
 
 // CameraEvent is the latest camera event from the optional Frigate topic
@@ -115,8 +117,15 @@ type CerboDevice struct {
 	Power    *float64 `json:"power,omitempty"`
 }
 
-// State represents complete dashboard state
+// PushSample is an internal fresh source observation, not display telemetry.
+type PushSample struct {
+	Kind, ID string
+	Value    *float64
+}
+
 type State struct {
+	// PushSamples are private raw gateway observations; never decoded from controller JSON.
+	PushSamples         []PushSample           `json:"-"`
 	NativeESSObserved   bool                   `json:"-"`
 	InverterAvailable   *bool                  `json:"inverter_available,omitempty"`
 	UIConfig            map[string]interface{} `json:"ui_config,omitempty"`

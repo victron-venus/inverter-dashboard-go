@@ -12,6 +12,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/victron-venus/inverter-dashboard-go/internal/push"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
 
@@ -20,6 +21,10 @@ type MessageHandler func()
 
 // Client wraps the MQTT client and provides thread-safe state management
 type Client struct {
+	pushMu           sync.Mutex
+	pushService      *push.Service
+	pushGeneration   uint64
+	pushSource       string
 	client           mqtt.Client
 	broker           string
 	port             int
@@ -150,6 +155,7 @@ func (c *Client) IsConnected() bool {
 func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Lock()
 	c.gatewayMode = true
+	c.resetPush("gateway", false)
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
 	c.nativeLastSeen = time.Time{}
@@ -161,6 +167,7 @@ func (c *Client) EnableGatewayMode() {
 func (c *Client) DisableGatewayMode() {
 	c.gatewayMu.Lock()
 	c.gatewayMode = false
+	c.resetPush("mqtt", c.client != nil && c.client.IsConnectionOpen())
 	c.gatewayConnected = false
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
@@ -172,11 +179,15 @@ func (c *Client) DisableGatewayMode() {
 func (c *Client) SetGatewayConnected(v bool) {
 	c.gatewayMu.Lock()
 	changed := c.gatewayConnected != v
+	gatewayMode := c.gatewayMode
 	c.gatewayConnected = v
 	c.gatewayMu.Unlock()
 	// Failed gateway polls have no ApplyState call. Push their transport
 	// transition to existing WebSockets while retaining the last snapshot.
 	if changed {
+		if gatewayMode {
+			c.resetPush("gateway", v)
+		}
 		if !v {
 			c.stateMu.Lock()
 			c.clearOptionalTelemetry()
@@ -201,6 +212,9 @@ func (c *Client) ApplyState(st *state.State) {
 	if st == nil {
 		return
 	}
+	generation := c.pushGenerationNow()
+	c.observePush("gateway", generation, push.Observation{Notifications: nativePushNotifications(st.Notifications), Samples: pushSamples(st.PushSamples), Complete: true})
+	st.PushSamples = nil
 	c.stateMu.Lock()
 	if st.InverterAvailable != nil {
 		// The gateway owns freshness for its controller envelope.
@@ -407,6 +421,7 @@ func (c *Client) Subscribe() error {
 	if portal := c.PortalID(); portal != "" && !validPortal(portal) {
 		return fmt.Errorf("invalid Cerbo portal id")
 	}
+	c.resetMQTTPush(true)
 	// A clean MQTT session needs a fresh device inventory. Old retained daemon
 	// values cannot resurrect readings that the previous Cerbo session owned.
 	c.stateMu.Lock()
@@ -543,6 +558,7 @@ func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
 }
 
 func (c *Client) Disconnect() {
+	c.resetMQTTPush(false)
 	c.stopKeepalive()
 
 	// Stop command buffer worker

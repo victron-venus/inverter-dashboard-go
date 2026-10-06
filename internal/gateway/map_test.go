@@ -261,3 +261,29 @@ func TestMapDashboardActionAliases(t *testing.T) {
 		t.Fatalf("acknowledge_victron_banner -> %q ok=%v", name, ok)
 	}
 }
+
+func TestGatewayPushSeverityMustBeExplicitWithoutChangingBanner(t *testing.T) {
+	snap := &Snapshot{Platform: map[string]json.RawMessage{
+		"0/Notifications/0/Description": json.RawMessage(`"new alarm"`),
+		"0/Notifications/0/DateTime":    json.RawMessage(`1791226800`),
+	}}
+	for _, kind := range []string{"", `null`, `0.5`, `99`, `true`, `"0"`, `0`, `1`, `2`} {
+		if kind == "" {
+			delete(snap.Platform, "0/Notifications/0/Type")
+		} else {
+			snap.Platform["0/Notifications/0/Type"] = json.RawMessage(kind)
+		}
+		st := SnapshotToState(snap, MapOptions{})
+		if len(st.Notifications) != 1 {
+			t.Fatal("banner lost")
+		}
+		wantIncomplete := kind != "0" && kind != "1" && kind != "2"
+		if st.Notifications[0].PushIncomplete != wantIncomplete {
+			t.Fatal("push severity inferred", kind)
+		}
+		raw, err := json.Marshal(st.Notifications)
+		if err != nil || strings.Contains(string(raw), "PushIncomplete") {
+			t.Fatal("private push metadata leaked")
+		}
+	}
+}

@@ -17,6 +17,9 @@ import (
 // /health, /metrics, and /assets/* stay open (probes + SPA static files).
 func Middleware(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/notifications/") {
+			c.Header("Cache-Control", "no-store")
+		}
 		if secret == "" {
 			c.Next()
 			return
@@ -26,7 +29,7 @@ func Middleware(secret string) gin.HandlerFunc {
 		// /health and /metrics: probes. /assets and /assets/* only: hashed Vue SPA
 		// files; browsers request them without inheriting ?token=. This restores the
 		// existing Python StaticFiles contract (not a broader unauthenticated surface).
-		if path == "/health" || path == "/metrics" || path == "/assets" || strings.HasPrefix(path, "/assets/") {
+		if path == "/notifications-sw.js" || path == "/manifest.webmanifest" || path == "/notification-icon.svg" || path == "/health" || path == "/metrics" || path == "/assets" || strings.HasPrefix(path, "/assets/") {
 			c.Next()
 			return
 		}

@@ -21,6 +21,7 @@ const maxNotifications = 100
 // MqttNotification shape) and appends them to the shared state so clients
 // receive them on the next broadcast.
 func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
+	generation := c.pushGenerationNow()
 	var raw struct {
 		ID     string `json:"id"`
 		Level  string `json:"level"`
@@ -54,6 +55,7 @@ func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
 		st.Notifications = st.Notifications[len(st.Notifications)-maxNotifications:]
 	}
 	c.stateMu.Unlock()
+	c.notificationPush(generation, msg.Retained())
 	c.triggerHandler()
 }
 
@@ -222,16 +224,17 @@ func capitalize(s string) string {
 
 // platformSlotState mirrors Venus GUIv2 Notifications/<slot> fields.
 type platformSlotState struct {
-	inst         uint32
-	slot         uint32
-	description  string
-	deviceName   string
-	service      string
-	dateTime     string
-	notifType    int64
-	hasType      bool
-	active       *bool
-	acknowledged bool
+	inst          uint32
+	slot          uint32
+	description   string
+	deviceName    string
+	service       string
+	dateTime      string
+	notifType     int64
+	hasType       bool
+	pushTypeKnown bool
+	active        *bool
+	acknowledged  bool
 }
 
 func (ps *platformSlotState) bannerID() string {
@@ -261,18 +264,25 @@ func (ps *platformSlotState) toNotification() (state.Notification, bool) {
 		body = ps.service
 	}
 	return state.Notification{
-		ID:     ps.bannerID(),
-		Level:  level,
-		Title:  desc,
-		Body:   body,
-		Source: "victron",
-		Ts:     ps.dateTime,
+		ID:             ps.bannerID(),
+		Level:          level,
+		Title:          desc,
+		Body:           body,
+		Source:         "victron",
+		Ts:             ps.dateTime,
+		PushIncomplete: !ps.pushTypeKnown,
 	}, true
 }
 
 // onPlatformNotificationMessage handles
 // N/<portal>/platform/<inst>/Notifications/<slot>/<Field>.
 func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
+	c.applyPlatformNotification(msg, c.pushGenerationNow())
+}
+func (c *Client) applyPlatformNotification(msg mqtt.Message, generation uint64) {
+	if generation != c.pushGenerationNow() {
+		return
+	}
 	parts := strings.Split(msg.Topic(), "/")
 	// N / portal / platform / inst / Notifications / slot / Field
 	if len(parts) < 7 || parts[2] != "platform" || parts[4] != "Notifications" {
@@ -331,6 +341,7 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 			ps.dateTime = ""
 		case "Type":
 			ps.hasType = false
+			ps.pushTypeKnown = false
 		case "Acknowledged":
 			ps.acknowledged = false
 		case "Active":
@@ -353,7 +364,10 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	case "DateTime":
 		ps.dateTime = state.NotificationTime(payload.Value)
 	case "Type":
+		ps.pushTypeKnown = false
 		if n, ok := toFloat(payload.Value); ok {
+			strict, known := number(payload.Value)
+			ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
 			ps.notifType = int64(n)
 			ps.hasType = true
 		}
@@ -374,6 +388,7 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	snapshot := make([]*platformSlotState, 0, len(c.platformSlots))
 	for _, v := range c.platformSlots {
 		cp := *v
+
 		snapshot = append(snapshot, &cp)
 	}
 	c.platformMu.Unlock()
@@ -397,5 +412,6 @@ func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) 
 	}
 	st.Notifications = kept
 	c.stateMu.Unlock()
+	c.notificationPush(generation, msg.Retained())
 	c.triggerHandler()
 }

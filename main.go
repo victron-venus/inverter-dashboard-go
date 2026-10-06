@@ -20,6 +20,7 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/logging"
 	"github.com/victron-venus/inverter-dashboard-go/internal/metrics"
 	"github.com/victron-venus/inverter-dashboard-go/internal/mqtt"
+	"github.com/victron-venus/inverter-dashboard-go/internal/push"
 	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 	"github.com/victron-venus/inverter-dashboard-go/internal/tracing"
@@ -143,7 +144,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	pushService := push.NewService(push.Config{Enabled: cfg.WebPush.Enabled, DataDir: cfg.WebPush.DataDir, Subject: cfg.WebPush.Subject})
+	defer pushService.Close()
+	pushService.Start()
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
+	mqttClient.SetPushService(pushService)
 	// Water topics (dbus-pump on the Cerbo); empty portal ID disables
 	mqttClient.SetWaterConfig(cfg.Cerbo.PortalID, cfg.Cerbo.TankInstance, cfg.Cerbo.PumpInstance, cfg.Cerbo.ValveInstance)
 	// EV data (vehicle + charger) from Cerbo MQTT; empty portal ID disables
@@ -310,7 +315,7 @@ func main() {
 	go checkVersion(cfg.GitHub.RawURL, logger)
 
 	// Create and configure HTTP server with tracing middleware
-	server := createServer(mqttClient, haClient, cfg, logger, tracer)
+	server := createServer(mqttClient, haClient, cfg, logger, tracer, pushService)
 
 	// Start server in a goroutine
 	go startServer(server, cfg, *sslCert, *sslKey, logger)
@@ -449,7 +454,7 @@ func logHAEntities(overlay homeassistant.Overlay, logger *logging.Logger) {
 	}
 }
 
-func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *config.Config, logger *logging.Logger, tracer trace.Tracer) *gin.Engine {
+func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *config.Config, logger *logging.Logger, tracer trace.Tracer, notifications ...*push.Service) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -465,6 +470,13 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	// No-op while DASHBOARD_SECRET is unset. /health and /metrics stay open
 	// for Docker healthchecks and Prometheus scraping.
 	router.Use(auth.Middleware(cfg.DashboardSecret))
+
+	service := push.NewService(push.Config{})
+	if len(notifications) > 0 && notifications[0] != nil {
+		service = notifications[0]
+	}
+	push.RegisterRoutes(router, service)
+	registerNotificationAssets(router, html.GetNotificationAsset)
 
 	// Serve Vue UI static assets (JS/CSS) from go:embed (works in Docker single-binary)
 	if assetsFS, err := html.VueAssetsFS(); err == nil {
@@ -489,6 +501,23 @@ func createServer(mqttClient *mqtt.Client, haClient *homeassistant.Client, cfg *
 	router.POST("/api/settings", apiSettingsPostHandler())
 
 	return router
+}
+
+func registerNotificationAssets(router *gin.Engine, readAsset func(string) ([]byte, bool)) {
+	for _, asset := range []struct{ name, mime string }{{"notifications-sw.js", "application/javascript; charset=utf-8"}, {"manifest.webmanifest", "application/manifest+json"}, {"notification-icon.svg", "image/svg+xml"}} {
+		router.GET("/"+asset.name, func(c *gin.Context) {
+			c.Header("Cache-Control", "no-cache")
+			if asset.name == "notifications-sw.js" {
+				c.Header("Service-Worker-Allowed", "/")
+			}
+			if data, ok := readAsset(asset.name); ok {
+				c.Data(http.StatusOK, asset.mime, data)
+			} else {
+				c.Status(http.StatusNotFound)
+			}
+		})
+	}
+
 }
 
 func startServer(server *gin.Engine, cfg *config.Config, sslCert string, sslKey string, logger *logging.Logger) {

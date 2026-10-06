@@ -70,16 +70,17 @@ func num(v any) (float64, bool) {
 
 // platformSlot holds one Venus GUIv2 Notifications/<slot> field set.
 type platformSlot struct {
-	inst         int
-	slot         int
-	description  string
-	deviceName   string
-	service      string
-	dateTime     string
-	notifType    int64
-	hasType      bool
-	acknowledged bool
-	active       *bool
+	inst          int
+	slot          int
+	description   string
+	deviceName    string
+	service       string
+	dateTime      string
+	notifType     int64
+	hasType       bool
+	pushTypeKnown bool
+	acknowledged  bool
+	active        *bool
 }
 
 func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
@@ -120,6 +121,8 @@ func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
 			ps.dateTime = state.NotificationTime(raw)
 		case "Type":
 			if n, ok := num(raw); ok {
+				strict, known := raw.(float64)
+				ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
 				ps.notifType = int64(n)
 				ps.hasType = true
 			}
@@ -176,12 +179,13 @@ func (ps platformSlot) toNotification() (state.Notification, bool) {
 		body = ps.service
 	}
 	return state.Notification{
-		ID:     fmt.Sprintf("victron-platform-%d-%d", ps.inst, ps.slot),
-		Level:  level,
-		Title:  desc,
-		Body:   body,
-		Source: "victron",
-		Ts:     ps.dateTime,
+		ID:             fmt.Sprintf("victron-platform-%d-%d", ps.inst, ps.slot),
+		Level:          level,
+		Title:          desc,
+		Body:           body,
+		Source:         "victron",
+		Ts:             ps.dateTime,
+		PushIncomplete: !ps.pushTypeKnown,
 	}, true
 }
 
@@ -303,6 +307,9 @@ func SnapshotToState(snap *Snapshot, opt MapOptions) *state.State {
 		EVChargerInstance: opt.EVChargerInstance,
 	})
 
+	st.PushSamples = mqtt.NativePushSamples(map[string]map[string]interface{}{
+		"system": leaves.System, "battery": leaves.Battery, "pump": leaves.Pump, "evcharger": leaves.EVCharger,
+	}, mqtt.CerboOptions{PumpInstance: opt.PumpInstance, ValveInstance: opt.ValveInstance, EVChargerInstance: opt.EVChargerInstance}, "")
 	st.GatewayCapabilities = snap.Capabilities
 	st.Notifications = mapNotifications(leaves)
 	if snap.InverterPresent || snap.Inverter != nil {

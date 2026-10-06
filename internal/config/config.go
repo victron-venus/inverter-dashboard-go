@@ -12,7 +12,13 @@ import (
 )
 
 // Config holds application configuration matching Python exactly
+type WebPushConfig struct {
+	Enabled          bool
+	DataDir, Subject string
+}
+
 type Config struct {
+	WebPush           WebPushConfig
 	MQTT              MQTTConfig
 	Web               WebConfig
 	GitHub            GitHubConfig
@@ -262,6 +268,7 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	cfg := &Config{
+		WebPush: WebPushConfig{Enabled: envBool("WEB_PUSH_ENABLED", false), DataDir: getEnvDefault("WEB_PUSH_DATA_DIR", ""), Subject: getEnvDefault("WEB_PUSH_SUBJECT", "https://github.com/victron-venus/inverter-dashboard-go")},
 		MQTT: MQTTConfig{
 			Host: getEnvDefault("MQTT_HOST", mqttHostDefault),
 			Port: getEnvIntDefault("MQTT_PORT", mqttPortDefault),
