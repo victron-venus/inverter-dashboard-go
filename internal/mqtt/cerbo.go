@@ -17,14 +17,14 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/version"
 )
 
-const keepaliveInterval = 45 * time.Second
+const keepaliveInterval = 20 * time.Second
 
 var inverterStates = map[int]string{0: "Off", 1: "Low Power", 2: "Fault", 3: "Bulk", 4: "Absorption", 5: "Float", 6: "Storage", 7: "Equalize", 8: "Passthru", 9: "Inverting", 10: "Power assist", 11: "Power supply", 252: "External control"}
 
 // CerboOptions selects explicitly configured device instances; zero is a valid instance.
 type CerboOptions struct{ TankInstance, PumpInstance, ValveInstance, EVInstance, EVChargerInstance int }
 
-var directFields = []string{"g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power", "car_soc", "ev_present", "evcharger_present", "discovered_water_ev", "ess_mode", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode", "water_pump_mode"}
+var directFields = []string{"grid_l1_available", "grid_l2_available", "grid_l3_available", "g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "bv", "bc", "bp", "battery_soc", "battery_voltage", "battery_current", "battery_power", "setpoint", "inverter_state", "solar_total", "mppt_total", "pv_total", "pv_inverter_total", "batteries", "mppt_chargers", "mppt_individual", "pv_inverters", "loads", "load_names", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power", "car_soc", "ev_present", "evcharger_present", "discovered_water_ev", "ess_mode", "water_level", "water_valve", "pump_switch", "water_valve_mode", "pump_mode", "water_pump_mode"}
 
 func emptyAvailability() map[string]bool {
 	m := map[string]bool{}
@@ -175,6 +175,17 @@ func firstNum(ds map[string]leaves, paths ...string) (float64, bool) {
 	return 0, false
 }
 
+// firstLeaf preserves an explicitly unknown authoritative measurement.
+func firstLeaf(ds map[string]leaves, path string) (float64, bool, bool) {
+	for _, id := range sortedStringKeys(ds) {
+		if raw, exists := ds[id][path]; exists {
+			n, valid := number(raw)
+			return n, valid, true
+		}
+	}
+	return 0, false, false
+}
+
 // cerboOverlay is the canonical reducer for LAN messages and gateway snapshots.
 // Metadata alone never claims an unrelated scalar measurement.
 func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[string]interface{} {
@@ -187,11 +198,11 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 	sys, grid, vebus := devices(all, "system"), devices(all, "grid"), devices(all, "vebus")
 	for phase := 1; phase <= 3; phase++ {
 		p := fmt.Sprintf("L%d", phase)
-		n, ok := firstNum(sys, "Ac/Grid/"+p+"/Power")
-		if !ok {
-			n, ok = firstNum(grid, "Ac/"+p+"/Power")
+		n, ok, seen := firstLeaf(sys, "Ac/Grid/"+p+"/Power")
+		if !seen {
+			n, ok, seen = firstLeaf(grid, "Ac/"+p+"/Power")
 		}
-		if !ok { // Active input is grid only when systemcalc identifies it as mains/shore.
+		if !seen { // Active input is grid only when systemcalc identifies it as mains/shore.
 			input, known := firstNum(sys, "Ac/ActiveIn/Source")
 			if known && (input == 1 || input == 3) {
 				for _, id := range sortedStringKeys(vebus) {
@@ -204,6 +215,9 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 					}
 				}
 			}
+		}
+		if seen || ok {
+			out[fmt.Sprintf("grid_l%d_available", phase)] = ok
 		}
 		put(fmt.Sprintf("g%d", phase), n, ok)
 		n, ok = firstNum(sys, "Ac/Consumption/"+p+"/Power")
@@ -222,7 +236,7 @@ func cerboOverlay(all map[string]map[string]interface{}, o CerboOptions) map[str
 				have = true
 			}
 		}
-		if !have && group.total == "gt" {
+		if !have && group.total == "gt" && out["grid_l1_available"] == nil && out["grid_l2_available"] == nil && out["grid_l3_available"] == nil {
 			total, have = firstNum(grid, "Ac/Power")
 		}
 		put(group.total, total, have)
@@ -527,7 +541,7 @@ func (c *Client) mergeDaemonState(data map[string]interface{}) {
 
 func isNativeSectionField(key string) bool {
 	switch key {
-	case "loads", "load_names", "water_level", "pump_switch", "water_valve", "pump_mode", "water_pump_mode", "water_valve_mode", "battery_soc", "gateway_capabilities", "telemetry", "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
+	case "g1", "g2", "g3", "gt", "t1", "t2", "t3", "tt", "setpoint_override", "setpoint_override_observed_at", "setpoint_override_controls_available", "electricity_tariff_observed_at", "electricity_tariff_controls_available", "grid_l1_available", "grid_l2_available", "grid_l3_available", "grid_backup_observed_at", "loads", "load_names", "water_level", "pump_switch", "water_valve", "pump_mode", "water_pump_mode", "water_valve_mode", "battery_soc", "gateway_capabilities", "telemetry", "car_soc", "ev_power", "car_charging_power", "ev_charging_kw", "ev_charging_power",
 		"ev_present", "evcharger_present", "discovered_water_ev", "ess_mode_observed_at", "ess_mode_controls_available":
 		return true
 	}
@@ -648,6 +662,7 @@ func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
 	c.applyCerboMessage(msg, c.pushGenerationNow())
 }
 func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
+	session := c.mqttSession.Load()
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -656,10 +671,13 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 		return
 	}
 	value, valid := parseCerboPayload(msg.Payload())
-	if !valid && len(msg.Payload()) != 0 {
+	previous := c.PortalID()
+	// A malformed Mode for the selected portal must still revoke its previous
+	// command receipt below. It cannot discover a portal or renew telemetry.
+	selectedMode := previous != "" && parts[1] == previous && len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode"
+	if !valid && len(msg.Payload()) != 0 && !selectedMode {
 		return
 	}
-	previous := c.PortalID()
 	if previous == "" {
 		if !valid || value == nil {
 			return
@@ -686,11 +704,34 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 		return
 	}
 	if strings.Contains(msg.Topic(), "/Alarms/") {
+		c.gatewayMu.RLock()
+		defer c.gatewayMu.RUnlock()
+		if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+			return
+		}
 		c.onAlarmMessage(nil, msg)
+		return
+	}
+	c.gatewayMu.RLock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		c.gatewayMu.RUnlock()
 		return
 	}
 	c.stateMu.Lock()
 	changed := c.handleCerboDevice(msg.Topic(), msg.Payload())
+	if len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode" {
+		for key, instance := range map[string]int{"pump_mode": c.pumpInstance, "water_valve_mode": c.valveInstance} {
+			if parts[3] == strconv.Itoa(instance) {
+				if c.waterModeObserved == nil {
+					c.waterModeObserved = map[string]time.Time{}
+				}
+				delete(c.waterModeObserved, key)
+				if changed && !msg.Retained() && c.state.TelemetryAvailable[key] {
+					c.waterModeObserved[key] = time.Now()
+				}
+			}
+		}
+	}
 	changedPath := strings.Join(parts[2:], "/")
 	if len(msg.Payload()) == 0 && len(parts) == 4 {
 		changedPath += "/Connected"
@@ -704,6 +745,7 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 	}
 	c.stateMu.Unlock()
 	c.observePush("mqtt", generation, push.Observation{Samples: pushSamples(samples), Retained: msg.Retained()})
+	c.gatewayMu.RUnlock()
 	if changed {
 		c.lastStateMu.Lock()
 		c.lastStateTime = time.Now()
@@ -800,6 +842,7 @@ func (c *Client) startKeepalive() {
 			case <-ticker.C:
 				c.refreshControllerFreshness(time.Now())
 				c.publishKeepalive(true)
+				c.refreshWaterModes()
 			}
 		}
 	}()

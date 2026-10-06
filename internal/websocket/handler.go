@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/victron-venus/inverter-dashboard-go/internal/auth"
 	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
@@ -47,6 +47,8 @@ type Message struct {
 	State     interface{}            `json:"state,omitempty"`
 	Action    string                 `json:"action"`
 	RequestID string                 `json:"request_id,omitempty"`
+	Revision  string                 `json:"revision,omitempty"`
+	Plan      interface{}            `json:"plan,omitempty"`
 	Entity    string                 `json:"entity,omitempty"`
 	ID        string                 `json:"id,omitempty"`
 	Value     interface{}            `json:"value,omitempty"`
@@ -71,9 +73,7 @@ type State struct {
 
 var (
 	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins for simplicity
-		},
+		CheckOrigin: auth.SameOrigin,
 	}
 
 	// Connected clients
@@ -141,6 +141,8 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 		return
 	}
 
+	conn.SetReadLimit(1 << 20)
+
 	// Serialize initialization with broadcasts, but keep registry reads available
 	// while a peer is slow or stops reading its initial frame.
 	writesMu.Lock()
@@ -173,22 +175,24 @@ func HandleWebSocket(c *gin.Context, mqttClient MQTTCommander, haClient HAClient
 			break
 		}
 
-		// Handle the action
-		if err := handleMessage(msg, mqttClient, haClient); err != nil {
-			log.Printf("Failed to handle message: %v", err)
-			if msg.Action == "set_ess_mode" {
-				writesMu.Lock()
-				writeErr := conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
-				if writeErr == nil {
-					writeErr = conn.WriteJSON(map[string]interface{}{
-						"type": "command_error", "action": msg.Action, "request_id": msg.RequestID,
-						"error": "ESS selection was not confirmed; check live connection and retry.",
-					})
-				}
-				writesMu.Unlock()
-				if writeErr != nil {
-					break
-				}
+		// Report request acceptance separately from authoritative telemetry.
+		actionErr := handleMessage(msg, mqttClient, haClient)
+		if actionErr != nil {
+			log.Printf("Control request rejected: action=%s", msg.Action)
+		}
+		if state.ValidRequestID(msg.RequestID) {
+			reply := map[string]interface{}{"type": "command_result", "action": msg.Action, "request_id": msg.RequestID, "status": "accepted"}
+			if actionErr != nil {
+				reply = map[string]interface{}{"type": "command_error", "action": msg.Action, "request_id": msg.RequestID, "error": "Command was not confirmed; check current connection and retry."}
+			}
+			writesMu.Lock()
+			writeErr := conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			if writeErr == nil {
+				writeErr = conn.WriteJSON(reply)
+			}
+			writesMu.Unlock()
+			if writeErr != nil {
+				break
 			}
 		}
 
@@ -228,6 +232,15 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 	payload := mergeStates(mqttState, overlay, managedKeys)
 	uiConfig := mergeUIConfig(payload["ui_config"], haClient)
 	mergeHomeButtonStates(payload, uiConfig, overlay, haClient != nil && haClient.IsDirectMode())
+	payload["ha_controls_available"] = false
+	payload["ha_observed_at"] = nil
+	if ha, ok := haClient.(interface {
+		ControlsAvailable() bool
+		ObservedAt() *float64
+	}); ok {
+		payload["ha_controls_available"] = ha.ControlsAvailable()
+		payload["ha_observed_at"] = ha.ObservedAt()
+	}
 	payload["console"] = console
 	payload["dashboard_version"] = version.GetCurrent()
 	payload["latest_version"] = getLatestVersion()
@@ -240,7 +253,7 @@ func buildPayload(mqttClient MQTTCommander, haClient HAClient, overlay homeassis
 			payload[key] = value
 		}
 	}
-	uiConfig["settings"] = settings.Get()
+	uiConfig["settings"] = settings.Masked()
 	payload["ui_config"] = uiConfig
 	payload["controller_controls_available"] = false
 	if controller, ok := mqttClient.(interface{ CanControlInverter() bool }); ok {
@@ -368,6 +381,22 @@ func handleMessage(msg Message, mqttClient MQTTCommander, haClient HAClient) err
 			"min": msg.Min,
 			"max": msg.Max,
 		})
+	case "set_setpoint_override", "electricity_tariff":
+		name := msg.Action
+		payload := map[string]interface{}{"plan": msg.Plan, "revision": msg.Revision, "request_id": msg.RequestID}
+		if name == "set_setpoint_override" {
+			name = "setpoint_override"
+			payload = map[string]interface{}{"value": msg.Value, "request_id": msg.RequestID}
+			if err := state.ValidateOverride(payload); err != nil {
+				return err
+			}
+		} else if err := state.ValidateTariff(payload); err != nil {
+			return err
+		}
+		if capability, ok := mqttClient.(interface{ CanControllerCommand(string, any) bool }); !ok || !capability.CanControllerCommand(name, payload) {
+			return fmt.Errorf("wait for live supported controller telemetry")
+		}
+		return mqttClient.PublishCommand(name, payload)
 	case "set_ess_mode":
 		payload := map[string]interface{}{"mode": msg.Mode, "request_id": msg.RequestID}
 		if err := state.ValidateESSSelection(payload); err != nil {

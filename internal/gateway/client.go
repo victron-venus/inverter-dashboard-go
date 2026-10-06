@@ -227,30 +227,30 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if err != nil {
 		return err
 	}
-	if name == "set_ess_mode" {
-		// Cancel both the check and write when this source is replaced; commands
-		// must not escape a stopped gateway after a slow snapshot response.
-		commandCtx, cancel := context.WithCancel(ctx)
-		stop := context.AfterFunc(c.ctx, cancel)
-		defer cancel()
-		defer stop()
-		ctx = commandCtx
-		if err := c.ctx.Err(); err != nil {
-			return err
-		}
+	// Every physical command is cancelled with its source, including alarm aliases.
+	commandCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	stop := context.AfterFunc(c.ctx, cancel)
+	defer cancel()
+	defer stop()
+	ctx = commandCtx
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	if name == "set_ess_mode" || name == "setpoint_override" || name == "electricity_tariff" || name == "toggle" || name == "dry_run" || name == "ess_mode" || name == "water_mode" {
 		snap, fetchErr := c.FetchSnapshot(ctx)
 		if fetchErr != nil {
 			return fetchErr
 		}
 		st := SnapshotToState(snap, c.mapOptions)
-		if !snap.Capabilities["set_ess_mode"] || !state.ESSSelectionReady(st, time.Now()) {
+		ready := c.commandReady(st, name, body)
+		if !snap.Capabilities[name] || !ready {
 			return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
 		}
 		if err := c.ctx.Err(); err != nil {
 			return err
 		}
 	}
-	payload, err := json.Marshal(body)
+	payload, err := state.EncodeControllerCommand(body)
 	if err != nil {
 		return err
 	}
@@ -273,7 +273,13 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return fmt.Errorf("command %s HTTP %d: %s", name, res.StatusCode, truncate(string(respBody), 200))
 	}
-	return nil
+	if name == "setpoint_override" {
+		return c.awaitOverride(ctx, body)
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func truncate(s string, n int) string {
@@ -281,4 +287,67 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// The original command deadline covers every acknowledgement fetch and wait.
+// A successful HTTP POST alone is not an acknowledgement of the physical value.
+func (c *Client) awaitOverride(ctx context.Context, body any) error {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		snap, err := c.FetchSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		st := SnapshotToState(snap, c.mapOptions)
+		if !snap.Capabilities["setpoint_override"] || !state.ControllerCommandReady(st, "setpoint_override", body, time.Now()) {
+			return fmt.Errorf("override support unavailable")
+		}
+		confirmed, err := state.OverrideAcknowledged(st, body)
+		if err != nil {
+			return err
+		}
+		if confirmed {
+			if c.apply != nil {
+				c.apply(st)
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *Client) commandReady(st *state.State, name string, body any) bool {
+	switch name {
+	case "set_ess_mode":
+		return state.ESSSelectionReady(st, time.Now())
+	case "setpoint_override", "electricity_tariff":
+		return state.ControllerCommandReady(st, name, body, time.Now())
+	case "water_mode":
+		object, _ := body.(map[string]interface{})
+		instance, ok := commandInteger(object["instance"])
+		if !ok {
+			return false
+		}
+		options := c.mapOptions.withDefaults()
+		return instance == options.PumpInstance && st.TelemetryAvailable["pump_mode"] || instance == options.ValveInstance && st.TelemetryAvailable["water_valve_mode"]
+	default:
+		return st.InverterAvailable != nil && *st.InverterAvailable
+	}
 }

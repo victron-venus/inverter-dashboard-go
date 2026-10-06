@@ -20,7 +20,7 @@ func (c *Client) TransportStatus() map[string]interface{} {
 	if !observed.IsZero() {
 		timestamp = observed.UTC().Format(time.RFC3339Nano)
 		quality = "stale"
-		if connected && time.Since(observed) <= 120*time.Second {
+		if connected && time.Since(observed) >= 0 && time.Since(observed) <= 120*time.Second {
 			quality = "live"
 		}
 	}

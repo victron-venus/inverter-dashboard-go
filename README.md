@@ -182,8 +182,8 @@ IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.ho
 in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
 
 The embedded SPA is copied unchanged from the verified official
-`inverter-dashboard-vue` release `v2.2.7-beta.8`, source commit
-`74abcfb13eb543c5b64c6b36932344b69d2c3c0b`. Its asset and release provenance
+`inverter-dashboard-vue` release `v2.2.7-beta.9`, source commit
+`3d4a03fd3401334ac9e69f6d103caff41dc243ae`. Its asset and release provenance
 receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
 
 ## Features
@@ -621,3 +621,25 @@ reports the selected transport. Telemetry quality becomes stale on disconnect
 or after 120 seconds without native observations. `observed_at` is explicitly
 labeled `local_receipt`: a recent gateway snapshot is not a timestamp for each
 individual sensor measurement.
+
+### Controller parity and persistent settings
+
+The dashboard preserves native grid validity, backup measurement provenance and
+`daily_stats.grid_energy` coverage without inventing missing readings. Explicit
+setpoint overrides and controller tariffs use the controller's correlated
+protocol; override completion requires fresh matching request ID and exact value
+(including `null` to stop), within one five-second deadline. A queued request or
+successful HA service response is reported as acceptance, not physical completion.
+Controller and water commands require fresh observations within 30 seconds.
+The read-only MQTT refresh requests only configured pump/valve Mode leaves every
+20 seconds; retained values remain display-only for command authorization.
+
+Set `INVERTER_DASHBOARD_SETTINGS_FILE` to place runtime settings on durable
+storage. The default remains `dashboard_settings.json` in the working directory.
+A new explicitly configured parent is created with mode `0700`; settings are
+atomically replaced with mode `0600`. Failed persistence leaves the previous
+settings active and reports an error. API and WebSocket settings responses mask
+HA credentials. Browser settings mutations require same-origin JSON; WebSocket
+origins are checked against the ingress-preserved Host without trusting forwarded
+headers. Native clients may omit Origin and retain the existing authentication
+requirements.

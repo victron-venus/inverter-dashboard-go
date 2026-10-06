@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -697,16 +698,31 @@ func strVal(v interface{}) string {
 // apiSettingsPostHandler validates and persists a settings patch.
 func apiSettingsPostHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !auth.SameOrigin(c.Request) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "same-origin request required"})
+			return
+		}
+		media, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
+		if err != nil || media != "application/json" {
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": "application/json required"})
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+
 		var patch map[string]interface{}
 		if err := c.ShouldBindJSON(&patch); err != nil {
 			c.JSON(400, gin.H{"error": "body must be a JSON object"})
 			return
 		}
 		if err := settings.Apply(patch); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
+			if settings.IsValidationError(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist settings"})
+			}
 			return
 		}
-		c.JSON(200, gin.H{"ok": true, "settings": settings.Get()})
+		c.JSON(200, gin.H{"ok": true, "settings": settings.Masked()})
 	}
 }
 
