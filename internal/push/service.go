@@ -1,6 +1,7 @@
 package push
 
 import (
+	"log/slog"
 	"time"
 )
 
@@ -9,6 +10,7 @@ import (
 type Config struct {
 	Enabled          bool
 	DataDir, Subject string
+	Logger           *slog.Logger
 }
 type Service struct {
 	enabled    bool
@@ -47,7 +49,7 @@ func NewService(cfg Config) *Service {
 		s.reason = "Persistent Web Push storage is unavailable"
 		return s
 	}
-	s.dispatcher = newDispatcher(store, cfg.Subject)
+	s.dispatcher = newDispatcher(store, cfg.Subject, cfg.Logger)
 	return s
 }
 func (s *Service) Available() bool {

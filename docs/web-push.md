@@ -77,6 +77,13 @@ TLS hostname verification. Responses and errors never echo endpoint capabilities
 or provider bodies. Test notifications require a registered endpoint and are
 limited to one per endpoint per minute and ten per minute globally.
 
+Each send attempt records its notification kind, attempt number, HTTP status
+(zero when no response arrived), and a fixed error category in the application
+log. Endpoint URLs, keys, subscription identifiers, payloads, raw errors and
+provider response contents are excluded. A 2xx status proves provider acceptance;
+it does not prove that the browser displayed an OS notification. Completed
+outcomes are not added to the persistent subscription store.
+
 ## Offline verification
 
 `internal/push` tests use temporary private stores and fake HTTP clients; they

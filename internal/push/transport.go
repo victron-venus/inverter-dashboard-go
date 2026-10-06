@@ -21,6 +21,12 @@ const maxEndpointBytes = 2048
 
 var errPushEndpoint = errors.New("invalid push service endpoint")
 
+var (
+	errPushDNS           = errors.New("push service DNS unavailable")
+	errPushDNSProhibited = errors.New("push service DNS returned a prohibited address")
+	errPushConnection    = errors.New("push service connection failed")
+)
+
 // Provider domains are not user-configurable. A subscription is a destination
 // capability, not permission to make requests to arbitrary network services.
 func knownProvider(host string) bool {
@@ -120,11 +126,11 @@ func validatedDial(lookup lookupIP, dial dialIP) func(context.Context, string, s
 		}
 		addresses, err := lookup(ctx, "ip", host)
 		if err != nil || len(addresses) == 0 || len(addresses) > 32 {
-			return nil, errors.New("push service DNS unavailable")
+			return nil, errPushDNS
 		}
 		for _, ip := range addresses {
 			if !publicAddress(ip) {
-				return nil, errors.New("push service DNS returned a prohibited address")
+				return nil, errPushDNSProhibited
 			}
 		}
 		for _, ip := range addresses {
@@ -136,7 +142,7 @@ func validatedDial(lookup lookupIP, dial dialIP) func(context.Context, string, s
 				break
 			}
 		}
-		return nil, errors.New("push service connection failed")
+		return nil, errPushConnection
 	}
 }
 

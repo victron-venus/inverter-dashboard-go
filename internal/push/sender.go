@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
@@ -17,6 +18,7 @@ type Dispatcher struct {
 	store    *Store
 	subject  string
 	client   webpush.HTTPClient
+	logger   *slog.Logger
 	ctx      context.Context
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -25,9 +27,12 @@ type Dispatcher struct {
 	inflight map[string]bool
 }
 
-func newDispatcher(store *Store, subject string) *Dispatcher {
+func newDispatcher(store *Store, subject string, logger *slog.Logger) *Dispatcher {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Dispatcher{store: store, subject: subject, client: newPushHTTPClient(), ctx: ctx, cancel: cancel, done: make(chan struct{}), inflight: map[string]bool{}}
+	return &Dispatcher{store: store, subject: subject, client: newPushHTTPClient(), logger: logger, ctx: ctx, cancel: cancel, done: make(chan struct{}), inflight: map[string]bool{}}
 }
 
 func (d *Dispatcher) Start() {
@@ -168,6 +173,7 @@ func (d *Dispatcher) deliver(item delivery, now time.Time) {
 		_ = response.Body.Close()
 	}
 	transient := err != nil || status == http.StatusTooManyRequests || status >= 500
+	d.logAttempt(item, status, err)
 	d.finish(item, status, transient, time.Now())
 }
 
@@ -231,11 +237,11 @@ type guardedClient struct {
 
 func (g guardedClient) Do(req *http.Request) (*http.Response, error) {
 	if _, _, _, ok := g.dispatcher.current(g.item, time.Now()); !ok || req.Context().Err() != nil {
-		return nil, errors.New("notification retired")
+		return nil, errNotificationRetired
 	}
 	ttl := int(time.Until(time.UnixMilli(g.item.Payload.SourceTimestampMS).Add(maxEventAge)).Seconds())
 	if ttl < 1 {
-		return nil, errors.New("notification expired")
+		return nil, errNotificationExpired
 	}
 	if ttl > 300 {
 		ttl = 300

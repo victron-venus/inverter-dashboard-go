@@ -22,7 +22,7 @@ func queuedDispatcher(t *testing.T) (*Store, *Dispatcher, delivery) {
 	_ = s.ResetEpoch("one")
 	now := time.Now()
 	_ = s.Enqueue(makePayload("native", "victron", "source-id", "Alarm", "private source body", now.Add(-250*time.Second), now), "one", false)
-	d := newDispatcher(s, "https://example.org/contact")
+	d := newDispatcher(s, "https://example.org/contact", nil)
 	t.Cleanup(d.Close)
 	return s, d, d.pending(now)[0]
 }
