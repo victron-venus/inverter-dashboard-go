@@ -159,7 +159,7 @@ func validDiskState(data diskState) bool {
 	queued := map[string]bool{}
 	for _, item := range data.Queue {
 		_, exists := data.Subscriptions[item.SubscriptionID]
-		if !exists || queued[item.ID] || item.ID == "" || !digestID(item.Payload.EventKey) || item.Payload.SchemaVersion != 1 || item.Payload.URL != "/" || item.Attempts < 0 || item.Attempts > 3 || !DefaultPreferences().allows(item.Payload.Kind) {
+		if !exists || queued[item.ID] || item.ID == "" || !item.Payload.persistedValid() || item.Attempts < 0 || item.Attempts > 3 {
 			return false
 		}
 		queued[item.ID] = true

@@ -232,3 +232,44 @@ func TestGlobalTestRateIsPersistedAcrossEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func TestMalformedPersistedDeliveryFailsClosedAtStartup(t *testing.T) {
+	for _, change := range []struct {
+		name   string
+		update func(*Payload)
+	}{
+		{"source", func(p *Payload) { p.Source = "unknown" }},
+		{"title", func(p *Payload) { p.Title = "" }},
+		{"timestamp", func(p *Payload) { p.SourceTimestampMS = 0 }},
+		{"observed", func(p *Payload) { p.ObservedAtMS = 0 }},
+		{"body", func(p *Payload) { p.Body = string(make([]byte, 1001)) }},
+		{"url", func(p *Payload) { p.URL = "https://example.com/" }},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			dir := testDirectory(t)
+			s, err := OpenStore(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = s.Register(validTestSubscription(t), DefaultPreferences())
+			_ = s.ResetEpoch("epoch")
+			now := time.Now()
+			_ = s.Enqueue(makePayload("native", "victron", "id", "Alarm", "body", now, now), "epoch", false)
+			data := s.data
+			change.update(&data.Queue[0].Payload)
+			_ = s.Close()
+			raw, err := json.Marshal(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(filepath.Join(dir, "state.json"), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			service := NewService(Config{Enabled: true, DataDir: dir})
+			defer service.Close()
+			if service.Available() {
+				t.Fatal("malformed persisted DTO reached dispatcher")
+			}
+		})
+	}
+}

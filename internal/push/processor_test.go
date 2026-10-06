@@ -146,3 +146,12 @@ func TestUnknownBaselineMarkerIsConsumedByFirstValidOccurrence(t *testing.T) {
 		t.Fatal("same visible slot new occurrence suppressed")
 	}
 }
+
+func TestSyntheticWallClockRollbackInvalidatesPriorObservation(t *testing.T) {
+	s, p, now := testProcessor(t)
+	_ = p.Observe(Observation{Samples: []Sample{sample("soc", "battery", 25)}}, now)
+	_ = p.Observe(Observation{Samples: []Sample{sample("soc", "battery", 19)}}, now.Add(-time.Second))
+	if queueSize(s) != 0 {
+		t.Fatal("negative baseline age treated as fresh")
+	}
+}

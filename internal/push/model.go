@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -161,4 +162,26 @@ func compactUTF8JSON(raw []byte) []byte {
 		out = append(out, raw[i])
 	}
 	return out
+}
+
+// persistedValid checks the complete delivery DTO independently of its age;
+// legitimate expired work is pruned, malformed durable state fails startup.
+func (p Payload) persistedValid() bool {
+	if p.SchemaVersion != 1 || !digestID(p.EventKey) || !DefaultPreferences().allows(p.Kind) || p.URL != "/" || p.SourceTimestampMS <= 0 || p.ObservedAtMS <= 0 {
+		return false
+	}
+	if p.Source != "victron" && p.Source != "system" && p.Source != "ha" {
+		return false
+	}
+	if p.Kind == "native" && p.Source == "ha" {
+		return false
+	}
+	if p.Kind == "test" && p.Source != "system" {
+		return false
+	}
+	if !utf8.ValidString(p.Title) || !utf8.ValidString(p.Body) || len([]rune(p.Title)) == 0 || len([]rune(p.Title)) > 120 || len([]rune(p.Body)) > 1000 {
+		return false
+	}
+	raw, err := json.Marshal(p)
+	return err == nil && len(raw) <= maxPayloadBytes
 }
