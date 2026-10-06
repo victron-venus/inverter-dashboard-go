@@ -45,14 +45,13 @@ func TestCreateServerIncludesExactNotificationAssetRoutesAndProtectsAPI(t *testi
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest("GET", "/"+name, nil))
 		data, present := html.GetNotificationAsset(name)
-		want := http.StatusNotFound
-		if present {
-			want = http.StatusOK
+		if !present {
+			t.Fatalf("embedded notification asset %q is missing", name)
 		}
-		if rec.Code != want || rec.Header().Get("Cache-Control") != "no-cache" {
+		if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-cache" {
 			t.Fatal(name, rec.Code)
 		}
-		if present && rec.Body.String() != string(data) {
+		if rec.Body.String() != string(data) {
 			t.Fatal("embedded bytes changed")
 		}
 	}

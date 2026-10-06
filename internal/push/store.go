@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -350,6 +351,11 @@ func (s *Store) Enqueue(payload Payload, epoch string, prime bool) error {
 	if err != nil || len(encoded) > maxPayloadBytes {
 		return errors.New("notification payload is too large")
 	}
+	// Native snapshots often repeat every known event. Avoid copying the entire
+	// durable queue for those no-ops; mutate still rechecks after taking its lock.
+	if skip, err := s.skipEnqueue(payload.EventKey, epoch); err != nil || skip {
+		return err
+	}
 	return s.mutate(func(data *diskState) (bool, error) {
 		if data.Epoch != epoch || !remember(data, payload.EventKey) {
 			return false, nil
@@ -368,6 +374,15 @@ func (s *Store) Enqueue(payload Payload, epoch string, prime bool) error {
 		}
 		return true, nil
 	})
+}
+
+func (s *Store) skipEnqueue(key, epoch string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.failed {
+		return false, errors.New("push state unavailable")
+	}
+	return s.data.Epoch != epoch || slices.Contains(s.data.Dedupe, key), nil
 }
 
 func (s *Store) QueueTest(endpoint string, now time.Time) error {

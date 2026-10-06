@@ -89,6 +89,87 @@ func TestStorePersistsKeysSubscriptionsDedupeAndLocks(t *testing.T) {
 		}
 	}
 }
+
+func TestEnqueueReplayAllocationDoesNotGrowWithStoredQueue(t *testing.T) {
+	s := testStore(t)
+	now := time.Now()
+	payload := makePayload("native", "victron", "seen", "Alarm", "Body", now, now)
+	if err := s.ResetEpoch("current"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Enqueue(payload, "current", true); err != nil {
+		t.Fatal(err)
+	}
+	allocations := func(epoch string) float64 {
+		t.Helper()
+		return testing.AllocsPerRun(10, func() {
+			if err := s.Enqueue(payload, epoch, false); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	smallDuplicate := allocations("current")
+	smallRetired := allocations("retired")
+	sub := validTestSubscription(t)
+	if err := s.Register(sub, DefaultPreferences()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.mutate(func(data *diskState) (bool, error) {
+		for i := 1; i < maxDedupe; i++ {
+			data.Dedupe = append(data.Dedupe, eventKey("native", "victron", strconv.Itoa(i), now.UnixMilli()))
+		}
+		for i := 0; i < maxPending; i++ {
+			data.Queue = append(data.Queue, delivery{ID: strconv.Itoa(i), SubscriptionID: subscriptionID(sub.Endpoint), Epoch: "current", Payload: payload})
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for epoch, small := range map[string]float64{"current": smallDuplicate, "retired": smallRetired} {
+		large := allocations(epoch)
+		if large > small+5 {
+			t.Errorf("%s replay allocations grew with persisted queue: small=%v full=%v", epoch, small, large)
+		}
+	}
+}
+
+func TestEnqueueNoopStillRejectsUnavailableStore(t *testing.T) {
+	for _, unavailable := range []string{"closed", "failed"} {
+		t.Run(unavailable, func(t *testing.T) {
+			s := testStore(t)
+			now := time.Now()
+			payload := makePayload("native", "victron", "seen", "Alarm", "Body", now, now)
+			if err := s.ResetEpoch("current"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Enqueue(payload, "current", true); err != nil {
+				t.Fatal(err)
+			}
+			if unavailable == "closed" {
+				if err := s.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				path := filepath.Join(s.directory, "state.json")
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.ResetEpoch("new"); err == nil {
+					t.Fatal("expected persistence failure")
+				}
+			}
+			for _, epoch := range []string{"current", "retired"} {
+				if err := s.Enqueue(payload, epoch, false); err == nil {
+					t.Fatal("unavailable store accepted no-op", epoch)
+				}
+			}
+		})
+	}
+}
+
 func TestStoreFailsClosedCorruptionMissingKeyAndSymlink(t *testing.T) {
 	for _, mode := range []string{"corrupt", "missing", "symlink", "permissions"} {
 		t.Run(mode, func(t *testing.T) {

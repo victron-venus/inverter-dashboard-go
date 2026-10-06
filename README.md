@@ -181,7 +181,9 @@ controller freshness limit and emits `inverter: null` when stale.
 IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.host`
 in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
 
-The embedded SPA is built from `inverter-dashboard-vue` commit `e79054130cca49f919c89e6491bb67769882f3ba`; its asset
+The embedded SPA is copied unchanged from the verified official
+`inverter-dashboard-vue` release `v2.2.7-beta.5`, source commit
+`85767ef372b10cddfd44433135b674c804e353ff`. Its asset and release provenance
 receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
 
 ## Features
