@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,6 +44,29 @@ func TestSettingsMutationRequiresSameOriginJSONAndMasksResponse(t *testing.T) {
 		}
 		if strings.Contains(recorder.Body.String(), "private-fixture") {
 			t.Fatal("settings response exposed credential")
+		}
+	}
+}
+
+func TestSettingsPersistenceFailureIsGenericServerError(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "private-settings.json")
+	t.Setenv("INVERTER_DASHBOARD_SETTINGS_FILE", target)
+	settings.Init("", "Cerbo", 1883)
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	router.POST("/api/settings", apiSettingsPostHandler())
+	for _, tc := range []struct {
+		body string
+		want int
+	}{{`{"show_ev":false}`, 500}, {`{"show_ev":"no"}`, 400}, {`{"unknown":true}`, 400}} {
+		req := httptest.NewRequest(http.MethodPost, "http://dashboard.test/api/settings", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != tc.want || strings.Contains(recorder.Body.String(), target) {
+			t.Fatalf("status=%d response=%s", recorder.Code, recorder.Body.String())
 		}
 	}
 }

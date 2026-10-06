@@ -5,6 +5,7 @@ package settings
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -267,3 +268,10 @@ func (e errUnknown) Error() string { return "unknown setting: " + e.key }
 type errType struct{ key string }
 
 func (e errType) Error() string { return "setting " + e.key + " has wrong type" }
+
+// IsValidationError separates invalid client patches from storage failures.
+func IsValidationError(err error) bool {
+	var unknown errUnknown
+	var wrongType errType
+	return errors.As(err, &unknown) || errors.As(err, &wrongType)
+}

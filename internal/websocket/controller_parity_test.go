@@ -7,10 +7,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	ws "github.com/gorilla/websocket"
 	"github.com/victron-venus/inverter-dashboard-go/internal/auth"
+	"github.com/victron-venus/inverter-dashboard-go/internal/homeassistant"
 	"github.com/victron-venus/inverter-dashboard-go/internal/settings"
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket/mockmqtt"
 )
@@ -45,28 +47,41 @@ func TestWebSocketOriginAndCorrelatedResult(t *testing.T) {
 			if err := conn.ReadJSON(&frame); err != nil {
 				t.Fatal(err)
 			}
+			// Telemetry may arrive independently before a command response.
+			if err := BroadcastState(client, nil, homeassistant.Overlay{}); err != nil {
+				t.Fatal(err)
+			}
 			if err := conn.WriteJSON(map[string]interface{}{"action": "setpoint", "value": 3, "request_id": "request-one"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := conn.ReadJSON(&frame); err != nil {
-				t.Fatal(err)
-			}
+			frame = readCorrelatedCommand(t, conn, "request-one")
 			if frame["type"] != "command_result" || frame["request_id"] != "request-one" || frame["status"] != "accepted" {
 				t.Fatalf("unexpected scoped result: %v", frame)
-			}
-			if err := conn.ReadJSON(&frame); err != nil {
-				t.Fatal(err)
 			}
 			if err := conn.WriteJSON(map[string]interface{}{"action": "toggle", "entity": "switch.unconfigured", "request_id": "request-two"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := conn.ReadJSON(&frame); err != nil {
-				t.Fatal(err)
-			}
+			frame = readCorrelatedCommand(t, conn, "request-two")
 			if frame["type"] != "command_error" || frame["request_id"] != "request-two" || strings.Contains(frame["error"].(string), "switch.unconfigured") {
 				t.Fatal("rejection missing correlation or exposed internal details")
 			}
 		})
+	}
+}
+
+func readCorrelatedCommand(t *testing.T, conn *ws.Conn, requestID string) map[string]interface{} {
+	t.Helper()
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		var frame map[string]interface{}
+		if err := conn.ReadJSON(&frame); err != nil {
+			t.Fatal(err)
+		}
+		if frame["request_id"] == requestID {
+			return frame
+		}
 	}
 }
 

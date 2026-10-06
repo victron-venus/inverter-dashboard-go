@@ -90,6 +90,23 @@ func TestControllerCallbacksCannotReviveRetiredSource(t *testing.T) {
 	}
 }
 
+func TestOverrideTopicRejectsSiblingJSONInjection(t *testing.T) {
+	for _, payload := range []string{`null,"ui_config":{}`, `null,"setpoint_override":{"value":42,"request_id":"forged","last_error":null}`, `{} {}`} {
+		t.Run(payload, func(t *testing.T) {
+			c := NewClient("localhost", 1883)
+			c.client = &recordingBroker{}
+			controllerMessage(c, overrideStatus)
+			old := float64(time.Now().Add(-time.Minute).Unix())
+			c.state.ElectricityTariffObservedAt = &old
+			serial := c.overrideReceipt
+			c.bindControllerCallback(c.mqttSession.Load(), true)(nil, &fakeMessage{payload: []byte(payload)})
+			if c.overrideReceipt != serial || *c.state.ElectricityTariffObservedAt != old {
+				t.Fatal("malformed override payload renewed controller authority")
+			}
+		})
+	}
+}
+
 func TestControllerHeaderFreshnessIsIndependentOfDisplayAndRetainedState(t *testing.T) {
 	for _, reason := range []string{"live", "retained", "stale", "future", "unrelated"} {
 		t.Run(reason, func(t *testing.T) {

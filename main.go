@@ -715,7 +715,11 @@ func apiSettingsPostHandler() gin.HandlerFunc {
 			return
 		}
 		if err := settings.Apply(patch); err != nil {
-			c.JSON(400, gin.H{"error": err.Error()})
+			if settings.IsValidationError(err) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist settings"})
+			}
 			return
 		}
 		c.JSON(200, gin.H{"ok": true, "settings": settings.Masked()})

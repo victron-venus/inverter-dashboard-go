@@ -671,10 +671,13 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 		return
 	}
 	value, valid := parseCerboPayload(msg.Payload())
-	if !valid && len(msg.Payload()) != 0 {
+	previous := c.PortalID()
+	// A malformed Mode for the selected portal must still revoke its previous
+	// command receipt below. It cannot discover a portal or renew telemetry.
+	selectedMode := previous != "" && parts[1] == previous && len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode"
+	if !valid && len(msg.Payload()) != 0 && !selectedMode {
 		return
 	}
-	previous := c.PortalID()
 	if previous == "" {
 		if !valid || value == nil {
 			return

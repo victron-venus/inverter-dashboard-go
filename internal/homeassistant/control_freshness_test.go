@@ -3,6 +3,7 @@ package homeassistant
 import (
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -76,5 +77,47 @@ func TestHANumberServiceUsesObservedRange(t *testing.T) {
 	}
 	if posts != 3 {
 		t.Fatalf("unexpected physical service attempts: %d", posts)
+	}
+}
+
+func TestHANumberServiceCannotCombineBoundsAndFreshnessFromDifferentPolls(t *testing.T) {
+	c := NewClient(&config.HomeAssistantConfig{URL: "http://ha.test", Token: "fixture", DirectControls: true, FilteredEntities: &config.FilteredEntityConfig{Numbers: []string{"number.limit"}}})
+	posts := 0
+	c.httpClient = &http.Client{Transport: ownershipTransport(func(r *http.Request) (*http.Response, error) {
+		posts++
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`[]`))}, nil
+	})}
+	stop, done := make(chan struct{}), make(chan struct{})
+	defer func() { close(stop); <-done }()
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			// Neither poll permits 5: the broad range is stale, while the
+			// current observation permits only 0..3.
+			for _, fresh := range []bool{false, true} {
+				at, maximum := time.Now().Add(-time.Minute), 10.0
+				if fresh {
+					at, maximum = time.Now(), 3
+				}
+				c.overlayMu.Lock()
+				c.numberRanges = map[string][2]float64{"number.limit": {0, maximum}}
+				c.entityObserved = map[string]time.Time{"number.limit": at}
+				c.overlayMu.Unlock()
+				runtime.Gosched()
+			}
+		}
+	}()
+	for range 4000 {
+		if err := c.PerformAction("number_set", "number.limit", map[string]interface{}{"value": 5.0}); err == nil {
+			t.Fatal("combined stale bounds with a different fresh observation")
+		}
+	}
+	if posts != 0 {
+		t.Fatal("invalid observation pair dispatched a service request")
 	}
 }

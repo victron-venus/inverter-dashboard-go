@@ -649,17 +649,8 @@ func (c *Client) callServiceData(domain, service, entityID string, fields map[st
 		return err
 	}
 
-	if service == "set_value" && (domain == "number" || domain == "input_number") {
-		value, valid := actionNumber(fields["value"])
-		c.overlayMu.RLock()
-		bounds, known := c.numberRanges[entityID]
-		c.overlayMu.RUnlock()
-		if !valid || !known || value < bounds[0] || value > bounds[1] {
-			return fmt.Errorf("number value outside current entity range")
-		}
-	}
-	if !c.entityControlReady(entityID) {
-		return fmt.Errorf("wait for a current Home Assistant observation")
+	if err := c.validateServiceObservation(domain, service, entityID, fields); err != nil {
+		return err
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -742,10 +733,23 @@ func (c *Client) ObservedAt() *float64 {
 	at := float64(c.observedAt.UnixMilli()) / 1000
 	return &at
 }
-func (c *Client) entityControlReady(entity string) bool {
+
+// Read bounds and freshness from one poll snapshot, never pair older bounds
+// with a newer observation. Release the lock before performing network I/O.
+func (c *Client) validateServiceObservation(domain, service, entity string, fields map[string]interface{}) error {
 	c.overlayMu.RLock()
 	defer c.overlayMu.RUnlock()
+	if service == "set_value" && (domain == "number" || domain == "input_number") {
+		value, valid := actionNumber(fields["value"])
+		bounds, known := c.numberRanges[entity]
+		if !valid || !known || value < bounds[0] || value > bounds[1] {
+			return fmt.Errorf("number value outside current entity range")
+		}
+	}
 	at := c.entityObserved[entity]
 	age := time.Since(at)
-	return c.IsDirectMode() && !at.IsZero() && age >= 0 && age <= 30*time.Second
+	if !c.IsDirectMode() || at.IsZero() || age < 0 || age > 30*time.Second {
+		return fmt.Errorf("wait for a current Home Assistant observation")
+	}
+	return nil
 }

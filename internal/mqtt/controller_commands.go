@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -59,6 +60,9 @@ func (c *Client) applyControllerMessage(msg paho.Message, session, generation ui
 		raw = []byte("null")
 	}
 	if override {
+		if !json.Valid(raw) {
+			return
+		}
 		raw = append(append([]byte(`{"setpoint_override":`), raw...), '}')
 	}
 	data, err := state.DecodeControllerState(raw)
