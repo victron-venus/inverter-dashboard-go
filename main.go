@@ -144,7 +144,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	pushService := push.NewService(push.Config{Enabled: cfg.WebPush.Enabled, DataDir: cfg.WebPush.DataDir, Subject: cfg.WebPush.Subject})
+	pushService := push.NewService(push.Config{Enabled: cfg.WebPush.Enabled, DataDir: cfg.WebPush.DataDir, Subject: cfg.WebPush.Subject, Logger: logger.Logger})
 	defer pushService.Close()
 	pushService.Start()
 	mqttClient := mqtt.NewClient(cfg.MQTT.Host, cfg.MQTT.Port)
