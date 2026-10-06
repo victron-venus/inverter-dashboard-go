@@ -8,7 +8,7 @@ permissions:
 jobs:
   ci:
     name: CI
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@f96a5ff0e1e4ff7cf2c8bf0f44fbd30e9bc74266 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@a3456eaa36c6004eee85fa83daea714f2cee588a # main
     with:
       go-version: '1.26.6'
       # working-directory: '.'  # default
@@ -22,7 +22,7 @@ jobs:
 
   integration:
     name: Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((vars.CI_RUNNER_MODE == 'self-hosted' || vars.CI_RUNNER_MODE == 'k3s') && ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) && (vars.CI_RUNNER_LABELS || '[]') || '["ubuntu-latest"]') }}
     # NOTE: integration-tests/.github/workflows/integration.yml has workflow_call but
     # assumes sibling repo layout (../inverter-dashboard). We implement the pattern
     # locally instead of workflow_call.
