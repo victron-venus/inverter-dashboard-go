@@ -429,7 +429,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		}
 	}
 
-	log.Printf("[HA CLIENT DEBUG] FetchStatesOnce completed, setting HADirectConnected=true")
+	log.Printf("[HA CLIENT DEBUG] FetchStatesOnce completed, HADirectConnected=%v", hadResponse)
 	result.HADirectConnected = hadResponse
 	c.overlayMu.Lock()
 	c.entityObserved = observed
@@ -437,6 +437,10 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 	c.observedAt = time.Time{}
 	if hadResponse {
 		c.observedAt = time.Now()
+	} else {
+		// Callers only replace connected observations. Clear stored health here
+		// with freshness, preserving the latest committed maps on a read failure.
+		c.overlay.HADirectConnected = false
 	}
 	c.overlayMu.Unlock()
 	log.Printf("[HA CLIENT DEBUG] Final AdditionalFields: %+v", result.AdditionalFields)
