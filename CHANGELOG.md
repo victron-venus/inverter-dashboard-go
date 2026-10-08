@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.9.11] - Development line
 
 ### Changed
 - **Water system migrated from Home Assistant to dbus-pump via Cerbo MQTT** (no HA):
@@ -23,3 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     bus-name contract (not `evcharger`)
   - `car_soc_entity` / `ev_charging_kw_entity` / `ev_power_entity` removed from the
     HomeAssistant config; HA no longer polls or overlays any EV state
+
+### Maintenance
+
+- Publish reviewed release notes from the exact source commit used to build each candidate, preserving build provenance.
+- Document contribution checks, confidential security reporting and the project-specific trust boundaries.
+
+### Upgrade
+
+Water and EV values use their native Cerbo MQTT services. Configure the cerbo portal and service instances described above; old Home Assistant water and EV entity settings no longer populate those values. Retain existing unrelated configuration and verify source freshness before enabling controls.
+
+### Security
+
+Private vulnerability reporting and response policy are documented in SECURITY.md. This maintenance update strengthens release evidence and review instructions; it does not replace deployment authentication, network isolation or independent equipment safeguards. No new project CVE is announced by these changes.
