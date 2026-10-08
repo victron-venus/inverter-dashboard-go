@@ -239,3 +239,34 @@ func TestOwnedTransportPreservesPlainHTTP(t *testing.T) {
 		t.Fatalf("status %d", response.StatusCode)
 	}
 }
+
+func TestLocalClientCertificateChainKeys(t *testing.T) {
+	strong, weak := ecKey(t, elliptic.P256()), rsaKey(t, 1024)
+	for _, tc := range []struct {
+		name                     string
+		root, intermediate, leaf crypto.Signer
+		reject                   bool
+	}{
+		{"strong", strong, strong, strong, false},
+		{"weak-leaf", strong, strong, weak, true},
+		{"weak-intermediate", strong, weak, strong, true},
+		{"weak-root", weak, strong, strong, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, server := configs(t, tc.root, tc.intermediate, tc.leaf)
+			err := ValidateLocalCertificate(server.Certificates[0])
+			if tc.reject {
+				if !errors.Is(err, ErrCertificateKey) {
+					t.Fatalf("expected key rejection: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for _, certificate := range []tls.Certificate{{}, {Certificate: [][]byte{[]byte("invalid DER")}}} {
+		if !errors.Is(ValidateLocalCertificate(certificate), ErrCertificateKey) {
+			t.Fatal("malformed local chain was accepted")
+		}
+	}
+}

@@ -94,4 +94,4 @@ The CodeQL configuration also analyzes GitHub Actions in its own analysis catego
 
 ## Cryptographic implementation review
 
-[Cryptography and TLS boundaries](cryptography.md) records verified algorithms, key sizes, random sources and the remaining OTLP review gap. The new TLS tests cover actual local handshakes, weak leaf/intermediate/root keys, alternate chains, session resumption and unchanged hostname/trust rejection. This evidence does not yet establish the project-wide `crypto_keylength` criterion.
+[Cryptography and TLS boundaries](cryptography.md) records verified algorithms, key sizes, random sources and the remaining credential and deployment review boundaries. The TLS tests cover actual local handshakes, weak leaf/intermediate/root keys, alternate chains, session resumption and unchanged hostname/trust rejection. OTLP tests compare CA/mTLS and HTTP/HTTPS environment behavior against the pinned exporter and verify that rejected weak certificates cannot send a trace request. This evidence does not yet establish the project-wide `crypto_keylength` criterion.

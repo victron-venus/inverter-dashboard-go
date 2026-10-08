@@ -47,6 +47,24 @@ func strongChain(chain []*x509.Certificate) bool {
 	return true
 }
 
+// ValidateLocalCertificate checks the keys in a configured client certificate
+// chain. The caller must still load a matching private key and retain normal
+// peer verification; this check does not establish certificate trust.
+func ValidateLocalCertificate(certificate tls.Certificate) error {
+	chain := make([]*x509.Certificate, 0, len(certificate.Certificate))
+	for _, der := range certificate.Certificate {
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			return ErrCertificateKey
+		}
+		chain = append(chain, cert)
+	}
+	if !strongChain(chain) {
+		return ErrCertificateKey
+	}
+	return nil
+}
+
 func strongPublicKey(key any) bool {
 	switch key := key.(type) {
 	case *rsa.PublicKey:
