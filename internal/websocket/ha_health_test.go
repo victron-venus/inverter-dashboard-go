@@ -1,9 +1,9 @@
 package websocket
 
 import (
-	"io"
+	"fmt"
 	"net/http"
-	"strings"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
@@ -17,10 +17,8 @@ func TestSuccessfulHAActionWithFailedRefreshPublishesDisconnected(t *testing.T) 
 		{Action: "scene_activate", Entity: "scene.evening"},
 	} {
 		t.Run(msg.Action, func(t *testing.T) {
-			previous := http.DefaultTransport
-			t.Cleanup(func() { http.DefaultTransport = previous })
 			posts := 0
-			http.DefaultTransport = haActionTransport(func(r *http.Request) (*http.Response, error) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				status, body := http.StatusOK, `{"state":"on"}`
 				if r.Method == http.MethodPost {
 					posts++
@@ -28,10 +26,12 @@ func TestSuccessfulHAActionWithFailedRefreshPublishesDisconnected(t *testing.T) 
 				} else if posts > 0 {
 					status = http.StatusServiceUnavailable
 				}
-				return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body))}, nil
-			})
+				w.WriteHeader(status)
+				_, _ = fmt.Fprint(w, body)
+			}))
+			defer server.Close()
 			ha := homeassistant.NewClient(&config.HomeAssistantConfig{
-				URL: "http://ha.test", Token: "fixture", DirectControls: true,
+				URL: server.URL, Token: "fixture", DirectControls: true,
 				SwitchEntities:   []config.EntityConfig{{Key: "home_lamp", Entity: "switch.lamp"}},
 				FilteredEntities: &config.FilteredEntityConfig{Scenes: []string{"scene.evening"}},
 			})

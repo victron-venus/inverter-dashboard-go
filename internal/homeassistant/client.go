@@ -14,10 +14,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 	"github.com/victron-venus/inverter-dashboard-go/internal/httpendpoint"
-	"time"
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 )
 
 // EntityState represents a single entity's state from HA
@@ -161,7 +162,8 @@ func NewClient(cfg *config.HomeAssistantConfig) *Client {
 	}
 	// Initialize HTTP client with timeout
 	client.httpClient = &http.Client{
-		Timeout: 20 * time.Second,
+		Timeout:   20 * time.Second,
+		Transport: tlsclient.NewTransport(),
 		// A configured HA endpoint must not redirect authenticated requests to
 		// another destination or replay service commands at a different path.
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {

@@ -1,10 +1,11 @@
 package main
 
 import (
-	"io"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
@@ -12,26 +13,22 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/logging"
 )
 
-type healthTransport func(*http.Request) (*http.Response, error)
-
-func (f healthTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 func TestHAPollPublishesDisconnectAndRecovery(t *testing.T) {
-	previous := http.DefaultTransport
-	t.Cleanup(func() { http.DefaultTransport = previous })
-	status := http.StatusOK
-	http.DefaultTransport = healthTransport(func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{"state":"on"}`))}, nil
-	})
+	var status atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(int(status.Load()))
+		_, _ = fmt.Fprint(w, `{"state":"on"}`)
+	}))
+	defer server.Close()
 	c := homeassistant.NewClient(&config.HomeAssistantConfig{
-		URL: "http://ha.test", Token: "fixture", DirectControls: true,
+		URL: server.URL, Token: "fixture", DirectControls: true,
 		SwitchEntities: []config.EntityConfig{{Key: "home_lamp", Entity: "switch.lamp"}},
 	})
 	logger := logging.New("health-test", "test", slog.LevelError)
 	for _, wantConnected := range []bool{true, false, true} {
-		status = http.StatusOK
+		status.Store(http.StatusOK)
 		if !wantConnected {
-			status = http.StatusServiceUnavailable
+			status.Store(http.StatusServiceUnavailable)
 		}
 		haPollTick(c, logger)
 		if c.GetOverlay().HADirectConnected != wantConnected || c.ControlsAvailable() != wantConnected {

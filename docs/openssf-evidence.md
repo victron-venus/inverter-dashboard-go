@@ -91,3 +91,7 @@ The [CodeQL workflow](../.github/workflows/codeql-analysis.yml) also analyzes th
 Toolkit revision `d8089003f43637ee420fa4cbcccdf11f5d21e469` also rejects empty Markdown lists, task items and quotations as release guidance, while preserving literal examples and lists with substantive text.
 
 The CodeQL configuration also analyzes GitHub Actions in its own analysis category; existing application-language analyses remain enabled.
+
+## Cryptographic implementation review
+
+[Cryptography and TLS boundaries](cryptography.md) records verified algorithms, key sizes, random sources and the remaining OTLP review gap. The new TLS tests cover actual local handshakes, weak leaf/intermediate/root keys, alternate chains, session resumption and unchanged hostname/trust rejection. This evidence does not yet establish the project-wide `crypto_keylength` criterion.

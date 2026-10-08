@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 )
 
 const (
@@ -21,9 +23,10 @@ const (
 )
 
 var (
-	version     string
-	latestCache string
-	cacheMu     sync.RWMutex
+	versionHTTPClient = &http.Client{Transport: tlsclient.NewTransport()}
+	version           string
+	latestCache       string
+	cacheMu           sync.RWMutex
 )
 
 func init() {
@@ -93,7 +96,7 @@ func CheckLatest(rawURL string) (string, error) {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := versionHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch version: %w", err)
 	}

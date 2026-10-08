@@ -15,6 +15,7 @@ import (
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/httpendpoint"
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 )
 
 // Config holds HTTPS IGW client settings (bearer and optional Cloudflare Access).
@@ -68,7 +69,8 @@ func NewClient(cfg Config, apply func(*state.State), onStatus func(connected boo
 	return &Client{
 		cfg: cfg,
 		http: &http.Client{
-			Timeout: 25 * time.Second,
+			Timeout:   25 * time.Second,
+			Transport: tlsclient.NewTransport(),
 			// Custom Access headers can survive Go's default redirect handling.
 			// Commands must also never be replayed at a redirected URL.
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
