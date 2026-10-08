@@ -35,4 +35,6 @@ Water and EV values use their native Cerbo MQTT services. Configure the cerbo po
 
 ### Security
 
+Outbound Web Push, gateway, Home Assistant HTTPS and update downloads now require a normally verified certificate chain whose RSA keys are at least 2048 bits, ECDSA keys at least 224 bits, or valid Ed25519 keys. Replace weaker server or CA certificates before upgrading; hostname and trust verification remain required. The optional OTLP exporter retains its existing TLS configuration and is outside this change.
+
 Private vulnerability reporting and response policy are documented in SECURITY.md. This maintenance update strengthens release evidence and review instructions; it does not replace deployment authentication, network isolation or independent equipment safeguards. No new project CVE is announced by these changes.

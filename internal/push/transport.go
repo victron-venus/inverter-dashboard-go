@@ -4,7 +4,6 @@ package push
 import (
 	"context"
 	"crypto/ecdh"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"net"
@@ -13,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 )
@@ -154,7 +155,7 @@ func newPushHTTPClient() *http.Client {
 		Transport: &http.Transport{
 			Proxy:                  nil,
 			DialContext:            validatedDial(net.DefaultResolver.LookupNetIP, dialer.DialContext),
-			TLSClientConfig:        &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSClientConfig:        tlsclient.NewConfig(),
 			TLSHandshakeTimeout:    5 * time.Second,
 			ResponseHeaderTimeout:  5 * time.Second,
 			MaxResponseHeaderBytes: 16 << 10,

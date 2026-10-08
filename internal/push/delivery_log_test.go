@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 )
 
 func capturedAttempt(t *testing.T, raw []byte) map[string]any {
@@ -54,6 +56,7 @@ func TestSenderReportsOnlySanitizedAttemptOutcome(t *testing.T) {
 		{"cancelled", 0, context.Canceled, "cancelled"},
 		{"dns", 0, &net.DNSError{Name: secret, Err: secret}, "dns"},
 		{"tls", 0, &tls.CertificateVerificationError{Err: errors.New(secret)}, "tls"},
+		{"tls-key-strength", 0, tlsclient.ErrCertificateKey, "tls"},
 		{"tls-record", 0, tls.RecordHeaderError{Msg: secret}, "tls"},
 		{"tls-authority", 0, x509.UnknownAuthorityError{}, "tls"},
 		{"connection", 0, &net.OpError{Op: secret, Net: secret, Err: errors.New(secret)}, "connection"},

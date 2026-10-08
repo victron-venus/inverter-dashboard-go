@@ -11,8 +11,8 @@ import (
 
 func TestCheckLatest(t *testing.T) {
 	// Mock http.Do
-	oldClient := http.DefaultClient
-	t.Cleanup(func() { http.DefaultClient = oldClient })
+	oldClient := versionHTTPClient
+	t.Cleanup(func() { versionHTTPClient = oldClient })
 
 	mockTransport := &mockRoundTripper{
 		mockResp: &http.Response{
@@ -21,7 +21,7 @@ func TestCheckLatest(t *testing.T) {
 			Header:     make(http.Header),
 		},
 	}
-	http.DefaultClient = &http.Client{Transport: mockTransport}
+	versionHTTPClient = &http.Client{Transport: mockTransport}
 
 	latest, err := CheckLatest("https://example.com")
 	if err != nil {
@@ -40,13 +40,13 @@ func TestCheckLatest(t *testing.T) {
 }
 
 func TestCheckLatestError(t *testing.T) {
-	oldClient := http.DefaultClient
-	t.Cleanup(func() { http.DefaultClient = oldClient })
+	oldClient := versionHTTPClient
+	t.Cleanup(func() { versionHTTPClient = oldClient })
 
 	mockTransport := &mockRoundTripper{
 		mockErr: fmt.Errorf("network error"),
 	}
-	http.DefaultClient = &http.Client{Transport: mockTransport}
+	versionHTTPClient = &http.Client{Transport: mockTransport}
 
 	_, err := CheckLatest("https://example.com")
 	if err == nil {
@@ -58,8 +58,8 @@ func TestCheckLatestError(t *testing.T) {
 }
 
 func TestCheckLatestNonOKStatus(t *testing.T) {
-	oldClient := http.DefaultClient
-	t.Cleanup(func() { http.DefaultClient = oldClient })
+	oldClient := versionHTTPClient
+	t.Cleanup(func() { versionHTTPClient = oldClient })
 
 	mockTransport := &mockRoundTripper{
 		mockResp: &http.Response{
@@ -68,7 +68,7 @@ func TestCheckLatestNonOKStatus(t *testing.T) {
 			Header:     make(http.Header),
 		},
 	}
-	http.DefaultClient = &http.Client{Transport: mockTransport}
+	versionHTTPClient = &http.Client{Transport: mockTransport}
 
 	_, err := CheckLatest("https://example.com")
 	if err == nil {
@@ -90,11 +90,11 @@ func (b *versionCleanupBody) Close() error {
 }
 
 func TestCheckLatestCleanupPreservesResult(t *testing.T) {
-	oldClient := http.DefaultClient
-	t.Cleanup(func() { http.DefaultClient = oldClient })
+	oldClient := versionHTTPClient
+	t.Cleanup(func() { versionHTTPClient = oldClient })
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		body := &versionCleanupBody{Reader: strings.NewReader("2.0.0\n")}
-		http.DefaultClient = &http.Client{Transport: &mockRoundTripper{
+		versionHTTPClient = &http.Client{Transport: &mockRoundTripper{
 			mockResp: &http.Response{StatusCode: status, Body: body},
 		}}
 		latest, err := CheckLatest("https://example.com")

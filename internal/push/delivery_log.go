@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"errors"
 	"net"
+
+	"github.com/victron-venus/inverter-dashboard-go/internal/tlsclient"
 )
 
 var (
@@ -45,6 +47,7 @@ func deliveryErrorCategory(err error) string {
 		{errPushDNSProhibited, "destination_blocked"},
 		{errPushEndpoint, "destination_blocked"},
 		{errPushDNS, "dns"},
+		{tlsclient.ErrCertificateKey, "tls"},
 		{errPushConnection, "connection"},
 	} {
 		if errors.Is(err, value.err) {

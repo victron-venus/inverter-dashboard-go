@@ -2,10 +2,10 @@ package websocket
 
 import (
 	"encoding/json"
-	"io"
+	"fmt"
 	"math"
 	"net/http"
-	"strings"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
@@ -13,13 +13,9 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/websocket/mockmqtt"
 )
 
-type haActionTransport func(*http.Request) (*http.Response, error)
-
-func (f haActionTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-func actionHAClient() *homeassistant.Client {
+func actionHAClient(url string) *homeassistant.Client {
 	return homeassistant.NewClient(&config.HomeAssistantConfig{
-		URL: "http://ha.test", Token: "test-token", DirectControls: true,
+		URL: url, Token: "test-token", DirectControls: true,
 		SwitchEntities: []config.EntityConfig{{Key: "laundry_start", Entity: "button.washer_start"}},
 		FilteredEntities: &config.FilteredEntityConfig{
 			Numbers: []string{"number.limit", "input_number.helper"}, Covers: []string{"cover.blind"},
@@ -42,14 +38,12 @@ func TestRichHADispatchMakesRESTRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			previous := http.DefaultTransport
-			defer func() { http.DefaultTransport = previous }()
 			posts := 0
-			http.DefaultTransport = haActionTransport(func(r *http.Request) (*http.Response, error) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body := `{"entity_id":"sensor.test","state":"0","attributes":{}}`
 				if r.Method == http.MethodPost {
 					posts++
-					if r.URL.String() != "http://ha.test/api/services/"+tc.path || r.Header.Get("Authorization") != "Bearer test-token" {
+					if r.URL.Path != "/api/services/"+tc.path || r.Header.Get("Authorization") != "Bearer test-token" {
 						t.Errorf("unexpected target/auth: %s", r.URL)
 					}
 					var actual, expected map[string]interface{}
@@ -62,14 +56,15 @@ func TestRichHADispatchMakesRESTRequest(t *testing.T) {
 					}
 					body = `[]`
 				}
-				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
-			})
+				_, _ = fmt.Fprint(w, body)
+			}))
+			defer server.Close()
 			var msg Message
 			if err := json.Unmarshal([]byte(tc.message), &msg); err != nil {
 				t.Fatal(err)
 			}
 			mqtt := mockmqtt.NewClient()
-			ha := actionHAClient()
+			ha := actionHAClient(server.URL)
 			if _, err := ha.FetchStatesOnce(); err != nil {
 				t.Fatal(err)
 			}
@@ -84,12 +79,11 @@ func TestRichHADispatchMakesRESTRequest(t *testing.T) {
 }
 
 func TestRichHARejectsInvalidOrUnconfiguredActions(t *testing.T) {
-	previous := http.DefaultTransport
-	defer func() { http.DefaultTransport = previous }()
-	http.DefaultTransport = haActionTransport(func(r *http.Request) (*http.Response, error) {
-		t.Fatalf("rejected action sent request: %s", r.URL)
-		return nil, nil
-	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("rejected action sent request: %s", r.URL)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
 	cases := []Message{
 		{Action: "number_set", Entity: "number.unconfigured", Value: 1.0},
 		{Action: "number_set", Entity: "number.limit", Value: "1"},
@@ -108,7 +102,7 @@ func TestRichHARejectsInvalidOrUnconfiguredActions(t *testing.T) {
 	}
 	for _, msg := range cases {
 		mqtt := mockmqtt.NewClient()
-		if err := handleMessage(msg, mqtt, actionHAClient()); err == nil {
+		if err := handleMessage(msg, mqtt, actionHAClient(server.URL)); err == nil {
 			t.Errorf("accepted invalid message: %#v", msg)
 		}
 		if len(mqtt.Published()) != 0 {
@@ -121,13 +115,12 @@ func TestRichHARejectsInvalidOrUnconfiguredActions(t *testing.T) {
 }
 
 func TestHAServiceFailureDoesNotFallback(t *testing.T) {
-	previous := http.DefaultTransport
-	defer func() { http.DefaultTransport = previous }()
-	http.DefaultTransport = haActionTransport(func(r *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader(""))}, nil
-	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
 	mqtt := mockmqtt.NewClient()
-	if err := handleMessage(Message{Action: "press", Entity: "button.washer_start"}, mqtt, actionHAClient()); err == nil {
+	if err := handleMessage(Message{Action: "press", Entity: "button.washer_start"}, mqtt, actionHAClient(server.URL)); err == nil {
 		t.Fatal("failed HA action reported success")
 	}
 	if len(mqtt.Published()) != 0 {

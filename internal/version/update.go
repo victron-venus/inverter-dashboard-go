@@ -63,7 +63,7 @@ func SelfUpdate() error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := versionHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
