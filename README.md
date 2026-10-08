@@ -643,3 +643,9 @@ HA credentials. Browser settings mutations require same-origin JSON; WebSocket
 origins are checked against the ingress-preserved Host without trusting forwarded
 headers. Native clients may omit Origin and retain the existing authentication
 requirements.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for reports, development checks and pull requests,
+[SECURITY.md](SECURITY.md) for private vulnerability reporting and deployment trust boundaries,
+and the [OpenSSF evidence index](docs/openssf-evidence.md) for assessment references and remaining verification.
