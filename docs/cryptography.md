@@ -33,6 +33,22 @@ and 1.3; RSA, ECDSA and Ed25519; weak leaf/intermediate/root keys; a strong alte
 chain; rejection of a resumed weak session; and normal rejection of an untrusted
 issuer or incorrect hostname. Local HTTP behavior is tested separately.
 
+## Inbound HTTPS
+
+When `--ssl-cert` and `--ssl-key` enable the built-in HTTPS listener, the server
+loads the matching certificate/key pair and checks every certificate supplied in
+the chain before opening a listener. RSA keys must have at least 2048 bits, ECDSA
+keys at least 224 bits, and Ed25519 keys their standard length. The loaded pair is
+retained for serving: changing a file after validation cannot replace it with an
+unchecked pair. TLS 1.2 is the minimum protocol version; normal client trust and
+hostname verification remain client responsibilities. This checks key strength,
+not whether a certificate was issued by a client's trusted authority.
+
+Replace undersized server or intermediate certificates before upgrading. A
+malformed, mismatched or undersized pair now causes startup to fail. This policy
+does not change the plain HTTP listener or an external reverse proxy's TLS
+configuration.
+
 ## Web Push
 
 [push/store.go](../internal/push/store.go) obtains VAPID keys from the pinned

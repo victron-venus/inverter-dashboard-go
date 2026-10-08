@@ -47,7 +47,7 @@ func strongChain(chain []*x509.Certificate) bool {
 	return true
 }
 
-// ValidateLocalCertificate checks the keys in a configured client certificate
+// ValidateLocalCertificate checks the keys in a configured local certificate
 // chain. The caller must still load a matching private key and retain normal
 // peer verification; this check does not establish certificate trust.
 func ValidateLocalCertificate(certificate tls.Certificate) error {
