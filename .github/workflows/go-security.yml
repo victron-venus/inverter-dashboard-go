@@ -28,7 +28,8 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        # golang.org/x/vuln v1.8.0; keep the scanner source immutable.
+        run: go install golang.org/x/vuln/cmd/govulncheck@709015412431dd2b5b28a53c06c70bc02d49074c
 
       - name: Run govulncheck
         run: govulncheck ./...
