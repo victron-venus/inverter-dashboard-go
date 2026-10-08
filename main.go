@@ -525,7 +525,11 @@ func startServer(server *gin.Engine, cfg *config.Config, sslCert string, sslKey 
 	addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 	if sslCert != "" && sslKey != "" {
 		logger.Info(logging.DefaultContext().With("component", "http"), "Starting HTTPS web server", "addr", addr)
-		if err := server.RunTLS(addr, sslCert, sslKey); err != nil {
+		httpsServer, err := newHTTPSServer(server.Handler(), addr, sslCert, sslKey)
+		if err == nil {
+			err = httpsServer.ListenAndServeTLS("", "")
+		}
+		if err != nil {
 			logger.Error(logging.DefaultContext().With("component", "http"), "Failed to start HTTPS server", "error", err)
 			os.Exit(1)
 		}
