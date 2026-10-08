@@ -1,6 +1,7 @@
 package tlsclient
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -92,8 +93,10 @@ func handshake(t *testing.T, clientConfig, serverConfig *tls.Config) (tls.Connec
 	}
 	server, client := tls.Server(a, serverConfig), tls.Client(b, clientConfig)
 	done := make(chan error, 1)
-	go func() { done <- server.Handshake() }()
-	err := client.Handshake()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() { done <- server.HandshakeContext(ctx) }()
+	err := client.HandshakeContext(ctx)
 	if err != nil {
 		_ = b.Close()
 	}
@@ -230,7 +233,13 @@ func TestOwnedTransportPreservesPlainHTTP(t *testing.T) {
 	transport := NewTransport()
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: time.Second}
-	response, err := client.Get(server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
