@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -64,18 +63,7 @@ func InitTracer(cfg Config) (*sdktrace.TracerProvider, trace.Tracer, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		var exp sdktrace.SpanExporter
-		var err error
-		if cfg.Insecure {
-			exp, err = otlptracehttp.New(ctx,
-				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-				otlptracehttp.WithInsecure(),
-			)
-		} else {
-			exp, err = otlptracehttp.New(ctx,
-				otlptracehttp.WithEndpoint(cfg.OtlpEndpoint),
-			)
-		}
+		exp, err := newOTLPExporter(ctx, cfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create OTLP HTTP exporter: %w", err)
 		}

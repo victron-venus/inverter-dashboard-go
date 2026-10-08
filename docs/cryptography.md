@@ -16,7 +16,7 @@ server as trust paths, and does not reject a valid strong path merely because a
 second path contains a weaker CA.
 
 This policy applies to Web Push delivery, gateway requests, Home Assistant HTTPS
-requests and version/update downloads. Proxy selection, request deadlines,
+requests, version/update downloads and HTTPS OTLP trace export. Proxy selection, request deadlines,
 redirect restrictions and the Web Push provider/DNS allowlist retain their
 existing behavior. HTTP connections do not become TLS connections automatically;
 local MQTT uses the configured TCP connection. Use the documented isolated
@@ -49,11 +49,24 @@ sources use the operating system's cryptographically secure generator.
 
 ## Remaining review boundaries
 
-The optional OTLP exporter in [tracing.go](../internal/tracing/tracing.go) retains
-its existing dependency-provided TLS behavior and certificate environment
-variables, including custom CA and client-certificate settings. The additional
-minimum-key policy above has not yet been applied to that path. Project-wide
-OpenSSF `crypto_keylength` compliance is therefore not claimed by this change.
+The OTLP exporter in [tracing.go](../internal/tracing/tracing.go) applies the same
+peer-key policy to HTTPS and checks the complete configured mTLS client chain
+before export. Generic `OTEL_EXPORTER_OTLP_CERTIFICATE`, `CLIENT_CERTIFICATE` and
+`CLIENT_KEY` settings are read first; their `OTEL_EXPORTER_OTLP_TRACES_` equivalents
+then replace valid generic settings. A certificate and key must come from the
+same prefix. Whitespace, invalid-file fallback and the library's diagnostics
+retain the pinned OpenTelemetry 1.47 behavior. With no custom CA, normal system
+roots remain in effect. Timeout, headers, compression, proxy and retry options
+remain managed by the exporter.
+
+Explicit HTTP/Insecure configuration retains its previous behavior; this change
+does not silently upgrade those connections. Endpoint and Insecure environment
+precedence is covered by comparison with the pinned library. Use HTTPS when
+traces or exporter credentials cross an untrusted network. Replace undersized
+server/CA or mTLS client certificates before upgrading.
+
+These outbound TLS tests do not establish project-wide OpenSSF cryptographic
+compliance by themselves.
 
 The server's inbound bearer secret is operator-configured; the application does
 not create user accounts or a password-verifier database. The separate review of

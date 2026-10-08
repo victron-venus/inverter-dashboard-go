@@ -1,6 +1,7 @@
 package tlsclient
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -92,8 +93,10 @@ func handshake(t *testing.T, clientConfig, serverConfig *tls.Config) (tls.Connec
 	}
 	server, client := tls.Server(a, serverConfig), tls.Client(b, clientConfig)
 	done := make(chan error, 1)
-	go func() { done <- server.Handshake() }()
-	err := client.Handshake()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() { done <- server.HandshakeContext(ctx) }()
+	err := client.HandshakeContext(ctx)
 	if err != nil {
 		_ = b.Close()
 	}
@@ -230,12 +233,49 @@ func TestOwnedTransportPreservesPlainHTTP(t *testing.T) {
 	transport := NewTransport()
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: time.Second}
-	response, err := client.Get(server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("status %d", response.StatusCode)
+	}
+}
+
+func TestLocalClientCertificateChainKeys(t *testing.T) {
+	strong, weak := ecKey(t, elliptic.P256()), rsaKey(t, 1024)
+	for _, tc := range []struct {
+		name                     string
+		root, intermediate, leaf crypto.Signer
+		reject                   bool
+	}{
+		{"strong", strong, strong, strong, false},
+		{"weak-leaf", strong, strong, weak, true},
+		{"weak-intermediate", strong, weak, strong, true},
+		{"weak-root", weak, strong, strong, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, server := configs(t, tc.root, tc.intermediate, tc.leaf)
+			err := ValidateLocalCertificate(server.Certificates[0])
+			if tc.reject {
+				if !errors.Is(err, ErrCertificateKey) {
+					t.Fatalf("expected key rejection: %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for _, certificate := range []tls.Certificate{{}, {Certificate: [][]byte{[]byte("invalid DER")}}} {
+		if !errors.Is(ValidateLocalCertificate(certificate), ErrCertificateKey) {
+			t.Fatal("malformed local chain was accepted")
+		}
 	}
 }
