@@ -10,7 +10,7 @@ jobs:
     name: CI
     uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@b93b2e5dd29237f254e5273acf91272abbcd33d9 # main
     with:
-      go-version: '1.26.6'
+      go-version: '1.26.9'
       # working-directory: '.'  # default
       # run-lint: true  # default
       # run-tests: true  # default
