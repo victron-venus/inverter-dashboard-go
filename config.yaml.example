@@ -76,6 +76,14 @@ homeassistant:
   # Empty means no Home buttons. Equal orders preserve YAML declaration order.
   # Disabled entries are not displayed, polled or permitted as Home toggle targets.
   switch_entities: {}
+  # Optional example for existing installations after outlet replacement:
+  # switch_entities:
+  #   home_recliner: ["switch.recliner", "Recliner"]
+  #   home_garage: ["switch.garage_door_power", "Garage Door Power"]
+  #   laundry_outlet: ["switch.laundry", "Laundry"]
+  # Garage Door Power supplies the drive; its remote controls door movement.
+  # Update config.yaml and deployment copies when adopting new entity IDs.
+  # A shared KMC meter is not an individual washer-power measurement.
 
   # Appliance entities for timers and power monitoring
   # These are polled from HA instead of MQTT when configured
