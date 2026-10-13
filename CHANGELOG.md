@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.11] - Development line
 
 ### Changed
+
+- Add bounded native Go fuzz qualification for public release candidates, with
+  source-bound evidence, synthetic seeds and documented reproduction. PRs, betas
+  and nightlies retain ordinary tests without mutation campaigns.
 - **Water system migrated from Home Assistant to dbus-pump via Cerbo MQTT** (no HA):
   - New `cerbo:` config section (`portal_id`, `tank_instance`, `pump_instance`,
     `valve_instance`; env: `CERBO_PORTAL_ID`, `WATER_*_INSTANCE`) subscribes to
