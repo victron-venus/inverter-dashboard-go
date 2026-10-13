@@ -31,3 +31,11 @@ Automated tests use mocks or controlled fixtures where available. A passing unit
 - [contracts](contracts)
 
 See [README.md](README.md) for acquisition, configuration and usage, and [the evidence index](docs/openssf-evidence.md) for the public development-process references.
+
+## Fuzz regression tests
+
+See [the fuzzing guide](docs/fuzzing.md) before changing endpoint validation,
+browser-origin checks or controller command serialization. Ordinary Go tests
+replay seed inputs; coverage-guided mutation is reserved for public release
+candidates. Keep new inputs synthetic and add a minimized regression case for
+each fixed finding.

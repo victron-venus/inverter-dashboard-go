@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "language": "go",
+  "go-version-file": "go.mod",
+  "setup": [["go", "mod", "download"]],
+  "targets": [
+    {
+      "name": "endpoint-normalization",
+      "engine": "go",
+      "command": ["go", "test", "./internal/httpendpoint", "-run=^$", "-fuzz=^FuzzNormalizeEndpoint$"],
+      "seconds": 60
+    },
+    {
+      "name": "same-origin-policy",
+      "engine": "go",
+      "command": ["go", "test", "./internal/auth", "-run=^$", "-fuzz=^FuzzSameOriginPolicy$"],
+      "seconds": 60
+    },
+    {
+      "name": "controller-command-envelope",
+      "engine": "go",
+      "command": ["go", "test", "./internal/state", "-run=^$", "-fuzz=^FuzzControllerCommand$"],
+      "seconds": 60
+    }
+  ]
+}

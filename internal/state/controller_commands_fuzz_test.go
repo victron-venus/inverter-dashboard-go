@@ -1,0 +1,83 @@
+package state
+
+import (
+	"bytes"
+	"encoding/json"
+	"math/big"
+	"testing"
+)
+
+// FuzzControllerCommand preserves exact wire integers and the bounded tariff
+// envelope. It calls production validators/encoders, never a command transport.
+func FuzzControllerCommand(f *testing.F) {
+	for _, seed := range []string{
+		`{"value":null,"request_id":"fuzz-1"}`,
+		`{"value":2147483647,"request_id":"fuzz-2"}`,
+		`{"value":-2147483649,"request_id":"fuzz-3"}`,
+		`{"value":1.0000000000000001,"request_id":"fuzz-4"}`,
+		`{"request_id":"fuzz-5","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","plan":{"label":"<雪>\n&"}}`,
+		`{"setpoint_override":{"value":2147483647,"request_id":"fuzz-6","last_error":null}}`,
+		`null`, `[]`, `{}`, ``,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		if len(raw) > 128*1024 {
+			t.Skip()
+		}
+		// Exercise controller telemetry decoding too, including its exact-number
+		// override path; malformed messages must return an error, never panic.
+		decoded, err := DecodeControllerState(raw)
+		if err == nil {
+			status := ParseOverrideStatus(decoded["setpoint_override"])
+			if status != nil {
+				if _, err := json.Marshal(status); err != nil {
+					t.Fatalf("accepted status cannot be serialized: %v", err)
+				}
+			}
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		var payload any
+		if !json.Valid(raw) || decoder.Decode(&payload) != nil {
+			return
+		}
+		overrideOK := ValidateOverride(payload) == nil
+		tariffOK := ValidateTariff(payload) == nil
+		if !overrideOK && !tariffOK {
+			return
+		}
+		body, object := payload.(map[string]any)
+		if !object {
+			t.Fatal("non-object command was accepted")
+		}
+		if overrideOK {
+			if len(body) != 2 {
+				t.Fatal("override accepted an unexpected envelope")
+			}
+			if value := body["value"]; value != nil {
+				number, numberOK := value.(json.Number)
+				integer, integerOK := new(big.Int).SetString(string(number), 10)
+				if !numberOK || !integerOK || !integer.IsInt64() || integer.Int64() < -2147483648 || integer.Int64() > 2147483647 {
+					t.Fatal("override accepted a lossy or out-of-range wire integer")
+				}
+			}
+		}
+		wire, err := EncodeControllerCommand(payload)
+		if err != nil || !json.Valid(wire) {
+			t.Fatalf("accepted command has invalid wire encoding: %v", err)
+		}
+		if tariffOK && (len(body) != 3 || len(wire) > 100000) {
+			t.Fatal("tariff exceeded its wire envelope budget")
+		}
+		decoder = json.NewDecoder(bytes.NewReader(wire))
+		decoder.UseNumber()
+		var roundTrip any
+		if err := decoder.Decode(&roundTrip); err != nil {
+			t.Fatal(err)
+		}
+		if overrideOK != (ValidateOverride(roundTrip) == nil) || tariffOK != (ValidateTariff(roundTrip) == nil) {
+			t.Fatal("wire encoding changed command validity")
+		}
+	})
+}
