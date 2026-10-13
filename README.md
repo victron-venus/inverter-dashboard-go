@@ -3,6 +3,7 @@
 [![Docker Hub](https://img.shields.io/docker/v/alvit/inverter-dashboard-go?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
 [![Docker Pulls](https://img.shields.io/docker/pulls/alvit/inverter-dashboard-go?label=Docker%20Pulls&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
 [![CI](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml/badge.svg)](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml)
+[![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub last commit](https://img.shields.io/github/last-commit/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/commits/main)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
@@ -16,6 +17,11 @@
 ---
 
 Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
+
+Public release candidates also run bounded native Go fuzzing of endpoint
+normalization, browser-origin policy and controller command envelopes. See the
+[fuzzing guide](docs/fuzzing.md) for scope, budgets, local reproduction and the
+failure-to-regression workflow. Mutation campaigns do not run on PRs or betas.
 
 **Recommended for Cerbo GX** — single binary, minimal memory, same UI assets as the Python dashboard.
 
