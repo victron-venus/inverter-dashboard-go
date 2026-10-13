@@ -29,22 +29,33 @@ func FuzzNormalizeEndpoint(f *testing.F) {
 			}
 			return
 		}
-		u, err := url.Parse(normalized)
-		if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
-			t.Fatalf("accepted endpoint has no absolute HTTP destination: %q", normalized)
-		}
-		if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(normalized, "#") || u.Opaque != "" {
-			t.Fatalf("accepted endpoint retained forbidden routing or credentials: %q", normalized)
-		}
-		if port := u.Port(); port != "" {
-			n, err := strconv.Atoi(port)
-			if err != nil || n < 1 || n > 65535 {
-				t.Fatalf("accepted out-of-range port: %q", port)
-			}
-		}
+		checkFuzzEndpoint(t, normalized)
 		again, err := Normalize(normalized)
 		if err != nil || again != normalized {
 			t.Fatalf("normalization is unstable: %q -> %q (%v)", normalized, again, err)
 		}
 	})
+}
+
+func checkFuzzEndpoint(t *testing.T, normalized string) {
+	t.Helper()
+	u, err := url.Parse(normalized)
+	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		t.Fatalf("accepted endpoint has no absolute HTTP destination: %q", normalized)
+	}
+	if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(normalized, "#") || u.Opaque != "" {
+		t.Fatalf("accepted endpoint retained forbidden routing or credentials: %q", normalized)
+	}
+	checkFuzzEndpointPort(t, u.Port())
+}
+
+func checkFuzzEndpointPort(t *testing.T, port string) {
+	t.Helper()
+	if port == "" {
+		return
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		t.Fatalf("accepted out-of-range port: %q", port)
+	}
 }
