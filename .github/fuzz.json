@@ -2,24 +2,75 @@
   "schema": 1,
   "language": "go",
   "go-version-file": "go.mod",
-  "setup": [["go", "mod", "download"]],
+  "setup": [
+    [
+      "go",
+      "mod",
+      "download"
+    ],
+    [
+      "go",
+      "test",
+      "-c",
+      "-fuzz=Fuzz",
+      "-o",
+      "/dev/null",
+      "./internal/httpendpoint"
+    ],
+    [
+      "go",
+      "test",
+      "-c",
+      "-fuzz=Fuzz",
+      "-o",
+      "/dev/null",
+      "./internal/auth"
+    ],
+    [
+      "go",
+      "test",
+      "-c",
+      "-fuzz=Fuzz",
+      "-o",
+      "/dev/null",
+      "./internal/state"
+    ]
+  ],
   "targets": [
     {
       "name": "endpoint-normalization",
       "engine": "go",
-      "command": ["go", "test", "./internal/httpendpoint", "-run=^$", "-fuzz=^FuzzNormalizeEndpoint$"],
+      "command": [
+        "go",
+        "test",
+        "./internal/httpendpoint",
+        "-run=^$",
+        "-fuzz=^FuzzNormalizeEndpoint$"
+      ],
       "seconds": 60
     },
     {
       "name": "same-origin-policy",
       "engine": "go",
-      "command": ["go", "test", "./internal/auth", "-run=^$", "-fuzz=^FuzzSameOriginPolicy$"],
+      "command": [
+        "go",
+        "test",
+        "./internal/auth",
+        "-run=^$",
+        "-fuzz=^FuzzSameOriginPolicy$"
+      ],
       "seconds": 60
     },
     {
       "name": "controller-command-envelope",
       "engine": "go",
-      "command": ["go", "test", "./internal/state", "-run=^$", "-fuzz=^FuzzControllerCommand$"],
+      "command": [
+        "go",
+        "test",
+        "./internal/state",
+        "-run=^$",
+        "-fuzz=^FuzzControllerCommand$"
+      ],
       "seconds": 60
     }
   ]
