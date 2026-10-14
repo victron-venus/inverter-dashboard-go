@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - Development line
+
+### Changed
+
+- Qualify this release with a bounded RC fuzz campaign, offline target execution, and deterministic seed replay checks.
+- Bind release evidence to the exact source and toolkit revision, validate seed corpora, and retain engine execution counts and diagnostic artifacts.
+- Document the fuzzing scope, resource limits, and the distinction between synthetic checks and target acceptance.
+
+### Upgrade
+
+Use the existing installation or update procedure. This release changes validation
+and release tooling; existing user configuration and data formats are preserved.
+Keep the previous immutable release for rollback. Test the exact RC package on the
+intended target before accepting a stable promotion.
+
+### Security
+
+Fuzz targets and deterministic preflight commands run offline on synthetic
+inputs. Setup and dependency installation may use the runner network. The
+campaign rejects missing or invalid seed corpora and incomplete execution
+evidence. These checks do not establish untested hardware, integrations,
+credentials, or deployment behavior.
+
 ## [1.9.11] - Development line
 
 ### Changed
