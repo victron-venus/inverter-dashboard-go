@@ -1,657 +1,97 @@
-# Inverter Dashboard (Go)
+# Inverter Dashboard Go
 
-[![Docker Hub](https://img.shields.io/docker/v/alvit/inverter-dashboard-go?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
-[![Docker Pulls](https://img.shields.io/docker/pulls/alvit/inverter-dashboard-go?label=Docker%20Pulls&logo=docker)](https://hub.docker.com/r/alvit/inverter-dashboard-go)
-[![CI](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml/badge.svg)](https://github.com/victron-venus/inverter-dashboard-go/actions/workflows/ci.yml)
-[![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub last commit](https://img.shields.io/github/last-commit/victron-venus/inverter-dashboard-go)](https://github.com/victron-venus/inverter-dashboard-go/commits/main)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/victron-venus/inverter-dashboard-go/graphs/commit-activity)
-[![Go 1.26.6+](https://img.shields.io/badge/Go-1.26.6+-blue.svg)](https://go.dev/)
+[English](README.md) · [Русский](README.ru.md) · [Українська](README.uk.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Nederlands](README.nl.md)
 
+A Go server for a Victron installation, with the shared Vue dashboard embedded in its executable. It reads native Cerbo MQTT telemetry or an HTTPS inverter-gateway (IGW), adds optional Home Assistant data, and exposes controls only when their source and capabilities permit them.
 
----
+This is a Go application: Node.js and npm are not required to run it. The browser UI is maintained in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue); the Python server is [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard).
 
-⭐ **If this project helps you, please star it!** Stars help others discover it and motivate continued development.
+![Architecture: native MQTT or HTTPS gateway feeds the Go server; optional Home Assistant, private persistent storage and a browser complete the system.](docs/assets/architecture.svg)
 
----
+## What it provides
 
-Remote web dashboard for Victron inverter control, rewritten in Go for better performance and deployment.
+- Live grid, battery, PV, consumption, water and EV information, subject to the native services and instances installed on your system.
+- Controller-provided daily statistics, grid energy coverage, forecasts and tariff information. Missing readings remain unknown; the dashboard does not create historical coverage that the source did not supply.
+- Capability-gated ESS selection, controller switches, water modes, persistent setpoint override and tariff editing. Source changes and stale observations invalidate command permission.
+- Optional Home Assistant switches, active appliances, covers, media players, scenes, number controls, sensors and weather. Home buttons come from your configuration, including labels, order and enabled state.
+- Native warning/alarm lifecycle and original occurrence times, with exact local timestamps and relative ages in the shared UI.
+- Opt-in encrypted Web Push, including delivery while tabs are closed on supported browsers. Delivery still depends on the browser, provider, network and OS notification settings.
+- Persistent dashboard settings, authenticated HTTP/WebSocket access, `/health` and Prometheus `/metrics`.
 
-Public release candidates also run bounded native Go fuzzing of endpoint
-normalization, browser-origin policy and controller command envelopes. See the
-[fuzzing guide](docs/fuzzing.md) for scope, budgets, local reproduction and the
-failure-to-regression workflow. Mutation campaigns do not run on PRs or betas.
+Feature availability is not a promise that every Desktop function or every firmware supports every control. See [operation and safety](docs/operations.md) for the boundaries.
 
-**Recommended for Cerbo GX** — single binary, minimal memory, same UI assets as the Python dashboard.
+## Install and start
 
-The Python stack **[inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)** (`alvit/inverter-dashboard` on Docker Hub) suits NAS/Docker deployments. For a native desktop/mobile app, see **[inverter-desktop](https://github.com/victron-venus/inverter-desktop)**.
+For a packaged installation, choose an explicit version and platform from [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), verify its published checksums and provenance, and follow the release notes. Beta/nightly/RC artifacts are previews. The committed base version is in [VERSION](VERSION); a package can have a longer candidate version.
 
----
+To build from source, use the Go toolchain required by [go.mod](go.mod) (currently Go 1.26.9):
 
-## Project Role
-
-**This is the production web dashboard.** Features: real-time MQTT/WebSocket, Docker Hub deployment, Home Assistant integration, multi-arch binaries.
-
-| Use Case | Recommended |
-|----------|-------------|
-| Cerbo GX / embedded | **inverter-dashboard-go** (this) — single binary, minimal footprint |
-| Docker / NAS | [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) — Python/FastAPI (`alvit/inverter-dashboard`) |
-| Native desktop/mobile | [inverter-desktop](https://github.com/victron-venus/inverter-desktop) — Rust/Tauri app with offline support |
-| Building custom dashboards | [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) — shared Vue 3 component library |
-
-## Architecture
-
-```mermaid
-flowchart TD
-    subgraph Venus["Venus OS (Cerbo GX)"]
-        INV["inverter-control"]
-        DP["dbus-pump (water)"]
-        MQTT["MQTT Broker"]
-    end
-
-    subgraph Dashboard["Dashboard (Go Binary)"]
-        MQTT_SUB["MQTT Client"]
-        WS["WebSocket Server"]
-        WS --> UI["HTML/CSS/JS\nAssets"]
-    end
-
-    INV -->|"inverter/state"| MQTT
-    DP -.->|"N/&lt;portal&gt;/tank/21/Level<br/>N/&lt;portal&gt;/pump/*/State"| MQTT
-    MQTT -->|"subscribe"| MQTT_SUB
-    MQTT_SUB --> WS
-    WS --> BROWSER["Browser"]
-
-    style MQTT_SUB fill:#00ADD8,color:#fff
-    style WS fill:#00ADD8,color:#fff
+```sh
+git clone https://github.com/victron-venus/inverter-dashboard-go.git
+cd inverter-dashboard-go
+go mod download
+go build -trimpath -ldflags "-X main.Version=$(cat VERSION)" -o inverter-dashboard .
+./inverter-dashboard --version
+cp config.yaml.example config.yaml
+chmod 600 config.yaml
 ```
 
-### Direct Cerbo telemetry
+**Edit `config.yaml` before starting.** Set your MQTT host and portal ID, or configure IGW. The example binds the web server to loopback and contains deliberately non-working example domains. Configure `DASHBOARD_SECRET` through your service's private environment before exposing the server. Then start from the directory containing your configuration:
 
-The dashboard reads `N/<portal>/...` notifications directly from the Cerbo broker.
-`inverter-control` supplies controller statistics, forecast and control flags;
-ESS mode is also read from the two native `Settings/CGwacs` settings.
-The daemon is not required to relay grid, consumption, battery, solar, circuits, water or EV telemetry.
+```sh
+./inverter-dashboard
+```
 
-Set `cerbo.portal_id` / `CERBO_PORTAL_ID` to the GX VRM portal ID for reliable startup.
-With an empty ID the dashboard discovers one portal from native MQTT traffic (the
-legacy `inverter/portal` topic is also accepted). Modern Venus notifications are not
-retained: a quiet broker may produce no discovery traffic until another client sends
-keepalive. In that case configure the portal ID. Multiple GX systems must use an
-explicit ID; foreign portals never overwrite the selected installation.
+The server reads `config.yaml` from its **working directory**. There is no `--config` flag. The example serves HTTP on `127.0.0.1:8080`; use a trusted HTTPS reverse proxy for remote access and Web Push. Native TLS is available with both `--ssl-cert` and `--ssl-key`.
 
-After subscribing, an empty `R/<portal>/keepalive` requests the complete snapshot.
-Every 45 seconds a `suppress-republish` keepalive maintains streaming without replaying
-all values. Clean-session reconnects reinstall subscriptions, invalidate the old device
-inventory and request a new snapshot. No wildcard request topics are published.
+For containers, read [the container and persistence instructions](docs/operations.md#containers-and-persistence). The image works in `/app`, so the configuration file belongs at `/app/config.yaml` unless you explicitly change its working directory. A directory mounted only at `/app/config` is not automatically read.
 
-Notification banners and history use the original event time, including replayed
-`platform/.../Notifications/.../DateTime` values from MQTT or IGW. Missing or invalid
-event times stay unavailable; raw `Alarms/*` values carry no event timestamp. Banner
-ages refresh while idle and after browser resume, with the full local date, time and
-time zone available on each known timestamp. Future source times show their exact date.
+## Configure your installation
 
-Systemcalc supplies consumption and preferred grid/battery aggregates. Grid-meter
-phases are the grid fallback; VE.Bus active-input power is used only when systemcalc
-identifies that input as grid/shore, never for generator/output power. All three phases
-are included. Battery SOC uses measured `/Soc`; pack voltage is not converted into an
-installation-specific SOC estimate. With no system battery measurement, an explicitly
-selected battery instance or one unambiguous battery service is used. Device details
-include names, serials, current, power, SOC, time-to-go, temperature and cell extremes
-when the service publishes them.
+Start with [config.yaml.example](config.yaml.example) and the [configuration reference](docs/configuration.md).
 
-Solar uses MPPT yield power (or DC power / voltage × current) plus AC PV power.
-Explicit device AC totals take precedence over phase sums. `mppt_total` and the legacy
-`pv_total` alias are DC solar watts; `pv_inverter_total` is AC solar watts. Direct solar
-totals never combine a fresh component with a stale controller component. AC load names
-remain compatible with saved household configuration; duplicate names gain an instance suffix.
+- **MQTT:** set `mqtt.host` and `cerbo.portal_id`. An explicit portal bootstraps a quiet broker; passive discovery needs incoming native traffic. Native keepalive and configured water-mode refresh run every 20 seconds.
+- **IGW:** configure an HTTPS URL and credentials. An empty YAML `mqtt.host` with IGW enabled selects gateway-only operation. With both configured, MQTT is preferred and IGW provides failover; recovery probes run approximately every 60 seconds.
+- **Home Assistant:** configure its URL, token and a `switch_entities` mapping keyed by stable names. An empty mapping (`{}`) means no Home buttons. There is no personal entity list to copy from this repository. Preserve your existing inventory when upgrading; do not replace it with the example.
+- **Settings:** set `INVERTER_DASHBOARD_SETTINGS_FILE` to a writable persistent path, for example `/var/lib/inverter-dashboard/settings/dashboard_settings.json`. The default is `dashboard_settings.json` in the working directory. Connection changes require a restart; visibility settings apply to subsequent state updates.
+- **Web Push:** set `WEB_PUSH_ENABLED=true` and an absolute, private, persistent `WEB_PUSH_DATA_DIR`. Then opt in from a supported browser over HTTPS. See [notifications](docs/web-push.md) before choosing storage or enabling replicas.
 
-Zero/false readings and empty device collections are transmitted to the browser.
-`telemetry_available` distinguishes a real zero from a field that has never arrived or
-was invalidated. JSON `null` invalidates a path and recomputes available direct fallbacks;
-an empty MQTT payload removes the service. Once direct telemetry owns a field, old
-controller payloads cannot resurrect it. Device entries have their own availability maps.
-Gateway snapshots use the same reducer and units as the direct MQTT path.
+Precedence is field-specific, not a universal “environment always wins” rule. YAML overrides ordinary MQTT/web defaults; explicitly set `GATEWAY_*` variables override gateway YAML; CLI overrides follow; saved MQTT/HA connection settings are applied last. See the [full explanation](docs/configuration.md#configuration-precedence).
 
-### HTTPS gateway transport
+## Controls and trust
 
-For native IGW, configure `GATEWAY_URL=https://igw.s.2560801.xyz:9151` and
-`GATEWAY_API_TOKEN`. The optional Cloudflare Access client id/secret must be set
-together when using a protected public endpoint. Native HTTPS works with a bearer
-token alone. Explicit `GATEWAY_*` environment settings override mounted YAML;
-empty Access values disable previously configured Cloudflare credentials.
+Set `DASHBOARD_SECRET` and keep the service on a trusted network. Without that variable the application does not authenticate dashboard access. There is no separate read-only user role. `/health`, `/metrics` and designated static resources are public at the application layer; restrict them at your ingress as appropriate.
 
-The gateway client requires HTTPS and normal certificate/hostname verification.
-HTTP URLs, URL userinfo, queries, and fragments are rejected before credentials
-are sent. Snapshot polling and commands never follow redirects, even to the same
-origin. Existing HTTP configurations must switch to the final HTTPS endpoint;
-gateway HTTP availability for other legacy consumers is unchanged. See the
-[k3s deployment guide](deploy/k3s/README.md) for DNS and Secret configuration.
+The backend checks configured targets, current source ownership and fresh observations before dispatch. Retained telemetry can be displayed but does not grant fresh command permission. A queued or accepted request is not proof of physical completion: check authoritative telemetry and the device's state.
 
-### Water system
+**DRY is not a global safety lock.** Persistent setpoint override set/clear follows the controller's documented semantics and is independent of DRY. Browser read-only presentation is not a replacement for network access controls or safe device procedures.
 
-Water data comes **exclusively** from [dbus-pump](https://github.com/victron-venus/dbus-pump)
-via Cerbo MQTT — no Home Assistant involved. Enable it in the `cerbo:` section of `config.yaml`
-(or `CERBO_PORTAL_ID` env); instances (`tank_instance` / `pump_instance` / `valve_instance`,
-defaults 21/1/2) must match dbus-pump's `local_config.py`. Valve/pump automation lives in
-dbus-pump. Tank `/Level` is already a percentage, including values below 1%.
-`/Mode` exposes auto / forced-on / forced-off status separately from running state.
-The water controls write `W/<portal>/pump/<configured instance>/Mode` with
-`{"value":0|1|2}` only on a live direct MQTT connection and after that device has
-published a valid `/Mode`. Commands are not retained or queued; the UI waits for Cerbo
-readback. Gateway transport displays water telemetry without enabling these writes.
+Do not test a deployment by toggling equipment, acknowledging alarms or changing inverter modes. Begin with the read-only checks in [troubleshooting](docs/troubleshooting.md). Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
-### EV data
+## Notifications and event time
 
-EV data comes **exclusively** from [dbus-ev](https://github.com/victron-venus/dbus-ev) (vehicle) and
-[dbus-evcharger](https://github.com/victron-venus/dbus-evcharger) (charger) via Cerbo MQTT — no Home Assistant involved.
-By default, both instance settings are `-1` (automatic). The dashboard discovers
-connected `ev` and `evcharger` services and selects the lowest instance with a valid
-SOC or AC power reading. Metadata-only services do not hide measured devices.
-`cerbo.ev_instance` / `EV_INSTANCE` and `cerbo.evcharger_instance` /
-`EVCHARGER_INSTANCE` can pin exact instances, including zero. An unavailable pinned
-instance shows unknown readings instead of silently selecting another vehicle.
+![Event lifecycle: preserve original source time, prime old events silently, validate fresh events and deliver through a private bounded queue.](docs/assets/notification-lifecycle.svg)
 
-`car_soc` is measured percent, including zero; auto discovery accepts `/Soc` on
-`evcharger` for older dbus-ev services. `ev_power` and `car_charging_power` are vehicle
-watts; `ev_charging_power` is wallbox watts and `ev_charging_kw` is its legacy kW
-alias. Total `/Ac/Power` takes precedence over the sum of available phase powers.
-`discovered_water_ev` lists each EV service's kind, instance, name and available SOC /
-power. `ev_present` and `evcharger_present` expose device presence independently of
-whether charging power is positive. Null readings, disconnected services and removal
-messages clear their measurements. Unchanged readings remain valid while the device
-is connected; MQTT change-only publishers do not need to repeat identical values.
-Gateway snapshots use the same discovery, selection and unit rules. EV control remains
-outside the dashboard's command surface.
+A replayed warning retains its original source timestamp. An absent or invalid timestamp stays unknown rather than becoming “just now.” Browser age labels refresh without another MQTT message and after foregrounding. Alarm resolution, acknowledgement, silence and local presentation are different operations; do not infer device acknowledgement from a hidden banner.
 
-### Inverter-control header
+Web Push uses startup/reconnect priming, persistent deduplication and bounded delivery. Its limits include 64 subscriptions, 1024 pending deliveries, two concurrent sends and at most three attempts. A test API `202` means queued, and a provider `2xx` means accepted by the provider; neither proves OS display. [Web Push details and limitations](docs/web-push.md).
 
-The seven header flags belong to inverter-control, independently of Home Assistant.
-The dashboard uses `booleans` and `ui_config.header_toggles` from the retained
-`inverter/state` message. Missing metadata uses the standard seven labels; an explicit
-empty toggle list remains empty. Flag commands use canonical keys and explicit `on` /
-`off` values. DRY uses an explicit boolean, and the legacy ESS action uses an empty
-payload. State changes appear only after confirmed telemetry; the dashboard does not
-optimistically flip confirmed state or retry these HTTP commands.
+## UI versions and languages
 
-IGW supplies the same retained object under the snapshot's `inverter` key. An explicit
-`null` clears controller state; omission by older gateways preserves compatibility
-with a previously observed direct controller state. Native ESS settings override the
-controller's ESS copy when available. Missing settings never invent an active ESS
-mode. `controller_controls_available` requires both a connected source and available
-controller state. Native ESS telemetry remains readable without the controller;
-controller commands stay unavailable in that case. Direct controller state expires
-after 120 seconds of silence, and disconnects clear its flags. IGW applies its own
-controller freshness limit and emits `inverter: null` when stale.
+The current embedded UI is the verified **Vue v2.2.7-beta.9** release, source `3d4a03fd3401334ac9e69f6d103caff41dc243ae`. [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes.
 
-IGW-only installations keep `MQTT_HOST=""`, `MQTT_PORT=0`, and an empty `mqtt.host`
-in mounted YAML. This change does not require enabling direct MQTT or Home Assistant.
+These six READMEs document the Go application. Translations added to the separate Vue source do **not** appear in an existing Go binary until an official frontend artifact is reviewed and embedded. Do not infer complete UI translation support from the documentation languages or bundled date-library locale files.
 
-The embedded SPA is copied unchanged from the verified official
-`inverter-dashboard-vue` release `v2.2.7-beta.9`, source commit
-`3d4a03fd3401334ac9e69f6d103caff41dc243ae`. Its asset and release provenance
-receipt is [`internal/html/vue-ui-source.json`](internal/html/vue-ui-source.json).
+## Help and development
 
-## Features
-
-- **Real-time monitoring** of solar, grid, battery, and consumption
-- **WebSocket-based live updates** with automatic reconnection
-- **MQTT integration** for communication with Victron Cerbo GX
-- **Optional Home Assistant** direct integration for enhanced control
-- **Multiple device support**: batteries, EV charging (dbus-ev via Cerbo MQTT), water management (dbus-pump via Cerbo MQTT)
-- **Appliance monitoring**: washer, dryer, dishwasher status
-- **Dark/light theme** support with local preference storage
-- **Cross-platform** binaries for easy deployment
-- **Chart visualization** with uPlot for power flow history
+- [Configuration](docs/configuration.md) · [Operation, controls and storage](docs/operations.md)
+- [Troubleshooting](docs/troubleshooting.md) · [Web Push](docs/web-push.md)
+- [Developer guide](docs/development.md) · [Contribution policy](CONTRIBUTING.md) · [Verification checklist](README-CHECKLIST.md)
+- [Repository wiki source](docs/wiki/Home.md) · [Legacy npm wrapper notes](README-NPM.md)
+- [Changelog](CHANGELOG.md) · [License](LICENSE)
 
 <!-- ci-release-process:start -->
 ## Release process
 
 See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
 <!-- ci-release-process:end -->
-
----
-
-## Completed Features
-
-- ✅ **Release packaging**: Candidate artifacts and checksums; see the [release strategy](RELEASING.md).
-- ✅ **Embed Next-Gen Vue UI**: Updated `internal/html/template.go` to use Go `//go:embed` on `internal/html/vue-ui`, serving Vue SPA when available with fallback to Go dashboard
-- ✅ **Prometheus Metrics Endpoint**: Implemented `GET /metrics` exposing Prometheus gauges for `victron_solar_watts`, `victron_battery_soc`, `victron_grid_watts`, and `websocket_active_clients`
-- ✅ **Resilient MQTT Command Buffer**: Implemented thread-safe ring buffer with exponential backoff queue for MQTT commands during temporary broker disconnections (commit 8b2e777)
-- ✅ **OpenTelemetry & Structured Logging**: Migrated logging to Go standard library `log/slog` with JSON output and trace correlation IDs
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Victron Cerbo GX with MQTT enabled (or standalone MQTT broker)
-- Home Assistant (optional, for enhanced features)
-- Go 1.26.6+ (for building from source)
-
-### Installation
-
-#### Using Pre-built Binaries
-
-Starting with v1.9.4, stable binaries include the Vue interface and their release version. No separate
-UI download or adjacent `VERSION` file is needed. Run the downloaded binary with
-`--version` to check its version before starting it.
-
-These releases include `checksums.txt`. Download it alongside your binary
-and compare the binary's SHA-256 with the matching filename in that file before
-installation.
-
-Download the appropriate binary for your platform from the Releases page:
-
-- **macOS Silicon** (M1/M2/M3): `inverter-dashboard-macos-silicon`
-- **macOS Intel** (x86_64): `inverter-dashboard-macos-intel`
-- **Linux ARM64** (aarch64): `inverter-dashboard-linux-arm64`
-- **Raspberry Pi 3** (ARMv7): `inverter-dashboard-raspberry-pi3`
-- **Linux AMD64** (x86_64): `inverter-dashboard-linux-amd64`
-
-```bash
-# Download (example for Raspberry Pi)
-wget https://github.com/victron-venus/inverter-dashboard-go/releases/latest/download/inverter-dashboard-raspberry-pi3
-
-# Make executable
-chmod +x inverter-dashboard-raspberry-pi3
-
-# Run
-./inverter-dashboard-raspberry-pi3
-
-# Access the dashboard
-open http://localhost:8080
-```
-
-#### Building from Source
-
-```bash
-git clone https://github.com/victron-venus/inverter-dashboard-go.git
-cd inverter-dashboard-go
-
-# Copy and configure
-cp config/config.yaml.sample config/config.yaml
-# Edit config/config.yaml with your settings
-
-# Build
-go build -o inverter-dashboard .
-
-# Run
-./inverter-dashboard
-```
-
-### Docker Deployment
-
-```bash
-# Build image
-docker build -t inverter-dashboard .
-
-# Run container
-docker run -d \
-  -p 8080:8080 \
-  -v $(pwd)/config:/app/config \
-  --name inverter-dashboard \
-  inverter-dashboard
-```
-
-Docker Compose (see `docker-compose.yml` in the repo; CI pushes `alvit/inverter-dashboard-go` to Docker Hub on `main` and version tags):
-
-```yaml
-version: '3.8'
-services:
-  inverter-dashboard:
-    image: alvit/inverter-dashboard-go:latest
-    container_name: inverter-dashboard
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./config:/app/config
-    environment:
-      - MQTT_HOST=192.168.160.150
-    restart: unless-stopped
-```
-
-## Configuration
-
-Copy the sample configuration and edit with your settings:
-
-```bash
-cp config/config.yaml.sample config/config.yaml
-```
-
-### MQTT Configuration
-
-```yaml
-mqtt:
-  host: "192.168.160.150"  # Your MQTT broker IP
-  port: 1883               # MQTT port (usually 1883)
-```
-
-### Web Server Configuration
-
-```yaml
-web:
-  port: 8080               # Web dashboard port
-  host: "0.0.0.0"          # Bind address
-```
-
-### Home Assistant Integration (Optional)
-
-Live MQTT monitoring and WebSocket updates work without Home Assistant. Leave
-Home Assistant unconfigured for an MQTT-only setup; no placeholder HA server or
-credentials are required.
-
-The Home Assistant destination is trusted only from `config.yaml`.
-HTTP and HTTPS endpoints on your LAN, including loopback, are supported. Saved
-UI settings can override the token at startup, but `ha_url` must match the
-configured destination (including scheme, port, and base path). To move HA,
-update `config.yaml` and clear or update the saved `ha_url`, then
-restart the dashboard. HA API redirects are rejected; configure the final URL.
-
-Enable direct Home Assistant integration for enhanced control:
-
-```yaml
-homeassistant:
-  url: "http://10.0.0.58:8123"  # Your HA URL
-  token: "YOUR_LONG_LIVED_TOKEN"     # From HA Profile > Long-Lived Tokens
-  direct_controls: true               # Use HA instead of MQTT
-  poll_interval_seconds: 12           # How often to poll HA
-
-  # Boolean entities (on/off switches)
-  boolean_entities:
-    only_charging: "input_boolean.only_charging"
-    # ... more entities
-
-  # Switch entities for home automation
-  switch_entities:
-    home_recliner: ["switch.recliner_recliner", "Recliner"]
-    # ... more entities
-```
-
-## Environment Variables
-
-You can override configuration using environment variables:
-
-- `MQTT_HOST` - MQTT broker host
-- `MQTT_PORT` - MQTT broker port
-- `WEB_PORT` - Web server port
-
-### Example
-
-```bash
-export MQTT_HOST=192.168.1.100
-export WEB_PORT=9090
-./inverter-dashboard
-```
-
-## HTTP API Endpoints
-
-### `GET /` - Dashboard UI
-
-Serves the main dashboard page.
-
-### `GET /api/state` - Health Check
-
-Returns minimal state for monitoring/health checks:
-
-```json
-{
-  "ok": true,
-  "dashboard_version": "v1.0.0",
-  "control_version": "v1.2.3",
-  "has_mqtt_state": true
-}
-```
-
-### `POST /api/check-update` - Check for Updates
-
-Checks GitHub for new versions:
-
-```json
-{
-  "current": "v1.0.0",
-  "latest": "v1.1.0"
-}
-```
-
-### WebSocket Endpoint: `/ws`
-
-Real-time communication with Vue.js frontend.
-
-## MQTT Topics
-
-### Subscribed Topics
-
-- `inverter/state` - Main inverter state updates
-- `inverter/console` - Console logs
-
-### Published Topics (Commands)
-
-- `inverter/cmd/toggle` - Toggle entity state
-- `inverter/cmd/press` - Press button entity
-- `inverter/cmd/setpoint` - Set power setpoint
-- `inverter/cmd/dry_run` - Toggle dry run mode
-- `inverter/cmd/limits` - Set min/max limits
-- `inverter/cmd/ess_mode` - Cycle ESS mode
-- `inverter/cmd/loop_interval` - Set update interval
-
-### Command Payload Format
-
-```json
-{
-  "action": "toggle",
-  "entity": "switch.example"
-}
-```
-
-## Development
-
-### Project Structure
-
-```
-inverter-dashboard-go/
-├── main.go                  # Entry point
-├── internal/
-│   ├── config/              # Configuration loader
-│   ├── mqtt/                # MQTT client
-│   ├── homeassistant/       # HA REST API client
-│   ├── websocket/           # WebSocket handler
-│   ├── html/                # HTML templates
-│   └── version/             # Version management
-├── config/
-│   ├── config.yaml.sample   # Configuration sample
-│   └── config.yaml          # Your configuration (gitignored)
-├── go.mod                   # Go module file
-├── go.sum                   # Go checksums
-└── README.md                # This file
-```
-
-### Building
-
-```bash
-# Install dependencies
-go mod download
-
-# Build
-go build -o inverter-dashboard .
-
-# Run with live reload during development
-air
-```
-
-### Testing
-
-```bash
-# Run tests
-go test ./...
-
-# Run with coverage
-go test -cover ./...
-
-# Run specific package tests
-go test ./internal/mqtt/...
-```
-
-## Architecture
-
-The Go rewrite improves upon the original Python version by:
-
-1. **Performance**: Lower memory usage and faster response times
-2. **Single Binary**: Easy deployment without Python dependencies
-3. **Type Safety**: Go's static typing catches errors at compile time
-4. **Concurrent Safety**: Proper mutex usage and goroutine management
-5. **Better Error Handling**: Structured error handling throughout
-6. **Configuration Management**: YAML-based configuration with validation
-
-### Communication Flow
-
-1. **MQTT Client** subscribes to inverter topics and maintains state
-2. **Web Server** serves dashboard and handles API requests
-3. **WebSocket Handler** broadcasts real-time updates to connected browsers
-4. **Home Assistant Client** (optional) polls HA for additional entity states
-5. **State Merger** combines MQTT and HA states for unified view
-
-## Troubleshooting
-
-### MQTT Connection Issues
-
-Check if MQTT broker is reachable:
-
-```bash
-mosquitto_sub -h 192.168.160.150 -t "inverter/state" -v
-```
-
-### WebSocket Connection Issues
-
-Open browser DevTools console to see WebSocket connection status. Check that:
-
-- Port 8080 is accessible
-- No firewall blocking WebSocket connections
-- Correct protocol (ws:// for http, wss:// for https)
-
-### Home Assistant Connection
-
-Test HA API manually:
-
-```bash
-curl -H "Authorization: Bearer <TOKEN>" \
-     http://10.0.0.58:8123/api/states/input_boolean.only_charging
-```
-
-### Checking Logs
-
-```bash
-# With JSON format (default)
-./inverter-dashboard
-
-# With text format
-./inverter-dashboard -logging.format=text
-
-# Debug logging
-./inverter-dashboard -logging.level=debug
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Commit your changes: `git commit -am 'Add new feature'`
-4. Push to the branch: `git push origin feature-name`
-5. Create a Pull Request
-
-## Documentation
-
-- [System Architecture](./.github/docs/system-architecture.md) - Data flow diagrams, runbook
-
-## Related Projects
-
-- [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) — shared frontend consumed by this backend.
-- [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard) — Python backend for Docker and NAS deployments.
-- [inverter-desktop](https://github.com/victron-venus/inverter-desktop) — native Tauri client for the same Cerbo telemetry.
-- [inverter-control](https://github.com/victron-venus/inverter-control) — ESS controller and correlated command protocol.
-- [dbus-ev](https://github.com/victron-venus/dbus-ev) — maintained vehicle and optional Mercedes charger telemetry.
-- [dbus-pump](https://github.com/victron-venus/dbus-pump) — water tank, pump and valve services consumed through Cerbo MQTT.
-- [inverter-gateway](https://github.com/victron-venus/inverter-gateway) — authenticated HTTPS/SSE transport for gateway-mode deployments.
-- [inverter-web-vitrine](https://github.com/victron-venus/inverter-web-vitrine) — separate read-only public status page when a full dashboard is unnecessary.
-
-Browse the [public project catalog](https://victron-venus.github.io/.github/projects.html)
-for other Venus OS packages and companion tools. Each project documents its own
-installation, compatibility and release requirements.
-
-
-## Author
-
-Created by [@4alvit](https://github.com/4alvit)
-
-## License
-
-MIT License - see [LICENSE](LICENSE).
-
-## Acknowledgments
-
-- Original Python project: [victron-venus/inverter-dashboard](https://github.com/victron-venus/inverter-dashboard)
-- Victron Energy for the Cerbo GX platform
-- Vue.js and Home Assistant communities
-
-## Support
-
-For issues and feature requests, please use the GitHub issue tracker.
-
----
-
-**Note:** This is a community project and is not affiliated with Victron Energy.
-
-### Native loads, Water, and battery status
-
-Active loads come from Cerbo `acload` services through the active MQTT or IGW
-transport. Instance IDs remain stable when names change; `load_names` supplies
-the display label. Signed readings preserve generation. Home Assistant and
-`inverter/state` mirrors cannot supply these native sections.
-
-Water uses configured `tank/<instance>/Level` (already percent) and
-`pump/<instance>/State` / `Mode`. Mode is 0 auto, 1 on, or 2 off. Commands use
-native `W/<portal>/pump/<instance>/Mode` directly or IGW's advertised
-`water_mode` capability. Each target requires observed valid Mode and a healthy
-transport. Older gateways remain read-only for Water. Commands never change the
-observed UI mode before device readback; explicit instance zero is preserved.
-
-The main BATTERY percentage matches inverter-desktop:
-`round(clamp((voltage - 40) / (54.4 - 40) * 100, 0, 100))`.
-SmartShunt voltage takes priority, followed by the system battery voltage. Real battery rows retain their reported SoC;
-the UI does not synthesize a BANK row.
-
-The footer identifies MQTT or IGW separately from WebSocket connectivity.
-`mqtt_connected` means a live direct broker connection; `native_connected`
-reports the selected transport. Telemetry quality becomes stale on disconnect
-or after 120 seconds without native observations. `observed_at` is explicitly
-labeled `local_receipt`: a recent gateway snapshot is not a timestamp for each
-individual sensor measurement.
-
-### Controller parity and persistent settings
-
-The dashboard preserves native grid validity, backup measurement provenance and
-`daily_stats.grid_energy` coverage without inventing missing readings. Explicit
-setpoint overrides and controller tariffs use the controller's correlated
-protocol; override completion requires fresh matching request ID and exact value
-(including `null` to stop), within one five-second deadline. A queued request or
-successful HA service response is reported as acceptance, not physical completion.
-Controller and water commands require fresh observations within 30 seconds.
-The read-only MQTT refresh requests only configured pump/valve Mode leaves every
-20 seconds; retained values remain display-only for command authorization.
-
-Set `INVERTER_DASHBOARD_SETTINGS_FILE` to place runtime settings on durable
-storage. The default remains `dashboard_settings.json` in the working directory.
-A new explicitly configured parent is created with mode `0700`; settings are
-atomically replaced with mode `0600`. Failed persistence leaves the previous
-settings active and reports an error. API and WebSocket settings responses mask
-HA credentials. Browser settings mutations require same-origin JSON; WebSocket
-origins are checked against the ingress-preserved Host without trusting forwarded
-headers. Native clients may omit Origin and retain the existing authentication
-requirements.
-
-## Contributing and security
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for reports, development checks and pull requests,
-[SECURITY.md](SECURITY.md) for private vulnerability reporting and deployment trust boundaries,
-and the [OpenSSF evidence index](docs/openssf-evidence.md) for assessment references and remaining verification.

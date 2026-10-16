@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="680" viewBox="0 0 1160 680" role="img" aria-labelledby="title desc">
+  <title id="title">Inverter Dashboard Go architecture and trust boundaries</title>
+  <desc id="desc">Native Cerbo MQTT or an HTTPS inverter-gateway supplies telemetry to the Go server. Optional Home Assistant supplies explicitly configured entities. The server owns source generations, freshness and command validation. A browser receives HTTPS and WebSocket data with the embedded Vue interface. Private persistent settings and a single-writer push store sit below the server. The bounded encrypted push sender reaches a supported provider, which delivers to the browser and operating system independently of open dashboard tabs.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#52667a"/></marker>
+    <style>
+      text { font-family: system-ui, sans-serif; fill: #142b42; }
+      .heading { font-size: 28px; font-weight: 700; }
+      .sub { font-size: 16px; fill: #476078; }
+      .label { font-size: 19px; font-weight: 700; }
+      .body { font-size: 16px; }
+      .note { font-size: 14px; fill: #476078; }
+      .box { fill: #fff; stroke: #c4d3df; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #52667a; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1160" height="680" rx="18" fill="#f3f7fb"/>
+  <text x="28" y="46" class="heading">One server, explicit sources and permissions</text>
+  <text x="28" y="76" class="sub">Telemetry availability, command authority and notification delivery are separate decisions.</text>
+  <rect x="28" y="120" width="280" height="138" rx="12" class="box"/>
+  <text x="48" y="152" class="label">Native Cerbo MQTT</text>
+  <text x="48" y="184" class="body">Selected portal and instances</text>
+  <text x="48" y="212" class="body">Live / retained observations</text>
+  <text x="48" y="239" class="note">Preferred when configured and live</text>
+  <rect x="28" y="282" width="280" height="138" rx="12" class="box"/>
+  <text x="48" y="314" class="label">HTTPS inverter-gateway</text>
+  <text x="48" y="346" class="body">Snapshots and supported actions</text>
+  <text x="48" y="374" class="body">TLS and source lifecycle checks</text>
+  <text x="48" y="401" class="note">Gateway-only or MQTT failover</text>
+  <rect x="28" y="444" width="280" height="112" rx="12" class="box"/>
+  <text x="48" y="476" class="label">Optional Home Assistant</text>
+  <text x="48" y="507" class="body">Configured targets and labels</text>
+  <text x="48" y="534" class="body">Fresh observations for actions</text>
+  <rect x="380" y="150" width="330" height="360" rx="12" fill="#e8f1fb" stroke="#86a9d0" stroke-width="1.5"/>
+  <text x="402" y="186" class="label">Go server</text>
+  <text x="402" y="221" class="body">Source generations and sessions</text>
+  <text x="402" y="251" class="body">State mapping and provenance</text>
+  <text x="402" y="281" class="body">Authentication and Origin checks</text>
+  <text x="402" y="311" class="body">Capabilities and fresh command gates</text>
+  <text x="402" y="341" class="body">Correlated outcomes / bounded waits</text>
+  <text x="402" y="371" class="body">Original event time and deduplication</text>
+  <text x="402" y="411" class="note">HA / browser data cannot forge</text>
+  <text x="402" y="435" class="note">server-owned source authority.</text>
+  <text x="402" y="477" class="note">Push processing needs no open tab.</text>
+  <rect x="780" y="120" width="352" height="140" rx="12" class="box"/>
+  <text x="802" y="153" class="label">Browser · embedded Vue</text>
+  <text x="802" y="186" class="body">HTTPS / WebSocket state and actions</text>
+  <text x="802" y="216" class="body">Reviewed official SPA + source receipt</text>
+  <text x="802" y="241" class="note">Display state is not command permission</text>
+  <rect x="780" y="314" width="352" height="148" rx="12" class="box"/>
+  <text x="802" y="347" class="label">Encrypted Web Push sender</text>
+  <text x="802" y="380" class="body">Supported public provider · verified TLS</text>
+  <text x="802" y="410" class="body">Bounded queue, lifetime and retries</text>
+  <text x="802" y="438" class="note">No endpoint, key or payload in logs</text>
+  <rect x="380" y="558" width="330" height="94" rx="12" fill="#e8f4ef" stroke="#8ab9a5" stroke-width="1.5"/>
+  <text x="402" y="590" class="label">Private persistent storage</text>
+  <text x="402" y="620" class="body">Settings + single-writer push identity</text>
+  <text x="402" y="642" class="note">Separate paths; preserve across upgrades</text>
+  <rect x="780" y="534" width="352" height="118" rx="12" class="box"/>
+  <text x="802" y="568" class="label">Browser service worker / OS</text>
+  <text x="802" y="600" class="body">Permission and system policy apply</text>
+  <text x="802" y="630" class="note">Provider acceptance ≠ visible notification</text>
+  <path d="M308 190 H380" class="flow"/>
+  <path d="M308 351 H380" class="flow"/>
+  <path d="M308 498 H380" class="flow"/>
+  <path d="M710 190 H780" class="flow"/>
+  <path d="M710 388 H780" class="flow"/>
+  <path d="M545 510 V558" class="flow"/>
+  <path d="M956 462 V534" class="flow"/>
+  <text x="28" y="602" class="note">Commands return through the selected source.</text>
+  <text x="28" y="628" class="note">No automatic replay of stale control requests.</text>
+</svg>

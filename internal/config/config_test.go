@@ -1,9 +1,47 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 )
+
+func TestHAPollIntervalYAMLAlwaysCreatesUsableTicker(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"0", 12 * time.Second},
+		{"-1", 12 * time.Second},
+		{".nan", 12 * time.Second},
+		{".inf", 12 * time.Second},
+		{"-.inf", 12 * time.Second},
+		{"1e100", 12 * time.Second},
+		{"9223372036.854776", 12 * time.Second},
+		{"1e-12", 12 * time.Second},
+		{"0.25", 250 * time.Millisecond},
+		{"12", 12 * time.Second},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			data := fmt.Sprintf("homeassistant:\n  url: https://ha.example.net\n  poll_interval_seconds: %s\n", tc.value)
+			if err := os.WriteFile("config.yaml", []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load("")
+			if err != nil || cfg.HomeAssistant == nil {
+				t.Fatalf("load Home Assistant config: %v", err)
+			}
+			interval := time.Duration(cfg.HomeAssistant.PollInterval * float64(time.Second))
+			if interval != tc.want {
+				t.Fatalf("poll interval = %v, want %v", interval, tc.want)
+			}
+			ticker := time.NewTicker(interval)
+			ticker.Stop()
+		})
+	}
+}
 
 func TestGetEnvDefault(t *testing.T) {
 	// Test with env set
