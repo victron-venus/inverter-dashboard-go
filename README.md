@@ -8,6 +8,8 @@ This is a Go application: Node.js and npm are not required to run it. The browse
 
 ![Architecture: native MQTT or HTTPS gateway feeds the Go server; optional Home Assistant, private persistent storage and a browser complete the system.](docs/assets/architecture.svg)
 
+The illustrated [process and results guide](docs/process-and-results.md) explains the update stages, the HA polling-duration regression and the Home mapping contract. It separates source-test results from official release, deployment and browser acceptance.
+
 ## What it provides
 
 - Live grid, battery, PV, consumption, water and EV information, subject to the native services and instances installed on your system.
@@ -89,6 +91,7 @@ These six READMEs document the Go application. Translations added to the separat
 - [Developer guide](docs/development.md) · [Contribution policy](CONTRIBUTING.md) · [Verification checklist](README-CHECKLIST.md)
 - [Repository wiki source](docs/wiki/Home.md) · [Legacy npm wrapper notes](README-NPM.md)
 - [Changelog](CHANGELOG.md) · [License](LICENSE)
+
 
 <!-- ci-release-process:start -->
 ## Release process
