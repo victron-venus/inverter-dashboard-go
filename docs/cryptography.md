@@ -45,9 +45,10 @@ hostname verification remain client responsibilities. This checks key strength,
 not whether a certificate was issued by a client's trusted authority.
 
 Replace undersized server or intermediate certificates before upgrading. A
-malformed, mismatched or undersized pair now causes startup to fail. This policy
-does not change the plain HTTP listener or an external reverse proxy's TLS
-configuration.
+malformed, mismatched or undersized pair now causes startup to fail. When both TLS flags are supplied, `startServer` opens only HTTPS on the
+configured web port; it does not open an additional HTTP listener. Omitting either
+flag selects the separate plain HTTP compatibility mode. External reverse proxy
+TLS configuration is not controlled by this policy.
 
 ## Web Push
 
@@ -97,7 +98,9 @@ recoverable secrets, not hashed human-password verifiers.
 
 Use the verified Go binary directly with its built-in HTTPS listener (`--ssl-cert`
 and `--ssl-key`) and a nonempty `DASHBOARD_SECRET` generated from at least 32 OS-random
-bytes. Bind to the intended interface and firewall the listener. Use the
+bytes. Use `--port 8443` (or an explicitly chosen port); the application binds all
+interfaces, so firewall that port to intended clients. Both TLS flags are required;
+HTTPS replaces HTTP on that port. Do not expose a separate HTTP proxy listener. Use the
 IGW-only configuration (`GATEWAY_ENABLED=true`, an `https://` gateway URL and
 its independent bearer token; leave `MQTT_HOST` empty). This is a functional
 telemetry and supported-command deployment; the configuration and tests in

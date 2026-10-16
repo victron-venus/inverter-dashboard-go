@@ -48,7 +48,9 @@ apply. The runtime can consequently reject an endpoint that works with its
 ordinary defaults. Fix or review the endpoint configuration rather than
 disabling certificate verification.
 
-An isolated local verification used a temporary CA, synthetic credentials and a
+The shared profile
+[verification record](https://github.com/victron-venus/integration-tests/blob/232df66ba8ec59019ee5444090212f256a88b7e6/docs/release-tls-profile.md)
+used a temporary CA, synthetic credentials and a
 loopback TLS server: a trusted RSA-1024 leaf worked with the ordinary client but
 was rejected with `fips140=on`; RSA-2048 worked in both modes. No operator keys,
 tokens, trust stores or persistent settings were changed. The public GitHub API
