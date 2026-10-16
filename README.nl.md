@@ -43,7 +43,7 @@ De [configuratiereferentie](docs/configuration.md) beschrijft alle velden. Stel 
 
 Voorrang verschilt per veld: YAML vervangt gewone MQTT-/webwaarden; expliciete `GATEWAY_*`-variabelen vervangen gateway-YAML. Daarna volgen CLI-opties en opgeslagen MQTT-/HA-verbindingsinstellingen. Verbindingswijzigingen vereisen een herstart.
 
-Home-knoppen komen uitsluitend uit uw `homeassistant.switch_entities`. Een expliciete lijst bewaart labels, volgorde en `enabled`. Een lege lijst geeft geen knoppen; onbekend betekent niet uitgeschakeld. Behoud uw eigen apparaten en toegangsgegevens bij updates in plaats van ze door voorbeelden te vervangen. Een huishoudelijk apparaat wordt alleen als actief getoond als zichtbaarheid is ingeschakeld en de toestand aangeeft dat het werkt.
+Home-knoppen komen uitsluitend uit uw `homeassistant.switch_entities`. Een YAML-mapping met stabiele sleutels bewaart labels, de volgorde `order` en `enabled`. Een lege mapping (`{}`) geeft geen knoppen; onbekend betekent niet uitgeschakeld. Behoud uw eigen apparaten en toegangsgegevens bij updates in plaats van ze door voorbeelden te vervangen. Een huishoudelijk apparaat wordt alleen als actief getoond als zichtbaarheid is ingeschakeld en de toestand aangeeft dat het werkt.
 
 Stel `INVERTER_DASHBOARD_SETTINGS_FILE` in voor blijvende instellingen, bijvoorbeeld `/var/lib/inverter-dashboard/settings/dashboard_settings.json`. Standaard wordt `dashboard_settings.json` in de werkmap gebruikt. Het bestand kan een HA-token bevatten, hoewel de API dit maskeert. Er is privéopslag nodig die beschrijfbaar is en een vervanging overleeft; een alleen-lezen Secret of tijdelijke map volstaat niet. Zichtbaarheidsinstellingen werken zonder herstart.
 

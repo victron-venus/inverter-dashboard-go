@@ -22,7 +22,7 @@ Retained, malformed or old observations can still leave some display context whi
 
 ## Home buttons are absent or all disabled
 
-An empty configured list intentionally produces no Home buttons. Confirm that the process reads the intended `config.yaml`, then inspect only your own `switch_entities` entries: stable unique keys, actual entity IDs, labels, order and enabled flags. The public example is not your device list.
+An empty `switch_entities` mapping (`{}`) intentionally produces no Home buttons. Confirm that the process reads the intended `config.yaml`, then inspect only your own `switch_entities` entries: stable unique keys, actual entity IDs, labels, order and enabled flags. The public example is not your device list.
 
 For disabled buttons, distinguish unknown state from off. Check HA URL/token validity, selected entity availability, `direct_controls` and recent successful observations. A configuration-present HA flag is not a successful entity read. Preserve existing credentials and inventory during updates; don't replace them wholesale to make the UI look populated.
 

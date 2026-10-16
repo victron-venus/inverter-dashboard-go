@@ -7,7 +7,7 @@ This is a checklist for a specific change, not a declaration of complete parity 
 - [ ] The documented Go version agrees with `go.mod`; build commands compile `.`.
 - [ ] The configuration example contains supported keys and reserved example domains, with no credentials or private entity inventory.
 - [ ] Working-directory lookup, field-specific precedence and restart requirements are explained.
-- [ ] Home labels, ordering and enabled state come from configuration. An empty list stays empty; unavailable state is not fabricated as off.
+- [ ] Home labels, ordering and enabled state come from configuration. An empty `switch_entities` mapping (`{}`) stays empty; unavailable state is not fabricated as off.
 - [ ] Settings writes report real failures and preserve unrelated settings. Persistent paths survive the proposed deployment lifecycle.
 - [ ] Web Push identity, subscriptions and preferences survive updates; no second writer shares the store.
 

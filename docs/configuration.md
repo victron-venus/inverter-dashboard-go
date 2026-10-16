@@ -67,7 +67,7 @@ homeassistant:
       enabled: true
 ```
 
-`key` identifies the state field; keep it stable and unique. The configured label is shown without stripping words. Entries sort by `order`; equal orders in an explicit list retain declaration order. Mapping syntax is also supported, but an explicit list makes ordering easier to review. Disabled entries are excluded from Home display, polling and toggle permission. An empty list creates no Home buttons. Unknown/unavailable state must not be treated as a known off value. Home controls require current successful HA observations, not merely a configured URL/token or a connection badge.
+The mapping key identifies the state field; keep it stable and unique. The configured label is shown without stripping words. Entries sort by `order`; equal orders in a YAML mapping retain declaration order. Disabled entries are excluded from Home display, polling and toggle permission. An empty mapping (`{}`) creates no Home buttons. Unknown/unavailable state must not be treated as a known off value. Home controls require current successful HA observations, not merely a configured URL/token or a connection badge.
 
 Additional optional fields:
 

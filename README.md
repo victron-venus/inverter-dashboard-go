@@ -52,7 +52,7 @@ Start with [config.yaml.example](config.yaml.example) and the [configuration ref
 
 - **MQTT:** set `mqtt.host` and `cerbo.portal_id`. An explicit portal bootstraps a quiet broker; passive discovery needs incoming native traffic. Native keepalive and configured water-mode refresh run every 20 seconds.
 - **IGW:** configure an HTTPS URL and credentials. An empty YAML `mqtt.host` with IGW enabled selects gateway-only operation. With both configured, MQTT is preferred and IGW provides failover; recovery probes run approximately every 60 seconds.
-- **Home Assistant:** configure its URL, token and explicit entity lists. Empty `switch_entities` means no Home buttons. There is no personal entity list to copy from this repository. Preserve your existing inventory when upgrading; do not replace it with the example.
+- **Home Assistant:** configure its URL, token and a `switch_entities` mapping keyed by stable names. An empty mapping (`{}`) means no Home buttons. There is no personal entity list to copy from this repository. Preserve your existing inventory when upgrading; do not replace it with the example.
 - **Settings:** set `INVERTER_DASHBOARD_SETTINGS_FILE` to a writable persistent path, for example `/var/lib/inverter-dashboard/settings/dashboard_settings.json`. The default is `dashboard_settings.json` in the working directory. Connection changes require a restart; visibility settings apply to subsequent state updates.
 - **Web Push:** set `WEB_PUSH_ENABLED=true` and an absolute, private, persistent `WEB_PUSH_DATA_DIR`. Then opt in from a supported browser over HTTPS. See [notifications](docs/web-push.md) before choosing storage or enabling replicas.
 
