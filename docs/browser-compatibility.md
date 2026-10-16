@@ -42,3 +42,13 @@ No application rebuild or application npm install is needed. Switch the engine
 to `firefox` or `webkit` after installing it. Traces, screenshots and diagnostic
 JSON are saved under ignored `.compatibility/` locally and uploaded as
 `browser-compatibility-*` artifacts in CI.
+
+
+Refresh the embedded frontend with `./scripts/fetch-vue-ui.sh v2.2.8-rc.1`, using
+an explicit published tag. The importer validates the release's repository/tag/
+source, receipt and archive hashes, packaged version and complete file inventory
+before replacing the entire tree and `vue-ui-source.json`. Modified, untracked
+or ignored frontend files stop the update. Failed downloads never create a
+placeholder or pass with stale files. The effective build lock hash and release
+manifest/receipt hashes remain in provenance. Review and validate the resulting
+diff before committing; no local rebuild is performed.
