@@ -63,7 +63,7 @@ Random queue identifiers use `crypto/rand.Read`. Their randomness is not derived
 from timestamps or the MQTT client identifier. These standard-library random
 sources use the operating system's cryptographically secure generator.
 
-## Remaining review boundaries
+## OTLP and credential boundaries
 
 The OTLP exporter in [tracing.go](../internal/tracing/tracing.go) applies the same
 peer-key policy to HTTPS and checks the complete configured mTLS client chain
@@ -81,10 +81,43 @@ precedence is covered by comparison with the pinned library. Use HTTPS when
 traces or exporter credentials cross an untrusted network. Replace undersized
 server/CA or mTLS client certificates before upgrading.
 
-These outbound TLS tests do not establish project-wide OpenSSF cryptographic
-compliance by themselves.
+The following complete direct-binary profile combines these boundaries without
+relying on a third-party TLS terminator.
 
 The server's inbound bearer secret is operator-configured; the application does
-not create user accounts or a password-verifier database. The separate review of
-that credential boundary, external TLS termination and deployment configuration
-must not be inferred from these outbound TLS tests.
+not create user accounts or a password-verifier database. Authentication uses constant-time comparison in `internal/auth/auth.go`. Missing
+or incorrect secrets are rejected when configured. Query-string credentials are
+supported for browser/WebSocket compatibility and can appear in history or proxy
+logs; prefer an Authorization header, redact request URLs at ingress and never
+share credential-bearing links. The empty-secret compatibility mode is unprotected.
+Private settings use restricted filesystem permissions; bearer credentials are
+recoverable secrets, not hashed human-password verifiers.
+
+## Complete direct-binary profile
+
+Use the verified Go binary directly with its built-in HTTPS listener (`--ssl-cert`
+and `--ssl-key`) and a nonempty `DASHBOARD_SECRET` generated from at least 32 OS-random
+bytes. Bind to the intended interface and firewall the listener. Use the
+IGW-only configuration (`GATEWAY_ENABLED=true`, an `https://` gateway URL and
+its independent bearer token; leave `MQTT_HOST` empty). This is a functional
+telemetry and supported-command deployment; the configuration and tests in
+`internal/gateway` cover it. The optional direct MQTT transport is plaintext and
+requires a separately trusted network if enabled.
+
+Home Assistant is optional; leave its URL/token unset or use a trusted HTTPS
+endpoint with the same certificate policy. Leave OTLP export unset or use HTTPS
+with the validated CA/mTLS configuration above. Web Push, when enabled, keeps
+HTTPS endpoint validation and uses P-256/HKDF-SHA-256/AES-128-GCM. Do not enable
+`InsecureSkipVerify`, an HTTP trace endpoint or external TLS termination and
+assume the direct-binary certificate policy still applies.
+
+Acquire source/artifacts through GitHub HTTPS and verify published SHA-256
+checksums/provenance. The release CLI's verified stricter transport is described
+in [release-tls-profile.md](release-tls-profile.md). Optional registry promotion,
+SSH deployment and site-managed reverse proxies require their own operator
+qualification; they are not required to build and run this complete profile.
+All maintained source and delivery helpers remain in the review and scan scope.
+
+The project uses SHA-1 only for Git object identity in release-control checks;
+source/artifact integrity evidence uses SHA-256. The Git object identifier is
+not treated as a modern standalone signature or password hash.

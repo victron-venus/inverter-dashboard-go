@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Document the supported direct HTTPS/IGW cryptographic profile, advisory applicability, governance and one-year roadmap for the OpenSSF assessment.
+
 - Qualify this release with a bounded RC fuzz campaign, offline target execution, and deterministic seed replay checks.
 - Bind release evidence to the exact source and toolkit revision, validate seed corpora, and retain engine execution counts and diagnostic artifacts.
 - Document the fuzzing scope, resource limits, and the distinction between synthetic checks and target acceptance.
