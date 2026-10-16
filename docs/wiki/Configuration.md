@@ -12,7 +12,7 @@ Precedence is field-specific: ordinary YAML MQTT/web values override their defau
 
 ## Your Home inventory
 
-Use an explicit `homeassistant.switch_entities` list with stable keys, entity IDs, labels, order and enabled flags. Empty means no Home buttons. Preserve the installation's existing list and credentials during updates. Do not copy another site's personal device IDs or infer that an unknown entity is off. HA controls need configured targets and fresh successful observations.
+Use a `homeassistant.switch_entities` mapping keyed by stable names, with an entity ID, label, order and enabled flag for each entry. An empty mapping (`{}`) means no Home buttons. Preserve the installation's existing entries and credentials during updates. Do not copy another site's personal device IDs or infer that an unknown entity is off. HA controls need configured targets and fresh successful observations.
 
 ## Private persistence
 

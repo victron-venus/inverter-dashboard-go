@@ -51,7 +51,7 @@ Match these to your installed services. Water and EV telemetry come from the nat
 
 `homeassistant.url` and `homeassistant.token` configure the direct REST integration. `poll_interval_seconds` defaults to 12. Non-finite, nonpositive, too-small or overflowing intervals fall back to 12 seconds. `direct_controls` defaults to true when omitted; set it false if this integration should only provide observations. This flag is not a global read-only mode for the inverter.
 
-Use an explicit ordered `switch_entities` list:
+Use a `switch_entities` mapping keyed by stable names, with an explicit `order` for each entry:
 
 ```yaml
 homeassistant:
@@ -60,7 +60,7 @@ homeassistant:
   direct_controls: false
   poll_interval_seconds: 12
   switch_entities:
-    - key: home_example
+    home_example:
       entity: switch.example
       label: Example
       order: 10

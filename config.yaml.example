@@ -36,9 +36,9 @@ cerbo:
 #   token: "" # Supply your private token here; protect this file
 #   direct_controls: false # Enable deliberately after reviewing configured targets
 #   poll_interval_seconds: 12
-#   switch_entities: [] # No Home buttons by default
-#   # Replace [] above with your ordered list; preserve your existing list:
-#   #   - key: home_example
+#   switch_entities: {} # No Home buttons by default
+#   # Replace {} with your mapping; preserve your existing entries:
+#   #   home_example:
 #   #     entity: switch.example
 #   #     label: Example
 #   #     order: 10
