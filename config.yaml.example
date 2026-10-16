@@ -1,104 +1,62 @@
-# Inverter Dashboard Configuration
-# Copy this file to config.yaml and update with your values
-# DO NOT commit config.yaml to version control (it's excluded by .gitignore)
+# Copy to config.yaml in the server's working directory; chmod 600 config.yaml.
+# Replace example domains/IDs before starting. Never commit real credentials.
+# Existing installations: preserve your own entity inventory and configuration.
 
-# Telemetry transport (desktop connectionPolicy parity):
-# 1) mqtt.host set + broker reachable → Cerbo MQTT (preferred)
-# 2) mqtt.host set but unreachable + gateway enabled → IGW failover
-#    (probes MQTT every ~60s and switches back when broker answers)
-# 3) mqtt.host empty + gateway enabled → IGW-only (no Cerbo dial)
-# 4) neither → startup error
-#
-# Alert banner ack/X works on both: MQTT uses W/.../AcknowledgeAll + SilenceAlarm;
-# IGW uses POST /v1/commands/{acknowledge_all_notifications|silence_alarm}.
 mqtt:
-  host: "192.168.160.150"  # Cerbo/LAN broker ("" to skip MQTT / force IGW when gateway on)
-  port: 1883               # MQTT port (usually 1883; 0 when unused)
+  host: "mqtt.example.net" # Your Cerbo/LAN broker; empty string for IGW-only
+  port: 1883
 
-# Remote inverter-gateway (HTTPS only). Used when MQTT is unset or unreachable.
-# Certificate trust and hostname are verified; all redirects are rejected.
-# Explicit GATEWAY_* environment values override this block, including empty
-# Access credentials when switching from Cloudflare to native bearer-only HTTPS.
-# Polls GET /v1/snapshot. Commands: IGW whitelist only
-# (silence_alarm, acknowledge_all_notifications); inverter/cmd/* not on IGW yet.
+# HTTPS inverter-gateway. Explicit GATEWAY_* environment values override YAML.
+# MQTT is preferred when both transports are configured. Commands additionally
+# require current source ownership, supported capability and fresh observations.
 gateway:
   enabled: false
-  url: "https://igw.s.2560801.xyz:9151"
-  access_client_id: ""       # Optional: Cloudflare Access client id (configure both)
-  access_client_secret: ""   # Optional: Cloudflare Access client secret
-  api_token: ""              # Bearer GATEWAY_API_TOKEN
+  url: "https://gateway.example.net"
+  access_client_id: ""     # Optional Cloudflare Access pair
+  access_client_secret: ""
+  api_token: ""
   poll_interval_seconds: 2
 
-# Web Server Configuration
 web:
-  port: 8080               # Web dashboard port
-  host: "0.0.0.0"          # Bind address (0.0.0.0 for all interfaces)
+  host: "127.0.0.1" # Use a trusted HTTPS proxy for remote access
+  port: 8080
 
-# Logging Configuration
-logging:
-  level: "info"            # Log level: debug, info, warn, error
-  format: "json"           # Format: json or text
-
-# Cerbo GX / Water / EV Configuration (dbus-pump, dbus-ev, dbus-evcharger via Cerbo MQTT)
-# Water and EV data come exclusively from the dbus-* services - no HA entities.
-# Set portal_id (or CERBO_PORTAL_ID env) to bootstrap a quiet Cerbo immediately.
-# Empty enables passive discovery from native N/<portal>/system/... or device traffic;
-# a silent broker still requires an explicit portal_id. inverter/portal is optional.
-# All native telemetry is scoped to the configured or first discovered portal.
 cerbo:
-  portal_id: ""              # VRM portal ID of your Cerbo GX
-  tank_instance: 21          # com.victronenergy.tank.ha_tank<N>
-  pump_instance: 1           # com.victronenergy.pump.startstop<N> (Water pump)
-  valve_instance: 2          # com.victronenergy.pump.startstop<N> (City valve)
-  ev_instance: -1            # Auto-discover; >=0 pins the exact vehicle instance
-  evcharger_instance: -1     # Auto-discover; >=0 pins the exact wallbox instance
+  portal_id: "" # Configure your portal to bootstrap a quiet MQTT broker
+  tank_instance: 21
+  pump_instance: 1
+  valve_instance: 2
+  ev_instance: -1        # -1 discovers; >=0 pins the exact vehicle instance
+  evcharger_instance: -1 # -1 discovers; >=0 pins the exact wallbox instance
 
-# Home Assistant Configuration (Optional)
-# Configure to enable direct Home Assistant integration
-homeassistant:
-  url: "http://10.0.0.58:8123"  # Your HA URL
-  token: "your-long-lived-ha-token"
-  poll_interval_seconds: 12  # How often to poll HA for state
+# Optional Home Assistant. Uncomment and configure only if needed.
+# All entity names below are illustrative, not an installation inventory.
+# homeassistant:
+#   url: "https://ha.example.net"
+#   token: "" # Supply your private token here; protect this file
+#   direct_controls: false # Enable deliberately after reviewing configured targets
+#   poll_interval_seconds: 12
+#   switch_entities: [] # No Home buttons by default
+#   # Replace [] above with your ordered list; preserve your existing list:
+#   #   - key: home_example
+#   #     entity: switch.example
+#   #     label: Example
+#   #     order: 10
+#   #     enabled: true
+#   boolean_entities: {} # Legacy controller-flag mappings; usually unnecessary
+#   appliance_entities: {}
+#   # Example keys: washer_time, washer_power, dryer_time, dryer_power,
+#   # dishwasher_running, dishwasher_duration, dishwasher_power
+#   vue_sensors: {} # Display label -> sensor entity ID
+#   filtered_entities:
+#     covers: []
+#     media_players: []
+#     scenes: []
+#     numbers: []
+#     sensors: []
+#     weather: ""
 
-  # Boolean entities (on/off switches from HA)
-  boolean_entities:
-    only_charging: "input_boolean.only_charging"
-    no_feed: "input_boolean.no_feed"
-    house_support: "input_boolean.house_support"
-    charge_battery: "input_boolean.charge_battery"
-    do_not_supply_charger: "input_boolean.do_not_supply_charger"
-    set_limit_to_ev_charger: "input_boolean.set_limit_to_ev_charger"
-    minimize_charging: "input_boolean.minimize_charging"
-
-  # Switch entities for home automation buttons
-  # Format: key: [entity_id, "Display Label"], or a mapping:
-  # home_example: {entity: "switch.example", label: "Example", order: 0, enabled: true}
-  # Empty means no Home buttons. Equal orders preserve YAML declaration order.
-  # Disabled entries are not displayed, polled or permitted as Home toggle targets.
-  switch_entities: {}
-  # Optional example for existing installations after outlet replacement:
-  # switch_entities:
-  #   home_recliner: ["switch.recliner", "Recliner"]
-  #   home_garage: ["switch.garage_door_power", "Garage Door Power"]
-  #   laundry_outlet: ["switch.laundry", "Laundry"]
-  # Garage Door Power supplies the drive; its remote controls door movement.
-  # Update config.yaml and deployment copies when adopting new entity IDs.
-  # A shared KMC meter is not an individual washer-power measurement.
-
-  # Appliance entities for timers and power monitoring
-  # These are polled from HA instead of MQTT when configured
-  appliance_entities:
-    dishwasher_running: "binary_sensor.dishwasher_running"
-    dishwasher_duration: "sensor.dishwasher_duration"
-    washer_time: "sensor.washer_remaining_time"
-    dryer_time: "sensor.dryer_remaining_time"
-  sensor_entities:
-    # Victron telemetry is read directly from Cerbo MQTT: grid/consumption L1-L3,
-    # battery SOC/V/I/P, MPPT/PV, VE.Bus state/setpoint, circuits, water and EV.
-    # inverter-control remains the source for daily_stats, solar_forecast,
-    # ess_mode and control flags. Configure HA-only household sensors here.
-
-# Optional: Add custom UI configuration
-ui:
-  theme: "light"  # dark or light
-  refresh_rate: 0.33  # WebSocket update rate in seconds
+# Environment-only options include DASHBOARD_SECRET, WEB_PUSH_ENABLED,
+# WEB_PUSH_DATA_DIR, WEB_PUSH_SUBJECT, INVERTER_DASHBOARD_SETTINGS_FILE,
+# SELF_UPDATE_ENABLED, CAMERA_TOPIC and LOG_FORMAT. See docs/configuration.md.
+# Do not add logging/ui blocks here: the Go loader does not consume them.

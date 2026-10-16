@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.9.11] - Development line
 
+### Fixed
+
+- Reject non-finite, overflowing and sub-nanosecond Home Assistant polling
+  intervals from YAML. Invalid values now use the existing 12-second default
+  instead of producing a zero ticker duration or stalling polling.
+
 ### Changed
 
 - Add bounded native Go fuzz qualification for public release candidates, with
@@ -30,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- Replace outdated setup and npm guidance with current Go configuration,
+  command-safety, persistence and notification documentation. Add complete
+  Russian, Ukrainian, German, French and Dutch READMEs, accessible architecture
+  diagrams and reviewed wiki publication sources. Embedded Vue assets are unchanged.
 - Publish reviewed release notes from the exact source commit used to build each candidate, preserving build provenance.
 - Document contribution checks, confidential security reporting and the project-specific trust boundaries.
 
