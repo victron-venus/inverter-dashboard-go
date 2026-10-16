@@ -51,4 +51,8 @@ before replacing the entire tree and `vue-ui-source.json`. Modified, untracked
 or ignored frontend files stop the update. Failed downloads never create a
 placeholder or pass with stale files. The effective build lock hash and release
 manifest/receipt hashes remain in provenance. Review and validate the resulting
-diff before committing; no local rebuild is performed.
+diff before committing; no local rebuild is performed. The frozen version plan
+binds the package projection and source. RC `promote-bytes` packages already
+carry the stable version; a stable tag may retain that same RC manifest only
+for the matching base and source. Provenance records both requested and original
+tags. Historical releases without a frozen version plan are rejected.
