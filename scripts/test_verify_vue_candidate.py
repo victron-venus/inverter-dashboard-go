@@ -8,12 +8,35 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verify_vue_candidate import prepare
+from verify_vue_candidate import MAX_UNPACKED_BYTES, archive_files, prepare
 
 SOURCE = "a" * 40
 
 
 class CandidateTests(unittest.TestCase):
+    def test_rejects_limits_before_scanning_the_remaining_archive(self):
+        class GuardedArchive:
+            def __init__(self, count, size):
+                self.count, self.size, self.visited = count, size, 0
+
+            def __iter__(self):
+                for index in range(self.count):
+                    self.visited += 1
+                    item = tarfile.TarInfo(f"entry-{index}")
+                    item.size = self.size
+                    yield item
+                raise AssertionError("Scanned past the first over-limit member")
+
+            def getmembers(self):
+                return list(self)
+
+        for count, size in [(10_001, 0), (2, MAX_UNPACKED_BYTES)]:
+            with self.subTest(count=count, size=size):
+                archive = GuardedArchive(count, size)
+                with self.assertRaisesRegex(ValueError, "invalid unpacked size"):
+                    archive_files(archive)
+                self.assertEqual(archive.visited, count)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -68,13 +91,16 @@ class CandidateTests(unittest.TestCase):
         (self.artifacts / "release-inputs-web.json").write_text(json.dumps(receipt))
 
     def run_candidate(self):
-        return prepare(self.artifacts, self.root / "dist", self.root / "diagnostics", SOURCE)
+        return prepare(
+            self.artifacts, self.root / "dist", self.root / "diagnostics", SOURCE
+        )
 
     def test_preserves_exact_packaged_bytes_and_identity(self):
         self.candidate()
         identity = self.run_candidate()
         self.assertEqual(
-            (self.root / "dist/index.html").read_bytes(), b"<html>Real build fixture</html>"
+            (self.root / "dist/index.html").read_bytes(),
+            b"<html>Real build fixture</html>",
         )
         self.assertEqual(identity["version"], "2.2.8-rc.1")
         self.assertEqual(identity["filesVerified"], 1)
