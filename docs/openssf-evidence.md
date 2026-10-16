@@ -94,4 +94,8 @@ The CodeQL configuration also analyzes GitHub Actions in its own analysis catego
 
 ## Cryptographic implementation review
 
-[Cryptography and TLS boundaries](cryptography.md) records verified algorithms, key sizes, random sources and the remaining credential and deployment review boundaries. The TLS tests cover actual local handshakes, weak leaf/intermediate/root keys, alternate chains, session resumption and unchanged hostname/trust rejection. OTLP tests compare CA/mTLS and HTTP/HTTPS environment behavior against the pinned exporter and verify that rejected weak certificates cannot send a trace request. This evidence does not yet establish the project-wide `crypto_keylength` criterion.
+[Cryptography and TLS boundaries](cryptography.md) records verified algorithms, key sizes, random sources and the remaining credential and deployment review boundaries. The TLS tests cover actual local handshakes, weak leaf/intermediate/root keys, alternate chains, session resumption and unchanged hostname/trust rejection. OTLP tests compare CA/mTLS and HTTP/HTTPS environment behavior against the pinned exporter and verify that rejected weak certificates cannot send a trace request. See the complete direct-binary and release-helper profile in that document.
+
+## October assessment evidence
+
+[Security review and advisory disposition](security-review-20261016.md), [governance](../GOVERNANCE.md), [community conduct](../CODE_OF_CONDUCT.md) and the [roadmap through October 2027](roadmap.md) supply project-specific evidence. The live OpenSSF assessment is authoritative; unmet Silver criteria remain unmet.
