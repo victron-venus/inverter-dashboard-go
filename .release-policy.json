@@ -62,6 +62,6 @@
   "release_notes": "CHANGELOG.md",
   "toolkit_revision": "5e413f80a4353d328b4529eae57992ac3987e2dd",
   "fuzzing": {
-    "toolkit_ref": "70a331f942f71ecb202b8a40ff9f9e9647264a56"
+    "toolkit_ref": "5aedd9c86e79e41c36356b9298db3528f7859afb"
   }
 }
