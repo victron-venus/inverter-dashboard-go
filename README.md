@@ -1,5 +1,7 @@
 # Inverter Dashboard Go
 
+[![Fuzzing: RC only](https://img.shields.io/badge/Fuzzing-RC%20only-blue)](docs/fuzzing.md)
+
 [English](README.md) · [Русский](README.ru.md) · [Українська](README.uk.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Nederlands](README.nl.md)
 
 A Go server for a Victron installation, with the shared Vue dashboard embedded in its executable. It reads native Cerbo MQTT telemetry or an HTTPS inverter-gateway (IGW), adds optional Home Assistant data, and exposes controls only when their source and capabilities permit them.
@@ -80,7 +82,7 @@ Web Push uses startup/reconnect priming, persistent deduplication and bounded de
 
 ## UI versions and languages
 
-The current embedded UI is the verified **Vue v2.2.7-beta.9** release, source `3d4a03fd3401334ac9e69f6d103caff41dc243ae`. [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes.
+The embedded UI is the official **Vue v2.2.8** artifact (package `2.2.8`, source `ff3865d373cc3819b83db0328d9855a2bdec9859`). [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes. The files are byte-identical to the accepted RC `v2.2.8-rc.1` (build run `38861405495`).
 
 These six READMEs document the Go application. Translations added to the separate Vue source do **not** appear in an existing Go binary until an official frontend artifact is reviewed and embedded. Do not infer complete UI translation support from the documentation languages or bundled date-library locale files.
 
@@ -90,7 +92,7 @@ These six READMEs document the Go application. Translations added to the separat
 - [Troubleshooting](docs/troubleshooting.md) · [Web Push](docs/web-push.md)
 - [Developer guide](docs/development.md) · [Contribution policy](CONTRIBUTING.md) · [Verification checklist](README-CHECKLIST.md)
 - [Repository wiki source](docs/wiki/Home.md) · [Legacy npm wrapper notes](README-NPM.md)
-- [Changelog](CHANGELOG.md) · [License](LICENSE)
+- [RC-only fuzzing](docs/fuzzing.md) · [Changelog](CHANGELOG.md) · [License](LICENSE)
 
 
 <!-- ci-release-process:start -->
@@ -98,3 +100,7 @@ These six READMEs document the Go application. Translations added to the separat
 
 See the [release strategy](RELEASING.md) for validation, nightly, beta, RC and stable promotion rules, and the [operator runbook](docs/release-workflow.md) for local commands.
 <!-- ci-release-process:end -->
+
+## Browser compatibility
+
+The [embedded frontend acceptance suite](docs/browser-compatibility.md) verifies the shipped SPA in real browser engines across Linux, Windows and macOS. Its required matrix is part of the existing CI gate, with expanded version coverage for scheduled and manual release qualification.

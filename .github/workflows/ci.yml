@@ -6,6 +6,19 @@ permissions:
   contents: read
 
 jobs:
+  browser-compatibility:
+    name: Embedded frontend browser acceptance
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/typescript-ci.yml@5b72b09e8a6bf17b482124891f17fd9662182bf6
+    permissions:
+      contents: read
+    with:
+      node-version: '22'
+      run-node-ci: false
+      browser-matrix-file: .github/browser-compatibility.json
+      browser-release-channel: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.channel || '' }}
+      browser-test-command: node scripts/browser-acceptance.cjs
+      browser-prepare-command: node --check scripts/browser-acceptance.cjs
+      browser-extended: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.channel == '' || github.event.inputs.channel == 'rc')) }}
   ci:
     name: CI
     uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@ece79d1b1ca40d3068d373e515daf58115489a22 # main
@@ -35,6 +48,8 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Verify published frontend import contracts
+        run: python3 -m unittest discover -s scripts -p 'test_*vue*.py'
       - name: Checkout integration-tests
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

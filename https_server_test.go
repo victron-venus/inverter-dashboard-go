@@ -131,7 +131,11 @@ func httpsRequest(t *testing.T, server *http.Server, roots *x509.CertPool, versi
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("close HTTPS response body: %v", err)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +241,11 @@ func TestStartServerRejectsWeakPairBeforeBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer occupied.Close()
+	defer func() {
+		if err := occupied.Close(); err != nil {
+			t.Errorf("close occupied listener: %v", err)
+		}
+	}()
 	command := exec.Command(os.Args[0], "-test.run=^TestStartServerRejectsWeakPairBeforeBinding$")
 	command.Env = append(os.Environ(), "INVERTER_TEST_HTTPS_KEY_POLICY=child", "INVERTER_TEST_HTTPS_PORT="+strconv.Itoa(occupied.Addr().(*net.TCPAddr).Port), "INVERTER_TEST_HTTPS_CERT="+fixture.certFile, "INVERTER_TEST_HTTPS_KEY="+fixture.keyFile)
 	output, err := command.CombinedOutput()

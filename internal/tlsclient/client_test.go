@@ -83,8 +83,16 @@ func configs(t *testing.T, rootKey, intermediateKey, leafKey crypto.Signer) (*tl
 func handshake(t *testing.T, clientConfig, serverConfig *tls.Config) (tls.ConnectionState, error) {
 	t.Helper()
 	a, b := net.Pipe()
-	defer a.Close()
-	defer b.Close()
+	defer func() {
+		if err := a.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close server pipe: %v", err)
+		}
+	}()
+	defer func() {
+		if err := b.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close client pipe: %v", err)
+		}
+	}()
 	if err := a.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +251,11 @@ func TestOwnedTransportPreservesPlainHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			t.Errorf("close HTTP response body: %v", err)
+		}
+	}()
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("status %d", response.StatusCode)
 	}

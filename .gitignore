@@ -91,3 +91,6 @@ yarn-error.log*
 .release-plan.json
 .release-inputs.json
 release-assets/
+
+# Synthetic browser traces and local evidence
+.compatibility/
