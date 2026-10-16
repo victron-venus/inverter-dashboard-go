@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="840" viewBox="0 0 1280 840" role="img" aria-labelledby="title desc">
+  <title id="title">Go dashboard update process and separate evidence stages</title>
+  <desc id="desc">Six numbered stages follow a serpentine path. One: change the owning source. Two: reproduce, test and review the exact commit. Three: verify and adopt an official frontend when the UI changes. Four: release the backend through its saved plan and artifact checks. Five: deploy to k3s only when authorized, preserving private persistent state. Six: verify the browser and reported behavior. The process is not a completion chart: tests, release, rollout and browser acceptance require separate evidence.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#415e7a"/></marker>
+    <style>
+      text { font-family: system-ui, -apple-system, sans-serif; fill: #142b49; }
+      .title { font-size: 32px; font-weight: 750; }
+      .sub { font-size: 19px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 18px; }
+      .number { font-size: 20px; font-weight: 750; }
+      .flow { fill: none; stroke: #415e7a; stroke-width: 2.5; marker-end: url(#arrow); }
+      .card { stroke-width: 1.5; }
+    </style>
+  </defs>
+  <rect width="1280" height="840" rx="24" fill="#f6f8fc"/>
+  <text x="32" y="54" class="title">From source change to a verified dashboard</text>
+  <text x="32" y="91" class="sub">Follow the numbered stages. Each stage needs its own evidence.</text>
+  <text x="32" y="120" class="body">An update path, not a release-status or completion chart.</text>
+
+  <rect x="30" y="160" width="380" height="205" rx="18" class="card" fill="#dff4ef" stroke="#88c7b7"/>
+  <circle cx="63" cy="194" r="18" fill="#a9e1d1"/><text x="63" y="201" text-anchor="middle" class="number">1</text>
+  <text x="95" y="202" class="heading">Change the source</text>
+  <text x="53" y="246" class="body">Go server here; shared UI in Vue.</text>
+  <text x="53" y="275" class="body">Keep a focused, reviewed change.</text>
+  <text x="53" y="304" class="body">Preserve private Home inventory,</text>
+  <text x="53" y="333" class="body">credentials and persistent identity.</text>
+
+  <rect x="450" y="160" width="380" height="205" rx="18" class="card" fill="#e5efff" stroke="#99b6e3"/>
+  <circle cx="483" cy="194" r="18" fill="#bfd5fa"/><text x="483" y="201" text-anchor="middle" class="number">2</text>
+  <text x="515" y="202" class="heading">Test and review</text>
+  <text x="473" y="246" class="body">Reproduce the actual failure.</text>
+  <text x="473" y="275" class="body">Run scoped tests and required CI.</text>
+  <text x="473" y="304" class="body">Inspect findings for the exact head.</text>
+  <text x="473" y="333" class="body">Record scope and known limits.</text>
+
+  <rect x="870" y="160" width="380" height="205" rx="18" class="card" fill="#eee7ff" stroke="#baa5e3"/>
+  <circle cx="903" cy="194" r="18" fill="#d4c3f5"/><text x="903" y="201" text-anchor="middle" class="number">3</text>
+  <text x="935" y="202" class="heading">Official frontend</text>
+  <text x="893" y="246" class="body">When UI changes, verify its release.</text>
+  <text x="893" y="275" class="body">Embed exact bytes and inventory.</text>
+  <text x="893" y="304" class="body">Record source and artifact receipt.</text>
+  <text x="893" y="333" class="body">Check the served static resources.</text>
+
+  <path d="M410 264 H444" class="flow"/>
+  <path d="M830 264 H864" class="flow"/>
+  <path d="M1060 365 V429" class="flow"/>
+
+  <rect x="870" y="435" width="380" height="205" rx="18" class="card" fill="#fff0dd" stroke="#e2bd87"/>
+  <circle cx="903" cy="469" r="18" fill="#f5d5a8"/><text x="903" y="476" text-anchor="middle" class="number">4</text>
+  <text x="935" y="477" class="heading">Backend release</text>
+  <text x="893" y="521" class="body">Follow the repository release policy.</text>
+  <text x="893" y="550" class="body">Bind source, plan and artifact checks.</text>
+  <text x="893" y="579" class="body">Verify the published payloads.</text>
+  <text x="893" y="608" class="body">A merged PR alone is not a release.</text>
+
+  <rect x="450" y="435" width="380" height="205" rx="18" class="card" fill="#e5efff" stroke="#99b6e3"/>
+  <circle cx="483" cy="469" r="18" fill="#bfd5fa"/><text x="483" y="476" text-anchor="middle" class="number">5</text>
+  <text x="515" y="477" class="heading">Authorized k3s rollout</text>
+  <text x="473" y="521" class="body">Use the verified image identity.</text>
+  <text x="473" y="550" class="body">Preserve settings and the push store.</text>
+  <text x="473" y="579" class="body">Check rollout, health and version.</text>
+  <text x="473" y="608" class="body">Pod readiness is not browser proof.</text>
+
+  <rect x="30" y="435" width="380" height="205" rx="18" class="card" fill="#dff4ef" stroke="#88c7b7"/>
+  <circle cx="63" cy="469" r="18" fill="#a9e1d1"/><text x="63" y="476" text-anchor="middle" class="number">6</text>
+  <text x="95" y="477" class="heading">Browser verification</text>
+  <text x="53" y="521" class="body">Inspect version, assets and views.</text>
+  <text x="53" y="550" class="body">Use read-only checks; record limits.</text>
+  <text x="53" y="579" class="body">Provider acceptance and OS display</text>
+  <text x="53" y="608" class="body">are different notification outcomes.</text>
+
+  <path d="M870 538 H836" class="flow"/>
+  <path d="M450 538 H416" class="flow"/>
+
+  <rect x="30" y="686" width="1220" height="120" rx="18" fill="#ffffff" stroke="#cfdae8" stroke-width="1.5"/>
+  <text x="53" y="722" class="heading">What a source test can establish</text>
+  <text x="53" y="754" class="body">The polling regression checks parsed durations. It does not establish release, deployment or hardware acceptance.</text>
+  <text x="53" y="784" class="body">No physical command or real alarm acknowledgement is needed to validate this documentation.</text>
+</svg>

@@ -1,201 +1,39 @@
-# NPM Commands Guide
+# npm and the Go dashboard
 
-This project now supports npm commands for familiar Node.js-style workflows alongside the existing Makefile.
+The application is built and run with Go. It is not an npm-distributed server, and Node.js is not required for an installed binary or container.
 
-## Quick Start with NPM
+The historical [package.json](package.json) contains convenience wrappers around Go, Make and Docker commands. Its `1.0.0` package version is not the application's release version. Some legacy scripts assume a nonexistent `config/` sample layout or use `go run main.go`, which does not include the other files in the root Go package. `npm install` also invokes `go mod tidy`, potentially changing dependency files. Prefer the supported commands below rather than these wrappers.
 
-```bash
-# Install dependencies (uses go mod)
-npm install
+## Build and run
 
-# Create config file from sample
-npm run setup
+Use the toolchain declared in [go.mod](go.mod), from the repository root:
 
-# Build the project
-npm run build
-
-# Run tests
-npm test
-
-# Start the application
-npm start
+```sh
+go mod download
+go build -trimpath -ldflags "-X main.Version=$(cat VERSION)" -o inverter-dashboard .
+./inverter-dashboard --version
+cp config.yaml.example config.yaml
+chmod 600 config.yaml
 ```
 
-## Available NPM Scripts
+Edit the configuration, provide private authentication settings, then run `./inverter-dashboard` from that directory. Do not start an unconfigured process against a real installation. For a development run that includes the complete package, use `go run .` after the same configuration review.
 
-### Core Commands
-- **`npm install`** - Install Go dependencies (go mod download && go mod tidy)
-- **`npm run build`** - Build the Go binary (go build -o inverter-dashboard .)
-- **`npm run build:release`** - Build for all platforms (make release)
-- **`npm start`** - Run the compiled binary
-- **`npm run run`** - Run directly with go run (development)
+[README.md](README.md) explains installation; [the configuration reference](docs/configuration.md) explains working-directory lookup and precedence. Settings and Web Push storage require persistent writable paths independent of the executable.
 
-### Development Commands
-- **`npm run dev`** - Run with live reload using Air tool (requires `air` to be installed)
-- **`npm test`** - Run all Go tests (go test -v ./...)
-- **`npm run test:watch`** - Run tests (alias for npm test)
-- **`npm run test:coverage`** - Run tests with coverage report
-- **`npm run lint`** - Run golangci-lint linter
-- **`npm run lint:fix`** - Run linter with auto-fix
-- **`npm run fmt`** - Format Go code (go fmt ./...)
-- **`npm run fmt:check`** - Check if code is formatted
+## Test and contribute
 
-### Utility Commands
-- **`npm run clean`** - Remove build artifacts and coverage files
-- **`npm run setup`** - Create config.yaml from sample if it doesn't exist
-- **`npm run version`** - Show current version from VERSION file
-- **`npm run help`** - Display all available npm scripts
+The authoritative full local check entry point is:
 
-### Docker Commands
-- **`npm run docker:build`** - Build Docker image
-- **`npm run docker:run`** - Run Docker container
-- **`npm run docker:stop`** - Stop and remove Docker container
-- **`npm run docker:clean`** - Stop container and remove image
-
-## NPM vs Makefile Comparison
-
-| Task | NPM Command | Makefile Equivalent |
-|------|------------|-------------------|
-| Install deps | `npm install` | `make deps` |
-| Build | `npm run build` | `make build` |
-| Build all platforms | `npm run build:release` | `make release` |
-| Run tests | `npm test` | `make test` |
-| Run app | `npm start` | `make run` |
-| Clean | `npm run clean` | `make clean` |
-| Lint | `npm run lint` | `make lint` |
-| Format | `npm run fmt` | `make fmt` |
-
-## Initial Setup with NPM
-
-```bash
-# Clone repository
-git clone https://github.com/victron-venus/inverter-dashboard-go.git
-cd inverter-dashboard-go
-
-# Install dependencies
-npm install
-
-# Setup configuration
-npm run setup
-
-# Edit config/config.yaml with your settings
-
-# Build and run
-npm run build
-npm start
+```sh
+bash scripts/ci.sh
 ```
 
-## Development Workflow
+Install its required Go, golangci-lint and govulncheck tools first. For a focused change, run the relevant package tests and the configured pre-commit hooks, then follow [CONTRIBUTING.md](CONTRIBUTING.md) and [the developer guide](docs/development.md). Do not infer release readiness from `npm test` alone.
 
-```bash
-# 1. Install dependencies
-npm install
+## Frontend work
 
-# 2. Setup config
-npm run setup
-# Edit config/config.yaml
+Vue source development belongs in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue), using that repository's Node version, lockfile and checks. Do not edit generated files in `internal/html/vue-ui` or install frontend dependencies here to rebuild them. The Go repository embeds a reviewed official frontend artifact and records its provenance in [vue-ui-source.json](internal/html/vue-ui-source.json).
 
-# 3. Run tests
-npm test
+Release versions come from [VERSION](VERSION) and the saved release plan, not npm's `version` command. [RELEASING.md](RELEASING.md) defines publication and promotion.
 
-# 4. Build
-npm run build
-
-# 5. Run the app
-npm start
-
-# Or use live reload during development
-npm run dev  # Requires Air to be installed
-```
-
-## Testing with NPM
-
-```bash
-# Run all tests
-npm test
-
-# Run tests with coverage report
-npm run test:coverage
-# Opens coverage.html in browser
-```
-
-## CI/CD Integration with NPM
-
-For CI/CD pipelines that expect Node.js projects:
-
-```yaml
-# Example GitHub Actions workflow
-name: Build and Test
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: npm install
-      - run: npm test
-      - run: npm run build
-```
-
-## Requirements
-
-- Node.js 14.0.0 or higher
-- Go 1.22 or higher
-- npm (usually comes with Node.js)
-
-## NPM-Specific Files
-
-- **`package.json`** - NPM configuration with all scripts
-- **`package-lock.json`** - Auto-generated lock file
-- **`.npmignore`** - Files to ignore when publishing to npm registry
-- **`scripts/dev.sh`** - Helper script for dev command
-
-## Why NPM for a Go Project?
-
-Using NPM commands provides:
-
-1. **Familiarity** for JavaScript/Node.js developers
-2. **Consistency** with frontend projects in monorepos
-3. **Tooling integration** with IDEs that expect npm scripts
-4. **CI/CD compatibility** with existing Node.js-based pipelines
-5. **Unified interface** - same commands work regardless of backend language
-
-## Troubleshooting
-
-### npm: command not found
-```bash
-# Install Node.js and npm
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-```
-
-### Go command fails in npm scripts
-Make sure Go is installed and in your PATH:
-```bash
-go version
-```
-
-### Permission denied for scripts/dev.sh
-```bash
-chmod +x scripts/dev.sh
-```
-
-## Migration from Makefile to NPM
-
-Existing Make commands continue to work. You can gradually migrate to NPM commands:
-
-```bash
-# Instead of:
-make build
-
-# Use:
-npm run build
-
-# Both work! Use whichever you prefer.
-```
+The illustrated [process and results guide](docs/process-and-results.md) follows a change from source tests through official frontend adoption, backend release, authorized deployment and browser verification. npm wrappers do not replace those gates.
