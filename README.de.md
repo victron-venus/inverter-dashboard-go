@@ -6,6 +6,8 @@ Weboberfläche für eine Victron-Anlage: ein Go-Server mit eingebetteter Vue-Obe
 
 ![Architektur: MQTT oder HTTPS-Gateway liefern Daten an den Go-Server; Browser, Home Assistant und privater Speicher sind getrennte Komponenten.](docs/assets/architecture.svg)
 
+Der [bebilderte Leitfaden zu Ablauf und Ergebnissen](docs/process-and-results.md) erklärt die Aktualisierungsschritte, die korrigierte Prüfung des HA-Abfrageintervalls und die Home-Zuordnung mit stabilen Schlüsseln. Ergebnisse der Quellcodetests werden von Release-, Bereitstellungs- und Browsernachweisen getrennt.
+
 ## Funktionen
 
 - Netz, Batterien, PV-Erzeugung, Verbrauch, Wasser und Elektrofahrzeug, soweit die installierten Dienste entsprechende Daten liefern.

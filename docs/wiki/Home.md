@@ -13,6 +13,8 @@ Start with the [installation and language guides](https://github.com/victron-ven
 - [Troubleshooting](Troubleshooting.md): read-only diagnosis and useful sanitized reports.
 - [Development](Development.md): source ownership, tests, official frontend adoption and release policy.
 
+- [Process and results](Process-and-results.md): illustrated update stages, the polling regression and the Home mapping contract.
+
 ## Essential boundaries
 
 An unset `DASHBOARD_SECRET` disables application authentication. Retained or stale telemetry does not authorize a new control command. DRY is not a global lock: persistent setpoint override follows its own controller protocol. A queued notification is not proof of OS display. Settings and push identity need persistent private storage, not a read-only configuration mount or temporary container filesystem.

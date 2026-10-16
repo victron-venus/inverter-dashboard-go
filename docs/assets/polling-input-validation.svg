@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="960" viewBox="0 0 1280 960" role="img" aria-labelledby="title desc">
+  <title id="title">Home Assistant polling interval validation in the Go configuration</title>
+  <desc id="desc">Read a YAML number in seconds and multiply it by one billion to compute nanoseconds. If the result is NaN, less than one, or greater than or equal to float64 of math.MaxInt64, use the existing twelve-second default. Otherwise retain the configured seconds. A quarter second produces 250 milliseconds. Zero, negative, NaN, infinities, positive subnanosecond values and overflow fall back to twelve seconds. This is a functional decision diagram, not a performance graph or recommended polling range.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#415e7a"/></marker>
+    <style>
+      text { font-family: system-ui, -apple-system, sans-serif; fill: #142b49; }
+      .title { font-size: 32px; font-weight: 750; }
+      .sub { font-size: 19px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 18px; }
+      .code { font-family: ui-monospace, monospace; font-size: 18px; }
+      .tag { font-size: 19px; font-weight: 700; }
+      .flow { fill: none; stroke: #415e7a; stroke-width: 2.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1280" height="960" rx="24" fill="#f6f8fc"/>
+  <text x="32" y="54" class="title">A YAML number must become a usable duration</text>
+  <text x="32" y="91" class="sub">Go HA polling: representability check before conversion to integer nanoseconds</text>
+
+  <rect x="340" y="132" width="600" height="98" rx="18" fill="#e5efff" stroke="#99b6e3" stroke-width="1.5"/>
+  <text x="640" y="168" text-anchor="middle" class="heading">Input: configured seconds v</text>
+  <text x="640" y="202" text-anchor="middle" class="code">homeassistant.poll_interval_seconds</text>
+  <path d="M640 230 V275" class="flow"/>
+
+  <rect x="250" y="281" width="780" height="150" rx="18" fill="#eee7ff" stroke="#baa5e3" stroke-width="1.5"/>
+  <text x="640" y="319" text-anchor="middle" class="heading">Compute n = v × 1,000,000,000</text>
+  <text x="640" y="356" text-anchor="middle" class="code">IsNaN(n) OR n &lt; 1 OR n &gt;= float64(math.MaxInt64)?</text>
+  <text x="640" y="396" text-anchor="middle" class="body">The upper floating-point boundary is excluded.</text>
+
+  <path d="M440 431 V466 H300 V502" class="flow"/>
+  <path d="M840 431 V466 H980 V502" class="flow"/>
+  <rect x="333" y="449" width="55" height="33" rx="10" fill="#f6f8fc"/>
+  <text x="360" y="473" text-anchor="middle" class="tag">NO</text>
+  <rect x="889" y="449" width="62" height="33" rx="10" fill="#f6f8fc"/>
+  <text x="920" y="473" text-anchor="middle" class="tag">YES</text>
+
+  <rect x="30" y="508" width="550" height="237" rx="18" fill="#dff4ef" stroke="#88c7b7" stroke-width="1.5"/>
+  <text x="55" y="548" class="heading">Keep the configured seconds</text>
+  <text x="55" y="589" class="body">0.25 s → 250 ms</text>
+  <text x="55" y="621" class="body">12 s → 12 s</text>
+  <text x="55" y="662" class="body">Positive and representable at nanosecond scale.</text>
+  <text x="55" y="694" class="body">Fractional seconds are allowed.</text>
+  <text x="55" y="725" class="body">Duration conversion uses whole nanoseconds.</text>
+
+  <rect x="700" y="508" width="550" height="237" rx="18" fill="#fff0dd" stroke="#e2bd87" stroke-width="1.5"/>
+  <text x="725" y="548" class="heading">Use the existing 12-second default</text>
+  <text x="725" y="589" class="body">NaN and both infinities</text>
+  <text x="725" y="621" class="body">Zero or negative seconds</text>
+  <text x="725" y="653" class="body">Subnanosecond: 1e-12 s → 0.001 ns</text>
+  <text x="725" y="685" class="body">Overflow: 1e100 s, or the upper boundary</text>
+  <text x="725" y="725" class="body">Fallback happens before creating the ticker.</text>
+
+  <rect x="30" y="790" width="1220" height="136" rx="18" fill="#ffffff" stroke="#cfdae8" stroke-width="1.5"/>
+  <text x="55" y="827" class="heading">Functional result, not a benchmark</text>
+  <text x="55" y="861" class="body">The YAML regression checks durations and creates/stops a ticker for each case. It performs no HA request.</text>
+  <text x="55" y="894" class="body">Accepted does not mean recommended: choose sensible polling and respect the separate freshness limits.</text>
+</svg>

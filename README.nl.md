@@ -6,6 +6,8 @@ Webdashboard voor een Victron-installatie: een Go-server met de Vue-interface in
 
 ![Architectuur: MQTT of de HTTPS-gateway levert gegevens aan de Go-server; browser, Home Assistant en privéopslag zijn afzonderlijke onderdelen.](docs/assets/architecture.svg)
 
+De [geïllustreerde gids over het proces en de resultaten](docs/process-and-results.md) beschrijft de updatestappen, de verbeterde validatie van het HA-pollinterval en de Home-mapping met stabiele sleutels. Resultaten van broncodetests staan los van bewijs van een release, uitrol en controle in de browser.
+
 ## Functies
 
 - Net, accu’s, zonneproductie, verbruik, water en elektrisch voertuig, voor zover de geïnstalleerde diensten deze gegevens leveren.

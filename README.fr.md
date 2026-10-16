@@ -6,6 +6,8 @@ Tableau de bord web pour une installation Victron : un serveur Go avec l’inter
 
 ![Architecture : MQTT ou la passerelle HTTPS alimentent le serveur Go ; navigateur, Home Assistant et stockage privé sont des composants distincts.](docs/assets/architecture.svg)
 
+Le [guide illustré du processus et des résultats](docs/process-and-results.md) explique les étapes de mise à jour, la correction de la validation de l’intervalle HA et les règles du dictionnaire Home à clés stables. Les résultats des tests du code sont distingués des preuves de publication, de déploiement et de vérification dans le navigateur.
+
 ## Fonctionnalités
 
 - Réseau, batteries, production solaire, consommation, eau et véhicule électrique, selon les services et données disponibles dans l’installation.

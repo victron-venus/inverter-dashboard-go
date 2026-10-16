@@ -38,3 +38,5 @@ This is a checklist for a specific change, not a declaration of complete parity 
 - [ ] Follow [RELEASING.md](RELEASING.md) for signed source, saved plans, artifact verification and separate deployment authorization.
 
 See [docs/development.md](docs/development.md) for source locations and [docs/troubleshooting.md](docs/troubleshooting.md) for read-only operational checks.
+
+Use the illustrated [process and results guide](docs/process-and-results.md) to record which stages have evidence. It includes the HA polling regression and the stable-key Home mapping contract; its diagrams are not completed-check markers.

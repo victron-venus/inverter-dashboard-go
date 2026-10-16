@@ -35,3 +35,5 @@ Install its required Go, golangci-lint and govulncheck tools first. For a focuse
 Vue source development belongs in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue), using that repository's Node version, lockfile and checks. Do not edit generated files in `internal/html/vue-ui` or install frontend dependencies here to rebuild them. The Go repository embeds a reviewed official frontend artifact and records its provenance in [vue-ui-source.json](internal/html/vue-ui-source.json).
 
 Release versions come from [VERSION](VERSION) and the saved release plan, not npm's `version` command. [RELEASING.md](RELEASING.md) defines publication and promotion.
+
+The illustrated [process and results guide](docs/process-and-results.md) follows a change from source tests through official frontend adoption, backend release, authorized deployment and browser verification. npm wrappers do not replace those gates.
