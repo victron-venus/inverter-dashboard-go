@@ -21,7 +21,7 @@ jobs:
       browser-extended: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.channel == '' || github.event.inputs.channel == 'rc')) }}
   ci:
     name: CI
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@ece79d1b1ca40d3068d373e515daf58115489a22 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@4e4a68b6954a1d4003b8c85c8fbac8e6a5887dab # main
     with:
       go-version: '1.26.9'
       # working-directory: '.'  # default
