@@ -1,114 +1,34 @@
-# System Architecture
+# System architecture
 
-## Data Flow
+The Go backend serves the shared Vue dashboard, combines telemetry from the
+selected native source with controller state and optional Home Assistant data,
+and validates browser commands before dispatch.
 
 ```mermaid
 flowchart LR
-    subgraph Venus["Venus OS"]
-        MQTT["MQTT Broker"]
-        INV["inverter-control"]
-    end
-
-    subgraph Dashboard["inverter-dashboard-go"]
-        WS["WebSocket"]
-        API["HA Client\n(optional)"]
-    end
-
-    subgraph Client["Browser Clients"]
-        UI["Single Page App"]
-    end
-
-    INV -->|"inverter/state"| MQTT
-    MQTT -->|"subscribe"| WS
-    WS -->|"push"| UI
-    WS -.->|"poll HA"| API
-
-    style WS fill:#00ADD8,color:#fff
+    Native["Cerbo MQTT or HTTPS gateway"] --> Backend["Go backend"]
+    Controller["inverter-control state"] --> Backend
+    HA["Configured Home Assistant entities"] --> Backend
+    Backend -->|"WebSocket state"| Browser["Shared Vue dashboard"]
+    Browser -->|"Commands; token auth when configured"| Backend
+    Backend -->|"Command after source and freshness checks"| Native
 ```
 
-## Binary Deployment
+Native services, controller messages and configured HA entities have distinct
+field ownership. Source changes retire the old connection's authority; retained
+or stale telemetry does not grant permission to issue commands. A transport
+accepting a command is separate from observing its physical result.
 
-```mermaid
-flowchart TB
-    subgraph Build["CI/CD"]
-        GOPROXY["Go Proxy"]
-        BINARY["Darwin/Linux\nBinaries"]
-    end
+The backend checks command tokens when `DASHBOARD_SECRET` is configured; an empty
+secret disables token authentication.
 
-    subgraph Deploy["Deployment"]
-        DOCKER["Docker Hub\nalvit/inverter-dashboard-go"]
-        SYNO["Synology NAS\nDocker"]
-    end
+The detailed [architecture and source map](../../docs/development.md#source-map) describes the current
+implementation. Use [configuration](../../docs/configuration.md) for supported keys, paths and
+precedence, and [operations and troubleshooting](../../docs/operations.md) for installation
+and read-only checks. The browser bundle is maintained in
+[inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue).
 
-    subgraph Runtime["Runtime"]
-        MQTT["MQTT Broker"]
-        WS["WebSocket Server"]
-    end
+## Related documentation
 
-    GOPROXY --> BINARY --> DOCKER --> SYNO
-    SYNO --> WS
-    WS --> MQTT
-
-    style WS fill:#00ADD8,color:#fff
-    style BINARY fill:#00ADD8,color:#fff
-    style DOCKER fill:#2496ED,color:#fff
-```
-
-## Runbook: Troubleshooting
-
-### Docker Container Not Starting
-
-**Symptoms:**
-- Container exits immediately
-- "exec format error"
-
-**Actions:**
-```bash
-# Check architecture
-uname -m
-# Should match: amd64 or arm64
-
-# Try specific tag
-docker pull alvit/inverter-dashboard-go:amd64
-docker run alvit/inverter-dashboard-go:amd64
-```
-
-### WebSocket Connection Issues
-
-**Symptoms:**
-- Dashboard shows connecting...
-- WebSocket errors in browser console
-
-**Actions:**
-```bash
-# Check MQTT connectivity from container
-docker exec inverter-dashboard-go nc -zv MQTT_HOST 1883
-
-# Verify binary is listening
-docker exec inverter-dashboard-go ss -tlnp
-```
-
-### Out of Memory on NAS
-
-**Symptoms:**
-- Container OOM killed
-- NAS alerts
-
-**Actions:**
-```bash
-# Limit memory
-docker run --memory=256m alvit/inverter-dashboard-go:latest
-
-# Or in compose
-services:
-  dashboard:
-    image: alvit/inverter-dashboard-go:latest
-    mem_limit: 256m
-```
-
----
-
-## Related Documentation
-
-- [inverter-control System Architecture](../inverter-control/.github/docs/system-architecture.md)
-- [ADR-002: MQTT Bridge Architecture](../inverter-control/.github/docs/adr-001-grid-zero-architecture.md)
+- [inverter-control architecture](https://github.com/victron-venus/inverter-control/blob/main/.github/docs/system-architecture.md)
+- [ADR-002: MQTT bridge architecture](https://github.com/victron-venus/inverter-control/blob/main/.github/docs/adr-001-grid-zero-architecture.md#adr-002-mqtt-bridge-architecture)
