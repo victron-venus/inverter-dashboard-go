@@ -84,9 +84,7 @@ Web Push uses startup/reconnect priming, persistent deduplication and bounded de
 
 ## UI versions and languages
 
-The embedded UI is the official **Vue v2.2.8** artifact (package `2.2.8`, source `ff3865d373cc3819b83db0328d9855a2bdec9859`). [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes. The files are byte-identical to the accepted RC `v2.2.8-rc.1` (build run `38861405495`).
-
-These six READMEs document the Go application. Translations added to the separate Vue source do **not** appear in an existing Go binary until an official frontend artifact is reviewed and embedded. Do not infer complete UI translation support from the documentation languages or bundled date-library locale files.
+The embedded UI is the official **Vue v2.2.9** artifact (package `2.2.9`, source `f86943ebc764688c32bc4389f2276bc12682a90e`). [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes. The files are byte-identical to the accepted RC `v2.2.9-rc.2` (build run `39039690585`). Interface text, dates, times, retained application errors and theme labels support English, Russian, Ukrainian, German, French and Dutch; provider-supplied messages retain their original text. See [language support](docs/development.md#shared-ui-and-translations).
 
 ## Help and development
 
