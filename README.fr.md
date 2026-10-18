@@ -8,6 +8,12 @@ Tableau de bord web pour une installation Victron : un serveur Go avec l’inter
 
 Le [guide illustré du processus et des résultats](docs/process-and-results.md) explique les étapes de mise à jour, la correction de la validation de l’intervalle HA et les règles du dictionnaire Home à clés stables. Les résultats des tests du code sont distingués des preuves de publication, de déploiement et de vérification dans le navigateur.
 
+[![Interface Vue commune v2.2.9 intégrée au tableau de bord Go, avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*Interface Vue commune v2.2.9 intégrée au tableau de bord Go, avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.*
+
+[Source de l’image et régénération (en anglais)](docs/images/README.md).
+
 ## Fonctionnalités
 
 - Réseau, batteries, production solaire, consommation, eau et véhicule électrique, selon les services et données disponibles dans l’installation.

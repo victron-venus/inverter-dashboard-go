@@ -8,6 +8,12 @@ Weboberfläche für eine Victron-Anlage: ein Go-Server mit eingebetteter Vue-Obe
 
 Der [bebilderte Leitfaden zu Ablauf und Ergebnissen](docs/process-and-results.md) erklärt die Aktualisierungsschritte, die korrigierte Prüfung des HA-Abfrageintervalls und die Home-Zuordnung mit stabilen Schlüsseln. Ergebnisse der Quellcodetests werden von Release-, Bereitstellungs- und Browsernachweisen getrennt.
 
+[![Die im Go-Dashboard eingebettete Vue-Oberfläche v2.2.9 mit synthetischen Demodaten. Klicken Sie auf das Bild, um den ursprünglichen Screenshot zu öffnen.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*Die im Go-Dashboard eingebettete Vue-Oberfläche v2.2.9 mit synthetischen Demodaten. Klicken Sie auf das Bild, um den ursprünglichen Screenshot zu öffnen.*
+
+[Bildquelle und erneute Erstellung (Englisch)](docs/images/README.md).
+
 ## Funktionen
 
 - Netz, Batterien, PV-Erzeugung, Verbrauch, Wasser und Elektrofahrzeug, soweit die installierten Dienste entsprechende Daten liefern.
