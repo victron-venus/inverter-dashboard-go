@@ -8,6 +8,12 @@ Webdashboard voor een Victron-installatie: een Go-server met de Vue-interface in
 
 De [geïllustreerde gids over het proces en de resultaten](docs/process-and-results.md) beschrijft de updatestappen, de verbeterde validatie van het HA-pollinterval en de Home-mapping met stabiele sleutels. Resultaten van broncodetests staan los van bewijs van een release, uitrol en controle in de browser.
 
+[![De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.*
+
+[Afbeeldingsbron en opnieuw genereren (Engels)](docs/images/README.md).
+
 ## Functies
 
 - Net, accu’s, zonneproductie, verbruik, water en elektrisch voertuig, voor zover de geïnstalleerde diensten deze gegevens leveren.

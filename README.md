@@ -10,6 +10,12 @@ A Go server for a Victron installation, with the shared Vue dashboard embedded i
 
 This is a Go application: Node.js and npm are not required to run it. The browser UI is maintained in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue); the Python server is [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard).
 
+[![Shared Vue interface v2.2.9 bundled by the Go dashboard, shown with synthetic demonstration data](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*Shared Vue interface v2.2.9 bundled by the Go dashboard, shown with synthetic demonstration data. Click for the original screenshot.*
+
+[Artwork source and regeneration](docs/images/README.md).
+
 ![Architecture: native MQTT or HTTPS gateway feeds the Go server; optional Home Assistant, private persistent storage and a browser complete the system.](docs/assets/architecture.svg)
 
 The illustrated [process and results guide](docs/process-and-results.md) explains the update stages, the HA polling-duration regression and the Home mapping contract. It separates source-test results from official release, deployment and browser acceptance.
