@@ -8,6 +8,12 @@ Weboberfläche für eine Victron-Anlage: ein Go-Server mit eingebetteter Vue-Obe
 
 Der [bebilderte Leitfaden zu Ablauf und Ergebnissen](docs/process-and-results.md) erklärt die Aktualisierungsschritte, die korrigierte Prüfung des HA-Abfrageintervalls und die Home-Zuordnung mit stabilen Schlüsseln. Ergebnisse der Quellcodetests werden von Release-, Bereitstellungs- und Browsernachweisen getrennt.
 
+[![Die im Go-Dashboard eingebettete Vue-Oberfläche v2.2.9 mit synthetischen Demodaten. Klicken Sie auf das Bild, um den ursprünglichen Screenshot zu öffnen.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*Die im Go-Dashboard eingebettete Vue-Oberfläche v2.2.9 mit synthetischen Demodaten. Klicken Sie auf das Bild, um den ursprünglichen Screenshot zu öffnen.*
+
+[Bildquelle und erneute Erstellung (Englisch)](docs/images/README.md).
+
 ## Funktionen
 
 - Netz, Batterien, PV-Erzeugung, Verbrauch, Wasser und Elektrofahrzeug, soweit die installierten Dienste entsprechende Daten liefern.
@@ -69,6 +75,6 @@ Start und Wiederverbindung versenden alte Ereignisse nicht erneut. Grenzen: 64 A
 
 Öffnet sich die Seite nicht, prüfen Sie Bind-Adresse, DNS/VPN-Route, TLS und Authentifizierung. Sind Home-Schaltflächen nicht bedienbar, prüfen Sie echte HA-Beobachtungen statt nur eines Verbindungssymbols. Gehen Einstellungen verloren, prüfen Sie Pfad, Rechte und Speicherlebensdauer. Beginnen Sie mit [Prüfungen ohne Gerätesteuerung](docs/troubleshooting.md). Veröffentlichen Sie keine Token, Push-Endpunkte oder privaten Konfigurationsdateien.
 
-Eingebettet ist das offizielle Artefakt **Vue v2.2.8** (Paketversion `2.2.8`, Quellstand `ff3865d373cc3819b83db0328d9855a2bdec9859`). Der [Herkunftsnachweis](internal/html/vue-ui-source.json) enthält Metadaten und Hashes. Die Dateien sind bytegleich mit der akzeptierten RC `v2.2.8-rc.1` (Build-Lauf `38861405495`). Neue Übersetzungen im separaten Vue-Repository erscheinen erst nach Übernahme eines offiziellen Artefakts in einer Go-Binärdatei. Die README-Sprache belegt keine bereits ausgelieferte Übersetzung der Oberfläche.
+Eingebettet ist das offizielle Artefakt **Vue v2.2.9** (Paketversion `2.2.9`, Quellstand `f86943ebc764688c32bc4389f2276bc12682a90e`). Der [Herkunftsnachweis](internal/html/vue-ui-source.json) enthält Metadaten und Datei-Hashes. Die Dateien sind bytegleich mit der akzeptierten RC `v2.2.9-rc.2` (Build-Lauf `39039690585`). Oberflächentexte, Datum, Uhrzeit, gespeicherte Anwendungsfehler und Designbezeichnungen unterstützen Englisch, Russisch, Ukrainisch, Deutsch, Französisch und Niederländisch; Meldungen externer Quellen behalten ihren Originaltext. Siehe [Sprachunterstützung](docs/development.md#shared-ui-and-translations).
 
 Für Beiträge: [Entwicklerhandbuch](docs/development.md), [CONTRIBUTING](CONTRIBUTING.md) und `bash scripts/ci.sh`. Die Oberfläche wird in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) entwickelt; generierte eingebettete Dateien nicht manuell bearbeiten. [Wiki](docs/wiki/Home.md) · [Prüfliste](README-CHECKLIST.md) · [Release-Regeln](RELEASING.md) · [Lizenz](LICENSE).

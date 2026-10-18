@@ -8,6 +8,12 @@ Webdashboard voor een Victron-installatie: een Go-server met de Vue-interface in
 
 De [geïllustreerde gids over het proces en de resultaten](docs/process-and-results.md) beschrijft de updatestappen, de verbeterde validatie van het HA-pollinterval en de Home-mapping met stabiele sleutels. Resultaten van broncodetests staan los van bewijs van een release, uitrol en controle in de browser.
 
+[![De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+
+*De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.*
+
+[Afbeeldingsbron en opnieuw genereren (Engels)](docs/images/README.md).
+
 ## Functies
 
 - Net, accu’s, zonneproductie, verbruik, water en elektrisch voertuig, voor zover de geïnstalleerde diensten deze gegevens leveren.
@@ -69,6 +75,6 @@ Starten en opnieuw verbinden versturen oude gebeurtenissen niet opnieuw. Grenzen
 
 Opent de pagina niet, controleer dan luisteradres, DNS/VPN-route, TLS en authenticatie. Controleer bij onbruikbare Home-knoppen de daadwerkelijke HA-waarnemingen, niet alleen een verbindingsicoon. Controleer bij verdwenen instellingen pad, rechten en levensduur van het volume. Begin met [controles zonder apparatuur te bedienen](docs/troubleshooting.md). Publiceer geen tokens, Push-endpoints of privéconfiguratie.
 
-Ingebouwd is het officiële artefact **Vue v2.2.8** (pakketversie `2.2.8`, bron `ff3865d373cc3819b83db0328d9855a2bdec9859`). Het [herkomstbestand](internal/html/vue-ui-source.json) bevat metadata en hashes. De bestanden zijn byte-identiek aan de goedgekeurde RC `v2.2.8-rc.1` (buildrun `38861405495`). Nieuwe vertalingen in het aparte Vue-project verschijnen pas na opname van een officieel artefact in een Go-binary. De taal van deze README bewijst niet dat de ingebouwde interface al vertaald is.
+Ingebouwd is het officiële artefact **Vue v2.2.9** (pakketversie `2.2.9`, bron `f86943ebc764688c32bc4389f2276bc12682a90e`). Het [herkomstbestand](internal/html/vue-ui-source.json) bevat metadata en bestandshashes. De bestanden zijn byte-identiek aan de goedgekeurde RC `v2.2.9-rc.2` (buildrun `39039690585`). Interfaceteksten, datums, tijden, bewaarde toepassingsfouten en themalabels ondersteunen Engels, Russisch, Oekraïens, Duits, Frans en Nederlands; berichten van externe bronnen behouden hun oorspronkelijke tekst. Zie [taalondersteuning](docs/development.md#shared-ui-and-translations).
 
 Voor bijdragen: [ontwikkelaarshandleiding](docs/development.md), [CONTRIBUTING](CONTRIBUTING.md) en `bash scripts/ci.sh`. De interface wordt ontwikkeld in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue); wijzig geen ingebouwde gegenereerde bestanden. [Wiki](docs/wiki/Home.md) · [controlelijst](README-CHECKLIST.md) · [releasebeleid](RELEASING.md) · [licentie](LICENSE).
