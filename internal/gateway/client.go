@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -42,6 +44,9 @@ type Client struct {
 	started     bool
 	stopped     bool
 	mapOptions  MapOptions
+	// Only the poll loop uses this flag. HTTP/2 may finish cancelling a
+	// timed-out stream after Do returns, so also drain before the next poll.
+	drainIdleBeforePoll bool
 }
 
 // NewClient builds an IGW HTTPS client. apply receives mapped dashboard state.
@@ -141,6 +146,11 @@ func (c *Client) pollLoop() {
 	c.pollOnce()
 
 	for {
+		if c.drainIdleBeforePoll {
+			// A slow failed request can leave an already-expired tick. Give
+			// stream cancellation the normal poll interval before draining.
+			ticker.Reset(c.cfg.PollInterval)
+		}
 		select {
 		case <-c.ctx.Done():
 			log.Printf("[gateway] poller stopped")
@@ -155,11 +165,23 @@ func (c *Client) pollOnce() {
 	if c.ctx.Err() != nil {
 		return
 	}
+	if c.drainIdleBeforePoll {
+		c.http.CloseIdleConnections()
+		c.drainIdleBeforePoll = false
+	}
 	snap, err := c.FetchSnapshot(c.ctx)
 	if c.ctx.Err() != nil {
 		return
 	}
 	if err != nil {
+		var networkError net.Error
+		if errors.As(err, &networkError) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			// Retire reusable connections after a failed read-only poll. The
+			// next scheduled poll may then dial again after a network move.
+			// Active requests, including commands, are not interrupted/replayed.
+			c.drainIdleBeforePoll = true
+			c.http.CloseIdleConnections()
+		}
 		was := c.connected.Swap(false)
 		log.Printf("[gateway] poll failed: %v", err)
 		if was {
