@@ -8,9 +8,9 @@ Tableau de bord web pour une installation Victron : un serveur Go avec l’inter
 
 Le [guide illustré du processus et des résultats](docs/process-and-results.md) explique les étapes de mise à jour, la correction de la validation de l’intervalle HA et les règles du dictionnaire Home à clés stables. Les résultats des tests du code sont distingués des preuves de publication, de déploiement et de vérification dans le navigateur.
 
-[![Interface Vue commune v2.2.9 intégrée au tableau de bord Go, avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+[![Illustration historique de l’interface Vue v2.2.9 avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
 
-*Interface Vue commune v2.2.9 intégrée au tableau de bord Go, avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.*
+*Illustration historique de l’interface Vue v2.2.9 avec des données de démonstration synthétiques. Cliquez sur l’image pour ouvrir la capture originale.*
 
 [Source de l’image et régénération (en anglais)](docs/images/README.md).
 
@@ -29,7 +29,7 @@ Cela ne garantit pas une équivalence totale avec Desktop ni la prise en charge 
 
 Choisissez une version précise pour votre plateforme dans [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), puis vérifiez les sommes de contrôle et les preuves de provenance publiées. Les versions beta, nightly et RC sont des préversions. La version de base du code figure dans [VERSION](VERSION).
 
-La compilation utilise Go tel que déclaré dans [go.mod](go.mod), actuellement 1.26.9 :
+La compilation utilise Go 1.27.2, sélectionné dans [go.mod](go.mod) ; la version de base du module reste Go 1.26.9 :
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git
@@ -75,6 +75,6 @@ Le démarrage et les reconnexions ne renvoient pas l’historique. Limites : 64 
 
 Si la page ne s’ouvre pas, vérifiez l’adresse d’écoute, le routage DNS/VPN, TLS et l’authentification. Pour des boutons Home indisponibles, vérifiez les observations HA réelles plutôt qu’un simple indicateur de connexion. Pour des paramètres perdus, vérifiez chemin, droits et persistance du volume. Commencez par les [contrôles sans action sur le matériel](docs/troubleshooting.md) ; ne publiez ni jetons, ni endpoints Push, ni configuration privée.
 
-L’interface intégrée provient de l’artefact officiel **Vue v2.2.9** (version du paquet `2.2.9`, source `f86943ebc764688c32bc4389f2276bc12682a90e`). La [preuve de provenance](internal/html/vue-ui-source.json) contient les métadonnées et empreintes des fichiers. Les fichiers sont identiques octet pour octet à la RC validée `v2.2.9-rc.2` (exécution de compilation `39039690585`). Les textes de l’interface, les dates, les heures, les erreurs conservées de l’application et les libellés des thèmes sont disponibles en anglais, russe, ukrainien, allemand, français et néerlandais ; les messages provenant de sources externes conservent leur texte d’origine. Voir le [guide des langues](docs/development.md#shared-ui-and-translations).
+L’interface intégrée provient de l’artefact officiel **Vue v2.2.11-beta.1** (version du paquet `2.2.11-beta.1`, source `01eae482124cd958dd110e362769ba5817d44b6e`). La [preuve de provenance](internal/html/vue-ui-source.json) contient les métadonnées et empreintes des fichiers. La bêta a été importée sans recompilation depuis les fichiers vérifiés de la publication officielle (exécution `39405183480`) ; il s’agit d’une préversion, sans affirmation de validation stable ou RC. Les textes de l’interface, les dates, les heures, les erreurs conservées de l’application et les libellés des thèmes sont disponibles en anglais, russe, ukrainien, allemand, français et néerlandais ; les messages provenant de sources externes conservent leur texte d’origine. Voir le [guide des langues](docs/development.md#shared-ui-and-translations).
 
 Pour contribuer : [guide développeur](docs/development.md), [CONTRIBUTING](CONTRIBUTING.md) et `bash scripts/ci.sh`. L’interface se développe dans [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue) ; ne modifiez pas les fichiers intégrés générés. [Wiki](docs/wiki/Home.md) · [liste de vérification](README-CHECKLIST.md) · [règles de publication](RELEASING.md) · [licence](LICENSE).

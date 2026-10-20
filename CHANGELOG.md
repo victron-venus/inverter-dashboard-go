@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Import the verified official Vue 2.2.11-beta.1 interface without rebuilding.
+  Its WebSocket recovery no longer lets successful HTTP fallback polling hide a
+  silent command connection. Keep the existing reconnect interval and command
+  gates; no commands are replayed.
 - Align the local lint hook with the Go 1.27-compatible golangci-lint 2.14 used by
   CI, retaining its standard checks. Use the reviewed Go 1.27.2 Alpine container
   base and current pinned CI workflows.
@@ -38,8 +42,10 @@ and configured Home controls before accepting the deployment.
 Delayed callbacks from retired sources cannot renew notification state or
 control eligibility. Malformed and nonfinite HA responses do not grant control
 permission. Authentication, TLS verification and command deadlines remain
-required. The synthetic regression tests do not establish physical-device
-acceptance or delivery of operating-system notifications.
+required. The local scan found no affected symbols or imported packages;
+GO-2026-5932 is a module-only finding in unused deprecated OpenPGP packages.
+No scanner exclusion is added. The synthetic regression tests do not establish
+physical-device acceptance or delivery of operating-system notifications.
 
 ## [1.9.14] - 2026-10-18
 

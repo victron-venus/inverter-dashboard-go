@@ -8,9 +8,9 @@ Webdashboard voor een Victron-installatie: een Go-server met de Vue-interface in
 
 De [geïllustreerde gids over het proces en de resultaten](docs/process-and-results.md) beschrijft de updatestappen, de verbeterde validatie van het HA-pollinterval en de Home-mapping met stabiele sleutels. Resultaten van broncodetests staan los van bewijs van een release, uitrol en controle in de browser.
 
-[![De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+[![Historische afbeelding van de Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
 
-*De in het Go-dashboard ingebouwde Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.*
+*Historische afbeelding van de Vue-interface v2.2.9 met synthetische demonstratiegegevens. Klik op de afbeelding voor de oorspronkelijke schermafbeelding.*
 
 [Afbeeldingsbron en opnieuw genereren (Engels)](docs/images/README.md).
 
@@ -29,7 +29,7 @@ Dit is geen garantie voor volledige gelijkheid met Desktop of ondersteuning van 
 
 Kies een specifieke versie voor uw platform bij [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases). Controleer de gepubliceerde controlesommen en herkomstgegevens. Beta-, nightly- en RC-versies zijn voorvertoningen. De basisversie van de broncode staat in [VERSION](VERSION).
 
-Voor het bouwen is Go volgens [go.mod](go.mod) nodig, momenteel 1.26.9:
+Voor het bouwen wordt Go 1.27.2 gebruikt, zoals geselecteerd in [go.mod](go.mod); de modulebasis blijft Go 1.26.9:
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git
@@ -75,6 +75,6 @@ Starten en opnieuw verbinden versturen oude gebeurtenissen niet opnieuw. Grenzen
 
 Opent de pagina niet, controleer dan luisteradres, DNS/VPN-route, TLS en authenticatie. Controleer bij onbruikbare Home-knoppen de daadwerkelijke HA-waarnemingen, niet alleen een verbindingsicoon. Controleer bij verdwenen instellingen pad, rechten en levensduur van het volume. Begin met [controles zonder apparatuur te bedienen](docs/troubleshooting.md). Publiceer geen tokens, Push-endpoints of privéconfiguratie.
 
-Ingebouwd is het officiële artefact **Vue v2.2.9** (pakketversie `2.2.9`, bron `f86943ebc764688c32bc4389f2276bc12682a90e`). Het [herkomstbestand](internal/html/vue-ui-source.json) bevat metadata en bestandshashes. De bestanden zijn byte-identiek aan de goedgekeurde RC `v2.2.9-rc.2` (buildrun `39039690585`). Interfaceteksten, datums, tijden, bewaarde toepassingsfouten en themalabels ondersteunen Engels, Russisch, Oekraïens, Duits, Frans en Nederlands; berichten van externe bronnen behouden hun oorspronkelijke tekst. Zie [taalondersteuning](docs/development.md#shared-ui-and-translations).
+Ingebouwd is het officiële artefact **Vue v2.2.11-beta.1** (pakketversie `2.2.11-beta.1`, bron `01eae482124cd958dd110e362769ba5817d44b6e`). Het [herkomstbestand](internal/html/vue-ui-source.json) bevat metadata en bestandshashes. De bèta is zonder herbouw geïmporteerd uit de geverifieerde bestanden van de officiële publicatie (buildrun `39405183480`); dit is een voorvertoning en geen bewijs van stable- of RC-acceptatie. Interfaceteksten, datums, tijden, bewaarde toepassingsfouten en themalabels ondersteunen Engels, Russisch, Oekraïens, Duits, Frans en Nederlands; berichten van externe bronnen behouden hun oorspronkelijke tekst. Zie [taalondersteuning](docs/development.md#shared-ui-and-translations).
 
 Voor bijdragen: [ontwikkelaarshandleiding](docs/development.md), [CONTRIBUTING](CONTRIBUTING.md) en `bash scripts/ci.sh`. De interface wordt ontwikkeld in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue); wijzig geen ingebouwde gegenereerde bestanden. [Wiki](docs/wiki/Home.md) · [controlelijst](README-CHECKLIST.md) · [releasebeleid](RELEASING.md) · [licentie](LICENSE).
