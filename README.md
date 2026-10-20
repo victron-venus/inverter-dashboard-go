@@ -36,7 +36,8 @@ Feature availability is not a promise that every Desktop function or every firmw
 
 For a packaged installation, choose an explicit version and platform from [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), verify its published checksums and provenance, and follow the release notes. Beta/nightly/RC artifacts are previews. The committed base version is in [VERSION](VERSION); a package can have a longer candidate version.
 
-To build from source, use the Go toolchain required by [go.mod](go.mod) (currently Go 1.26.9):
+To build from source, use the toolchain selected by [go.mod](go.mod): Go 1.27.2,
+with the Go 1.26.9 module baseline preserved.
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git
