@@ -383,11 +383,11 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 		if err != nil {
 			continue
 		}
-		if val, err := strconv.ParseFloat(state, 64); err == nil {
+		if val, ok := parseFiniteNumber(state); ok {
 			result.AdditionalFields[key] = val
 			log.Printf("[HA DEBUG] Sensor %s: %.2f", key, val)
 		} else {
-			log.Printf("[HA DEBUG] Failed to fetch sensor %s: %v", key, err)
+			log.Printf("[HA DEBUG] Sensor %s has no finite numeric value", key)
 			result.AdditionalFields[key] = nil
 		}
 	}
@@ -420,8 +420,13 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 			if doc == nil {
 				continue
 			}
-			minimum, _ := attrFloat(*doc, "min")
-			maximum, _ := attrFloat(*doc, "max")
+			minimum, minValid := attrFloat(*doc, "min")
+			maximum, maxValid := attrFloat(*doc, "max")
+			_, hasMin := doc.Attributes["min"]
+			_, hasMax := doc.Attributes["max"]
+			if (hasMin && !minValid) || (hasMax && !maxValid) {
+				continue
+			}
 			if minimum == 0 && maximum == 0 {
 				maximum = 100
 			}
@@ -469,11 +474,18 @@ func (c *Client) getEntityDoc(ctx context.Context, entityID string) (*EntityStat
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	var entity EntityState
+	var entity struct {
+		EntityID   string                 `json:"entity_id"`
+		State      *string                `json:"state"`
+		Attributes map[string]interface{} `json:"attributes"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&entity); err != nil {
 		return nil, err
 	}
-	return &entity, nil
+	if entity.State == nil {
+		return nil, fmt.Errorf("HA entity response requires a string state")
+	}
+	return &EntityState{EntityID: entity.EntityID, State: *entity.State, Attributes: entity.Attributes}, nil
 }
 
 // isOn converts a Home Assistant state string to a boolean
@@ -512,8 +524,8 @@ func parseApplianceField(stateKey, entityID, raw string) interface{} {
 
 	// Sensor domains
 	if domain == "sensor" && strings.HasSuffix(stateKey, "_power") {
-		val, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
+		val, ok := parseFiniteNumber(raw)
+		if !ok {
 			return isOn(raw)
 		}
 		return val > 1.0
@@ -528,33 +540,40 @@ func parseApplianceField(stateKey, entityID, raw string) interface{} {
 	return parseStateToSeconds(raw)
 }
 
-// parseStateToSeconds converts HA sensor state to seconds (supports HH:MM:SS or numeric)
-func parseStateToSeconds(raw string) int {
-	if raw == "" || raw == "unavailable" || raw == "unknown" || raw == "None" {
-		return 0
+func parseFiniteNumber(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, false
 	}
+	return value, true
+}
 
-	// Try parsing as float first (seconds)
-	val, err := strconv.ParseFloat(raw, 64)
-	if err == nil {
+// parseStateToSeconds converts nonnegative HA durations to seconds, rejecting
+// nonfinite numbers, invalid components and arithmetic overflow.
+func parseStateToSeconds(raw string) int {
+	raw = strings.TrimSpace(raw)
+	const maxInt = int(^uint(0) >> 1)
+	const maxSafeSeconds = 1<<53 - 1 // Largest exact JSON/JavaScript integer.
+	if val, ok := parseFiniteNumber(raw); ok && val >= 0 && val <= maxSafeSeconds && val <= float64(maxInt) {
 		return int(val)
 	}
 
-	// Try parsing as HH:MM:SS
 	parts := strings.Split(raw, ":")
-	if len(parts) == 3 {
-		h, _ := strconv.Atoi(parts[0])
-		m, _ := strconv.Atoi(parts[1])
-		s, _ := strconv.Atoi(parts[2])
-		return h*3600 + m*60 + s
+	if len(parts) != 2 && len(parts) != 3 {
+		return 0
 	}
-	if len(parts) == 2 {
-		m, _ := strconv.Atoi(parts[0])
-		s, _ := strconv.Atoi(parts[1])
-		return m*60 + s
+	total := 0
+	for i, part := range parts {
+		unit, err := strconv.Atoi(part)
+		if err != nil || strings.Trim(part, "0123456789") != "" || unit < 0 || (i > 0 && unit >= 60) || total > (maxInt-unit)/60 {
+			return 0
+		}
+		total = total*60 + unit
 	}
-
-	return 0
+	if int64(total) > maxSafeSeconds {
+		return 0
+	}
+	return total
 }
 
 // getEntityState fetches the current state of a single entity

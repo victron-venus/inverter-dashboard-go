@@ -44,6 +44,8 @@ type Client struct {
 	started     bool
 	stopped     bool
 	mapOptions  MapOptions
+
+	commandApplyMu sync.Mutex
 	// Only the poll loop uses this flag. HTTP/2 may finish cancelling a
 	// timed-out stream after Do returns, so also drain before the next poll.
 	drainIdleBeforePoll bool
@@ -120,7 +122,7 @@ func (c *Client) Start() {
 	go c.pollLoop()
 }
 
-// Stop cancels the active poll and waits for all poll callbacks to return.
+// Stop cancels active requests and waits for state callbacks to return.
 // Callbacks must not call Stop synchronously. Once Stop returns, switching
 // telemetry sources cannot be overwritten by a late gateway snapshot.
 func (c *Client) Stop() {
@@ -134,6 +136,8 @@ func (c *Client) Stop() {
 	}
 	c.lifecycleMu.Unlock()
 	<-c.done
+	c.commandApplyMu.Lock()
+	defer c.commandApplyMu.Unlock()
 	c.http.CloseIdleConnections()
 }
 
@@ -344,10 +348,7 @@ func (c *Client) awaitOverride(ctx context.Context, body any) error {
 			return err
 		}
 		if confirmed {
-			if c.apply != nil {
-				c.apply(st)
-			}
-			return nil
+			return c.applyOverride(ctx, st)
 		}
 		select {
 		case <-ctx.Done():
@@ -355,6 +356,23 @@ func (c *Client) awaitOverride(ctx context.Context, body any) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// An acknowledgement can arrive outside the poll goroutine. Join its state
+// callback during Stop so a retired gateway cannot overwrite the new source.
+func (c *Client) applyOverride(ctx context.Context, st *state.State) error {
+	c.commandApplyMu.Lock()
+	defer c.commandApplyMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	if c.apply != nil {
+		c.apply(st)
+	}
+	return nil
 }
 
 func (c *Client) commandReady(st *state.State, name string, body any) bool {

@@ -167,9 +167,17 @@ func pushSamples(samples []state.PushSample) []push.Sample {
 	return result
 }
 
+func (c *Client) advanceMQTTSession() uint64 {
+	// State callbacks hold the read side until their mutation finishes.
+	// Retirement must not pass them while they are waiting for stateMu.
+	c.gatewayMu.Lock()
+	defer c.gatewayMu.Unlock()
+	return c.mqttSession.Add(1)
+}
+
 func (c *Client) resetMQTTPush(connected bool) {
-	c.gatewayMu.RLock()
-	defer c.gatewayMu.RUnlock()
+	c.gatewayMu.Lock()
+	defer c.gatewayMu.Unlock()
 	if !c.gatewayMode {
 		c.resetPush("mqtt", connected)
 	}
@@ -186,9 +194,9 @@ func (c *Client) bindPushCallback(session uint64, native bool) mqtt.MessageHandl
 			return
 		}
 		if native {
-			c.applyCerboMessage(msg, generation)
+			c.applyCerboMessage(msg, generation, session)
 		} else {
-			c.applyNotificationMessage(msg, generation)
+			c.applyNotificationMessage(msg, generation, session)
 		}
 	}
 }

@@ -128,7 +128,7 @@ func NewClient(broker string, port int) *Client {
 		}
 	})
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-		client.mqttSession.Add(1)
+		client.advanceMQTTSession()
 		log.Printf("MQTT connection lost: %v", err)
 		client.stopKeepalive()
 		client.invalidateCerbo()
@@ -445,7 +445,7 @@ func (c *Client) Subscribe() error {
 	if portal := c.PortalID(); portal != "" && !validPortal(portal) {
 		return fmt.Errorf("invalid Cerbo portal id")
 	}
-	session := c.mqttSession.Add(1)
+	session := c.advanceMQTTSession()
 	c.resetMQTTPush(true)
 	// A clean MQTT session needs a fresh device inventory. Old retained daemon
 	// values cannot resurrect readings that the previous Cerbo session owned.
@@ -625,7 +625,7 @@ func (c *Client) PublishCommandAsync(action string, payload interface{}) error {
 }
 
 func (c *Client) Disconnect() {
-	c.mqttSession.Add(1)
+	c.advanceMQTTSession()
 	c.resetMQTTPush(false)
 	c.stopKeepalive()
 

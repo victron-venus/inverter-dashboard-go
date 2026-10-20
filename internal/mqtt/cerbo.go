@@ -659,10 +659,9 @@ func (c *Client) acceptPortal(portal string) bool {
 	return true
 }
 func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyCerboMessage(msg, c.pushGenerationNow())
+	c.applyCerboMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
-	session := c.mqttSession.Load()
+func (c *Client) applyCerboMessage(msg mqtt.Message, generation, session uint64) {
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -700,7 +699,7 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 		return
 	} // heartbeat/keepalive discovery has no measurement leaf.
 	if parts[2] == "platform" && strings.Contains(msg.Topic(), "/Notifications/") {
-		c.applyPlatformNotification(msg, generation)
+		c.applyPlatformNotification(msg, generation, session)
 		return
 	}
 	if strings.Contains(msg.Topic(), "/Alarms/") {

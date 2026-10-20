@@ -1,7 +1,7 @@
 package homeassistant
 
 import (
-	"strconv"
+	"math"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 )
@@ -64,13 +64,13 @@ func attrFloat(doc EntityState, key string) (float64, bool) {
 	}
 	switch v := doc.Attributes[key].(type) {
 	case float64:
-		return v, true
+		if !math.IsNaN(v) && !math.IsInf(v, 0) {
+			return v, true
+		}
 	case int:
 		return float64(v), true
 	case string:
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f, true
-		}
+		return parseFiniteNumber(v)
 	}
 	return 0, false
 }
@@ -120,9 +120,7 @@ func BuildFilteredDisplays(docs map[string]*EntityState, cfg *FilteredEntityConf
 		value, ok := attrFloat(*doc, "state")
 		if !ok {
 			// EntityState.State carries the raw value; attributes don't.
-			if f, err := strconv.ParseFloat(doc.State, 64); err == nil {
-				value, ok = f, true
-			}
+			value, ok = parseFiniteNumber(doc.State)
 		}
 		if !ok || doc.State == "unavailable" || doc.State == "unknown" {
 			continue

@@ -21,9 +21,9 @@ const maxNotifications = 100
 // MqttNotification shape) and appends them to the shared state so clients
 // receive them on the next broadcast.
 func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyNotificationMessage(msg, c.pushGenerationNow())
+	c.applyNotificationMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyNotificationMessage(msg mqtt.Message, generation uint64) {
+func (c *Client) applyNotificationMessage(msg mqtt.Message, generation, session uint64) {
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -46,6 +46,13 @@ func (c *Client) applyNotificationMessage(msg mqtt.Message, generation uint64) {
 		raw.Level = "info"
 	}
 
+	// Decode can overlap a reconnect or source switch. Fence the state mutation,
+	// not only push delivery, just like native platform notification callbacks.
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		return
+	}
 	c.stateMu.Lock()
 	st := c.state
 	st.Notifications = append(st.Notifications, state.Notification{
@@ -282,10 +289,9 @@ func (ps *platformSlotState) toNotification() (state.Notification, bool) {
 // onPlatformNotificationMessage handles
 // N/<portal>/platform/<inst>/Notifications/<slot>/<Field>.
 func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyPlatformNotification(msg, c.pushGenerationNow())
+	c.applyPlatformNotification(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyPlatformNotification(msg mqtt.Message, generation uint64) {
-	session := c.mqttSession.Load()
+func (c *Client) applyPlatformNotification(msg mqtt.Message, generation, session uint64) {
 	if generation != c.pushGenerationNow() {
 		return
 	}

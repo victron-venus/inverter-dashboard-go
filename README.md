@@ -85,6 +85,9 @@ event times stay unavailable; raw `Alarms/*` values carry no event timestamp. Ba
 ages refresh while idle and after browser resume, with the full local date, time and
 time zone available on each known timestamp. Future source times show their exact date.
 
+See [connection recovery and invalid source data](docs/runtime-recovery.md) for
+reconnect behavior, delayed notification fencing and Home Assistant validation.
+
 Systemcalc supplies consumption and preferred grid/battery aggregates. Grid-meter
 phases are the grid fallback; VE.Bus active-input power is used only when systemcalc
 identifies that input as grid/shore, never for generator/output power. All three phases
