@@ -1,0 +1,3 @@
+# Published frontend files are verified by SHA-256; preserve their exact bytes.
+/internal/html/vue-ui/** -text
+/internal/html/vue-ui-source.json -text

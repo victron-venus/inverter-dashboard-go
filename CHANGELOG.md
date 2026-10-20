@@ -5,9 +5,113 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.9.11] - Development line
+## [1.9.14] - 2026-10-18
+
+### Fixed
+
+- Import the verified Vue 2.2.10 dashboard release, which limits tariff cost intervals to 1–366 inclusive calendar dates across daylight-saving transitions and leap years.
 
 ### Changed
+
+- Route Dependabot metadata approval through the trusted default branch while preserving the existing author and review policy.
+
+### Upgrade
+
+Use the documented upgrade procedure and preserve local configuration and data. No data migration is required. Keep the previous immutable release available for rollback.
+
+### Security
+
+The frontend import verifies the published source, manifest, receipt and archive bytes. Existing authentication and release-validation requirements remain in effect; publication does not establish physical-device acceptance.
+
+## [1.9.13] - 2026-10-17
+
+### Changed
+
+- Embed the verified official Vue 2.2.9 stable distribution, with interface text in
+  English, Russian, Ukrainian, German, French and Dutch. Localize dates, times,
+  retained application errors and theme labels while keeping provider-supplied
+  messages intact.
+- Update the SHA-pinned shared CI and release toolkit used by the reviewed
+  dependency maintenance changes.
+- Select Go 1.27.2 for CI, release builds and bounded fuzzing while preserving
+  the Go 1.26.9 module baseline and existing dependency versions. This includes
+  the upstream fix for spurious fuzz-timeout failures ([golang/go#75804](https://github.com/golang/go/issues/75804)).
+
+### Fixed
+
+- Wait for the loaded dashboard's expected telemetry and connected transport in
+  browser acceptance checks, instead of waiting for background network traffic
+  to stop. Public pages must expose their read-only marker and expected telemetry.
+- Keep all eleven application scenarios and existing time limits. Add eight
+  isolated browser controls that reject missing JavaScript, unavailable or
+  incorrect telemetry and missing public-mode identification, while allowing
+  noncritical requests to remain active, including when telemetry is requested
+  before the noncritical request arrives.
+- Run readiness controls sequentially in fresh browser contexts so deliberately
+  pending requests cannot exhaust another control's shared connection pool.
+  Preserve per-control traffic diagnostics on failure.
+- Preserve immutable published frontend assets during pre-commit formatting and
+  verify their release inventory through Git checkout instead. Whitespace checks
+  continue to cover handwritten sources and documentation.
+
+### Upgrade
+
+Use the documented installation or container update procedure for the selected
+release channel and retain the previous immutable release for rollback. Preserve local configuration, credentials
+and existing Kubernetes persistent volumes; no configuration-format migration is
+introduced. Reload the browser after updating to load the packaged interface.
+Existing control permissions, connection settings and notification permissions
+remain in effect. Verify the chosen language and live data on the deployment
+before accepting it for normal use.
+
+### Security
+
+Import frontend files only from an explicit official release after verifying its
+archive, file inventory and source-bound release metadata; do not substitute a
+local frontend build. Synthetic browser-control pages are selected from fixed
+HTML rather than interpolating request parameters, and unknown modes return 404.
+These release and browser checks do not establish hardware acceptance or delivery
+of operating-system notifications. Keep the deployment's authentication, network
+isolation and independent equipment safeguards in place.
+
+## [1.9.12] - Development line
+
+### Changed
+
+- Document the supported direct HTTPS/IGW cryptographic profile, advisory applicability, governance and one-year roadmap for the OpenSSF assessment.
+
+- Qualify this release with a bounded RC fuzz campaign, offline target execution, and deterministic seed replay checks.
+- Bind release evidence to the exact source and toolkit revision, validate seed corpora, and retain engine execution counts and diagnostic artifacts.
+- Document the fuzzing scope, resource limits, and the distinction between synthetic checks and target acceptance.
+
+### Upgrade
+
+Use the existing installation or update procedure. This release changes validation
+and release tooling; existing user configuration and data formats are preserved.
+Keep the previous immutable release for rollback. Test the exact RC package on the
+intended target before accepting a stable promotion.
+
+### Security
+
+Fuzz targets and deterministic preflight commands run offline on synthetic
+inputs. Setup and dependency installation may use the runner network. The
+campaign rejects missing or invalid seed corpora and incomplete execution
+evidence. These checks do not establish untested hardware, integrations,
+credentials, or deployment behavior.
+
+## [1.9.11] - Development line
+
+### Fixed
+
+- Reject non-finite, overflowing and sub-nanosecond Home Assistant polling
+  intervals from YAML. Invalid values now use the existing 12-second default
+  instead of producing a zero ticker duration or stalling polling.
+
+### Changed
+
+- Add bounded native Go fuzz qualification for public release candidates, with
+  source-bound evidence, synthetic seeds and documented reproduction. PRs, betas
+  and nightlies retain ordinary tests without mutation campaigns.
 - **Water system migrated from Home Assistant to dbus-pump via Cerbo MQTT** (no HA):
   - New `cerbo:` config section (`portal_id`, `tank_instance`, `pump_instance`,
     `valve_instance`; env: `CERBO_PORTAL_ID`, `WATER_*_INSTANCE`) subscribes to
@@ -26,6 +130,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- Replace outdated setup and npm guidance with current Go configuration,
+  command-safety, persistence and notification documentation. Add complete
+  Russian, Ukrainian, German, French and Dutch READMEs, accessible architecture
+  diagrams and reviewed wiki publication sources. Embedded Vue assets are unchanged.
 - Publish reviewed release notes from the exact source commit used to build each candidate, preserving build provenance.
 - Document contribution checks, confidential security reporting and the project-specific trust boundaries.
 

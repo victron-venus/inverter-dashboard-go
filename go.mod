@@ -2,6 +2,8 @@ module github.com/victron-venus/inverter-dashboard-go
 
 go 1.26.9
 
+toolchain go1.27.2
+
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1

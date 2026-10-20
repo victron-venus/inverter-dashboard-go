@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: victron-venus/venus-os-ci-toolkit
-          ref: da027ec9b0e2ee8bcfc2d3ee0b5e11ba6bf27fc0
+          ref: 6b6cc553a797a885f6942c2d04afc4ef8f8b110c
           path: .scorecard-toolkit
           persist-credentials: false
       - name: Set up the scanner build toolchain
@@ -47,6 +47,8 @@ jobs:
           cache-dependency-path: .scorecard-toolkit/tools/scorecard-scan/go.sum
       - name: Build the scanner from checksum-pinned dependencies
         working-directory: .scorecard-toolkit/tools/scorecard-scan
+        env:
+          GOTOOLCHAIN: local
         run: go build -mod=readonly -trimpath -o "$RUNNER_TEMP/scorecard-scan" .
       - name: Require a complete Scorecard analysis
         env:
@@ -57,6 +59,6 @@ jobs:
           -commit "$GITHUB_SHA"
           -output "$GITHUB_WORKSPACE/results.sarif"
       - name: Refresh the existing code-scanning analyses
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: results.sarif

@@ -49,7 +49,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -80,7 +79,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -130,6 +128,7 @@ jobs:
       - prepare
       - checks
       - build
+      - fuzz
     if: ${{ always() && (needs.prepare.outputs.build == 'true' || needs.prepare.outputs.status == 'version-required') }}
     runs-on: ${{ fromJSON((vars.CI_RUNNER_MODE == 'self-hosted' || vars.CI_RUNNER_MODE == 'k3s') && (contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (vars.CI_RUNNER_RELEASE_LABELS || '[]') || '["ubuntu-latest"]') }}
     timeout-minutes: 5
@@ -138,9 +137,9 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - env:
           RESULTS: ${{ toJSON(needs) }}
+          FUZZ_REQUIRED: ${{ github.event.repository.private == false && github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'rc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         run: |
           python3 - <<'PY'
           import json, os
@@ -148,6 +147,9 @@ jobs:
           expected = dict.fromkeys(('prepare', 'checks', 'build'), 'success')
           if results.get('prepare', {}).get('outputs', {}).get('status') == 'version-required':
               expected['build'] = 'skipped'
+          expected['fuzz'] = 'success' if os.environ['FUZZ_REQUIRED'] == 'true' else 'skipped'
+          if set(results) != set(expected):
+              raise SystemExit('Release job inventory differs')
           failed = {name: results.get(name, {}).get('result') for name, result in expected.items() if results.get(name, {}).get('result') != result}
           if failed:
               raise SystemExit(f'Release blocked: {failed}')
@@ -156,7 +158,7 @@ jobs:
     needs:
       - prepare
       - gate
-    if: ${{ needs.prepare.outputs.build == 'true' && needs.prepare.outputs.channel != 'stable' && vars.RELEASE_CHANNELS_ENABLED == 'true' }}
+    if: ${{ !cancelled() && needs.gate.result == 'success' && needs.prepare.outputs.build == 'true' && needs.prepare.outputs.channel != 'stable' && vars.RELEASE_CHANNELS_ENABLED == 'true' }}
     runs-on: ${{ fromJSON((vars.CI_RUNNER_MODE == 'self-hosted' || vars.CI_RUNNER_MODE == 'k3s') && (contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (vars.CI_RUNNER_RELEASE_LABELS || '[]') || '["ubuntu-latest"]') }}
     timeout-minutes: 30
     permissions:
@@ -167,7 +169,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - &id001
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -213,7 +214,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - *id001
       - name: Promote RC bytes after approval
         env:
@@ -224,7 +224,7 @@ jobs:
     needs:
       - prepare
       - gate
-    if: ${{ needs.prepare.outputs.channel == 'stable' && needs.prepare.outputs.build == 'true' }}
+    if: ${{ !cancelled() && needs.gate.result == 'success' && needs.prepare.outputs.channel == 'stable' && needs.prepare.outputs.build == 'true' }}
     runs-on: ${{ fromJSON((vars.CI_RUNNER_MODE == 'self-hosted' || vars.CI_RUNNER_MODE == 'k3s') && (contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) && (vars.CI_RUNNER_RELEASE_LABELS || '[]') || '["ubuntu-latest"]') }}
     timeout-minutes: 30
     permissions:
@@ -235,7 +235,6 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -267,3 +266,12 @@ jobs:
           if-no-files-found: error
           retention-days: 90
     environment: release
+  fuzz:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.build == 'true' && github.event.repository.private == false && github.event_name == 'workflow_dispatch' && github.event.inputs.channel == 'rc' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/fuzz.yml@5194a48f3eb54d80e315133b17ff0fd217ed4327 # main
+    with:
+      toolkit-ref: 5194a48f3eb54d80e315133b17ff0fd217ed4327
+      release-plan-artifact: ${{ needs.prepare.outputs.plan_artifact }}
+    permissions:
+      contents: read

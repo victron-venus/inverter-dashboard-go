@@ -31,3 +31,15 @@ Automated tests use mocks or controlled fixtures where available. A passing unit
 - [contracts](contracts)
 
 See [README.md](README.md) for acquisition, configuration and usage, and [the evidence index](docs/openssf-evidence.md) for the public development-process references.
+
+## Fuzz regression tests
+
+See [the fuzzing guide](docs/fuzzing.md) before changing endpoint validation,
+browser-origin checks or controller command serialization. Ordinary Go tests
+replay seed inputs; coverage-guided mutation is reserved for public release
+candidates. Keep new inputs synthetic and add a minimized regression case for
+each fixed finding.
+
+## Maintenance and badge evidence
+
+See [governance](GOVERNANCE.md), [community conduct](CODE_OF_CONDUCT.md), and the [one-year roadmap](docs/roadmap.md). Keep public OpenSSF answers accurate: update affected evidence in the same change and correct the live assessment within 48 hours after discovering a material inaccuracy. A badge records a self-assessment, not a security guarantee.

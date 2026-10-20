@@ -10,8 +10,11 @@ repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v4.4.0
   hooks:
+  # Published frontend assets are immutable; verify their bytes instead of formatting.
   - id: end-of-file-fixer
+    exclude: ^internal/html/vue-ui/assets/
   - id: trailing-whitespace
+    exclude: ^internal/html/vue-ui/assets/
 - repo: https://github.com/golangci/golangci-lint
   rev: 114493f9b3e7257d29e4130f2b4a4aadefbb6845 # v2.14.0
   hooks:
@@ -21,3 +24,11 @@ repos:
   hooks:
   - id: eslint
     exclude: ^internal/html/vue-ui/
+- repo: local
+  hooks:
+  - id: verify-vue-release-bytes
+    name: Verify published Vue release bytes
+    entry: python3 -B -m unittest discover -s scripts -p test_vue_checkout.py
+    language: system
+    pass_filenames: false
+    always_run: true

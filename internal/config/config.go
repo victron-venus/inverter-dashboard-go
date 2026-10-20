@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -476,10 +478,12 @@ func loadConfigYAML(cfg *Config) error {
 	return nil
 }
 
-// pollOrDefault guards against a zero/absent poll interval: haPoller would
-// panic in time.NewTicker and crash the whole process.
+// pollOrDefault requires a positive, representable duration. YAML also accepts
+// NaN and infinity, and positive seconds can underflow or overflow nanoseconds.
+// Reject them before conversion can panic or stall haPoller.
 func pollOrDefault(v float64) float64 {
-	if v <= 0 {
+	nanoseconds := v * float64(time.Second)
+	if math.IsNaN(nanoseconds) || nanoseconds < 1 || nanoseconds >= float64(math.MaxInt64) {
 		return 12.0 // matches the Python dashboard default
 	}
 	return v

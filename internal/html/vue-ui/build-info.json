@@ -1,22 +1,22 @@
 {
   "package": "inverter-dashboard-vue",
-  "version": "2.2.7-beta.9",
+  "version": "2.2.10",
   "files": [
     {
-      "path": "assets/IntervalEnergy-BWfcNZ3e.js",
-      "sha256": "2136cb59f42338d9876328d1cd76f0c41b96870c57b9c45e44bdd81fff7e675b"
+      "path": "assets/IntervalEnergy-CvdBk0Qz.css",
+      "sha256": "77e2493c2bfe2399d8881d9930ccf32655ef1f0c27c14707b8830647fef8aca6"
     },
     {
-      "path": "assets/IntervalEnergy-DZnd1PxA.css",
-      "sha256": "e7f34ba776c8465c821faeccfd40203716db53f77b6724a27b6b1a34d943e6e6"
+      "path": "assets/IntervalEnergy-DARpL_NT.js",
+      "sha256": "ec59d298f9317cecbe84cc61426cb16cea725de3372ce1606177688caac3270d"
     },
     {
-      "path": "assets/TariffEditor-BO5kDYMX.css",
-      "sha256": "da8d36a6d5f19db14033cc91657ff5edcd96c748c4383a6e2167d8cb641b456c"
+      "path": "assets/TariffEditor-BUimKNGx.js",
+      "sha256": "c7e75f9f43d7e1eaf84b9a75c560b324153637694fd2886307511e08e93270ff"
     },
     {
-      "path": "assets/TariffEditor-DgsLO45r.js",
-      "sha256": "0834a0ffa32c0c20efccdfa1dab4146bcfc744d2e39bd6ce141f28aa9132b43d"
+      "path": "assets/TariffEditor-CmM0qVdn.css",
+      "sha256": "fc4b9e317b04987eddc3644f24650b21019dbe3d5b59e503d68c09e513c98004"
     },
     {
       "path": "assets/af-DK_CjRn6-CZxsvT2y.js",
@@ -75,8 +75,8 @@
       "sha256": "8723ffccafbd8900281c392f23c5f694490f73f1f3e5b22b62753a86115d464a"
     },
     {
-      "path": "assets/echarts-vendor-CqS4mbzr.js",
-      "sha256": "f65e648048610e3ee650c86c6c80eef1a58ae7e503a8f9fda128c5402169d2ef"
+      "path": "assets/echarts-vendor-BzQzv9sW.js",
+      "sha256": "eb571f1d24d13cc634b3879c3a479421278163a0a89fb54c9eff4ad97e9c7821"
     },
     {
       "path": "assets/el-monoton-D3aKqTz2-CuqNQIvE.js",
@@ -159,12 +159,12 @@
       "sha256": "6d9e56f7dc42978594aaaa4a53482112afd08d83f5a3ee787ee730054a660668"
     },
     {
-      "path": "assets/index-CLZmPnWK.css",
-      "sha256": "5df759f5ba5c95a6a05aeec4bd4e4909aac3eb6bab74012853b2e0c4a20684a5"
+      "path": "assets/index-BIxosD0B.js",
+      "sha256": "e34a2b799b7b87140e236448931fb5b39d18c40e0d68fff570b6c369226e4758"
     },
     {
-      "path": "assets/index-CP8KcguC.js",
-      "sha256": "29001cecbac9525010b31efde5ccc6156f11ae1fc6a675dd247a82b702a9c0dd"
+      "path": "assets/index-CpgewrFn.css",
+      "sha256": "3a24e59ea93a47d9eaf72470e9db2b8966ba9dc430536fd1d0c27731a12ce53e"
     },
     {
       "path": "assets/is-BT8UVRze-DWEBuJpb.js",
@@ -343,12 +343,12 @@
       "sha256": "71266c481f0fc3f94a43064d29f52d421855b39f2e79503eda2763b0c194150a"
     },
     {
-      "path": "assets/zrender-vendor-C0VjOGMM.js",
-      "sha256": "bc5b4ba9030fcc7aa915da7cce288b3c052d0eba91be54b2710bceb8bd33dc3e"
+      "path": "assets/zrender-vendor-BR930KqQ.js",
+      "sha256": "1639e2857329bc277dae383a101a61c36e7aef93851b5bd97a0d5944ccb403c5"
     },
     {
       "path": "index.html",
-      "sha256": "8d6846da4e8238c6771eb55c611c1efbbd83c4c0b7a5eb5e89379f0e55edfb91"
+      "sha256": "67b32b196be22d3d08be73056d844894c1027cdeeb324e0b085ccd982e112b03"
     },
     {
       "path": "manifest.webmanifest",

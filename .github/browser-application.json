@@ -1,0 +1,5 @@
+{
+  "distribution": "internal/html/vue-ui",
+  "manifest": "internal/html/vue-ui-source.json",
+  "manifestKind": "go"
+}
