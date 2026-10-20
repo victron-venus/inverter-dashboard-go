@@ -54,6 +54,28 @@ accepted by a provider cannot be recalled. A process crash after provider
 acceptance can cause an at-least-once retry; stable event keys let the service
 worker deduplicate those deliveries.
 
+## Admission diagnostics
+
+`GET /api/notifications/status` includes `admissionDiagnostics`:
+
+- `failureCount`: failed observation-processing calls since this process started,
+  capped at `2^53 - 1` so the JSON number remains exact in browser clients.
+- `lastFailureCategory`: `queue_full` when the pending-delivery limit prevents
+  admission, or `processing_error` for another processing failure.
+- `lastFailureAtMs`: the observation time of the last recorded failure, in Unix
+  milliseconds.
+
+Before the first failure, the count and time are zero and the category is empty.
+These diagnostics contain no event identifiers, notification content, endpoints,
+paths or raw errors. They are held in memory, survive subsequent successful
+observations, and reset when the process restarts.
+
+A full queue does not make a healthy store unavailable; later observations can
+be admitted after capacity is freed. Persistence failures still make the store
+unavailable. The counter measures failed calls, not lost notifications: a call
+can contain multiple events, and this diagnostic does not add automatic retries
+or guarantee that a rejected event will appear in a later observation.
+
 ## HTTP and outbound security
 
 The notification API inherits `DASHBOARD_SECRET` authentication. New browser API

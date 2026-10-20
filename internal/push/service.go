@@ -1,9 +1,20 @@
 package push
 
 import (
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 )
+
+// Keep the counter exactly representable by JavaScript clients.
+const maxAdmissionFailures uint64 = 1<<53 - 1
+
+type admissionDiagnostics struct {
+	FailureCount        uint64 `json:"failureCount"`
+	LastFailureCategory string `json:"lastFailureCategory"`
+	LastFailureAtMs     int64  `json:"lastFailureAtMs"`
+}
 
 // Config is separate from telemetry configuration so the notification API can be
 // exercised without connecting to any inverter, gateway or Home Assistant.
@@ -18,6 +29,9 @@ type Service struct {
 	store      *Store
 	processor  *Processor
 	dispatcher *Dispatcher
+
+	admissionMu sync.Mutex
+	admission   admissionDiagnostics
 }
 
 func NewService(cfg Config) *Service {
@@ -78,7 +92,19 @@ func (s *Service) Reset(source string, connected bool, now time.Time) {
 }
 func (s *Service) Observe(ob Observation, now time.Time) {
 	if s.Available() {
-		_ = s.processor.Observe(ob, now)
+		if err := s.processor.Observe(ob, now); err != nil {
+			category := "processing_error"
+			if errors.Is(err, errCapacity) {
+				category = "queue_full"
+			}
+			s.admissionMu.Lock()
+			if s.admission.FailureCount < maxAdmissionFailures {
+				s.admission.FailureCount++
+			}
+			s.admission.LastFailureCategory = category
+			s.admission.LastFailureAtMs = now.UnixMilli()
+			s.admissionMu.Unlock()
+		}
 	}
 }
 func (s *Service) status() map[string]any {
@@ -93,5 +119,16 @@ func (s *Service) status() map[string]any {
 			reason = "Persistent Web Push storage is unavailable"
 		}
 	}
-	return map[string]any{"enabled": s.enabled, "available": available, "reason": reason, "publicKey": public, "preferencesDefaults": DefaultPreferences(), "maxNotificationAgeSeconds": 300}
+	s.admissionMu.Lock()
+	admission := s.admission
+	s.admissionMu.Unlock()
+	return map[string]any{
+		"enabled":                   s.enabled,
+		"available":                 available,
+		"reason":                    reason,
+		"publicKey":                 public,
+		"preferencesDefaults":       DefaultPreferences(),
+		"maxNotificationAgeSeconds": 300,
+		"admissionDiagnostics":      admission,
+	}
 }
