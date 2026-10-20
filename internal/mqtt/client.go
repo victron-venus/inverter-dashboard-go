@@ -458,7 +458,7 @@ func (c *Client) Subscribe() error {
 		handler mqtt.MessageHandler
 	}{
 		{"inverter/state", c.bindControllerCallback(session, false)}, {"inverter/setpoint_override", c.bindControllerCallback(session, true)}, {"inverter/console", c.onConsoleMessage},
-		{"inverter/notifications", c.bindPushCallback(session, false)}, {"inverter/portal", c.onPortalMessage},
+		{"inverter/notifications", c.bindPushCallback(session, false)}, {"inverter/portal", c.bindPortalCallback(session)},
 	} {
 		if token := c.client.Subscribe(sub.topic, 0, sub.handler); token.Wait() && token.Error() != nil {
 			log.Printf("Optional controller subscription %s failed: %v", sub.topic, token.Error())
@@ -468,7 +468,7 @@ func (c *Client) Subscribe() error {
 	if portal == "" {
 		portal = "+"
 	}
-	if err := c.subscribeNativeTopics(portal); err != nil {
+	if err := c.subscribeNativeTopics(portal, session); err != nil {
 		return err
 	}
 	if c.cameraTopic != "" {
@@ -535,15 +535,9 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 	}
 
 	topic := fmt.Sprintf("inverter/cmd/%s", action)
-	var message []byte
-	var err error
-	if payload != nil {
-		message, err = json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("failed to marshal command payload: %w", err)
-		}
-	} else {
-		message = []byte("{}")
+	message, err := encodeMQTTCommandPayload(payload)
+	if err != nil {
+		return err
 	}
 	c.gatewayMu.RLock()
 	if generation != c.pushGenerationNow() || session != c.mqttSession.Load() || c.gatewayMode || c.client == nil || !c.client.IsConnectionOpen() {
@@ -551,13 +545,7 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 		return fmt.Errorf("mqtt source unavailable")
 	}
 	c.stateMu.RLock()
-	ready := true
-	if action == "set_ess_mode" {
-		ready = state.ESSSelectionReady(c.state, time.Now())
-	}
-	if genericControllerAction(action) {
-		ready = c.controllerControlReady(time.Now())
-	}
+	ready := c.commandTelemetryReady(action)
 	if !ready {
 		c.stateMu.RUnlock()
 		c.gatewayMu.RUnlock()
@@ -574,6 +562,29 @@ func (c *Client) PublishCommand(action string, payload interface{}) error {
 
 	log.Printf("Published command to %s", topic)
 	return nil
+}
+
+// commandTelemetryReady requires stateMu to be held while selecting readiness.
+func (c *Client) commandTelemetryReady(action string) bool {
+	ready := true
+	if action == "set_ess_mode" {
+		ready = state.ESSSelectionReady(c.state, time.Now())
+	}
+	if genericControllerAction(action) {
+		ready = c.controllerControlReady(time.Now())
+	}
+	return ready
+}
+
+func encodeMQTTCommandPayload(payload interface{}) ([]byte, error) {
+	if payload == nil {
+		return []byte("{}"), nil
+	}
+	message, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal command payload: %w", err)
+	}
+	return message, nil
 }
 
 // publishCerboAlarmCommand writes Venus-platform AcknowledgeAll or vebus SilenceAlarm.

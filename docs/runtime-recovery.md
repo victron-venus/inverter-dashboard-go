@@ -24,14 +24,18 @@ callback after cancellation is rejected.
 
 ## MQTT notifications
 
-Every subscription callback keeps the MQTT session token captured when the
-subscription was installed. That token is passed through the controller and
+Each notification subscription callback keeps the MQTT session token captured
+when subscription began. That token is passed through the controller and
 native notification parsing paths, rather than recaptured after decoding.
 Immediately before updating state, the callback checks the session, push
 generation and active source. MQTT notifications cannot replace IGW state while
 gateway mode is active. Session retirement and push-generation changes take the
 same exclusive source lock, so a state callback already in progress finishes
 before retirement, including when it was waiting for the state lock.
+
+Portal discovery uses the same source guard before storing the portal ID.
+Its deferred native subscriptions retain the original session token, so a
+callback or refresh delayed across reconnect cannot bind itself to a new session.
 
 The notification's timestamp remains the source event timestamp. Reconnecting,
 decoding or receiving a retained message does not replace it with the receipt
@@ -48,7 +52,8 @@ entity remains unavailable.
 Nonfinite sensor values become `null`; nonfinite appliance power values become
 `false`; invalid durations retain the existing `0` representation. Filtered
 numeric displays never inject NaN or infinity into the dashboard JSON. Explicit
-invalid number bounds cannot acquire default control permissions.
+invalid or reversed number bounds cannot acquire default control permissions
+or display a slider whose requested values would always be rejected.
 
 Durations accept finite nonnegative numeric seconds, truncating the fractional
 part, or `MM:SS` / `HH:MM:SS` with unsigned ASCII integer components. Non-leading

@@ -264,19 +264,8 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if err := c.ctx.Err(); err != nil {
 		return err
 	}
-	if name == "set_ess_mode" || name == "setpoint_override" || name == "electricity_tariff" || name == "toggle" || name == "dry_run" || name == "ess_mode" || name == "water_mode" {
-		snap, fetchErr := c.FetchSnapshot(ctx)
-		if fetchErr != nil {
-			return fetchErr
-		}
-		st := SnapshotToState(snap, c.mapOptions)
-		ready := c.commandReady(st, name, body)
-		if !snap.Capabilities[name] || !ready {
-			return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
-		}
-		if err := c.ctx.Err(); err != nil {
-			return err
-		}
+	if err := c.validateCommandSnapshot(ctx, name, body); err != nil {
+		return err
 	}
 	payload, err := state.EncodeControllerCommand(body)
 	if err != nil {
@@ -308,6 +297,26 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 		return err
 	}
 	return ctx.Err()
+}
+
+// validateCommandSnapshot keeps command capability and freshness checks on the
+// same deadline as publication and acknowledgement.
+func (c *Client) validateCommandSnapshot(ctx context.Context, name string, body any) error {
+	switch name {
+	case "set_ess_mode", "setpoint_override", "electricity_tariff", "toggle", "dry_run", "ess_mode", "water_mode":
+	default:
+		return nil
+	}
+	snap, err := c.FetchSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	st := SnapshotToState(snap, c.mapOptions)
+	ready := c.commandReady(st, name, body)
+	if !snap.Capabilities[name] || !ready {
+		return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
+	}
+	return c.ctx.Err()
 }
 
 func truncate(s string, n int) string {

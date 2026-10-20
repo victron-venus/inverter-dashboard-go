@@ -646,8 +646,13 @@ func validPortal(portal string) bool {
 	}
 	return true
 }
-func (c *Client) acceptPortal(portal string) bool {
+func (c *Client) acceptPortal(portal string, generation, session uint64) bool {
 	if !validPortal(portal) {
+		return false
+	}
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
 		return false
 	}
 	c.stateMu.Lock()
@@ -688,12 +693,12 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation, session uint64)
 			return
 		}
 	}
-	if !c.acceptPortal(parts[1]) {
+	if !c.acceptPortal(parts[1], generation, session) {
 		return
 	}
 	if previous == "" {
 		log.Printf("Discovered Cerbo portal %s from native MQTT", parts[1])
-		go c.refreshPortal(parts[1])
+		go c.refreshPortal(parts[1], session)
 	}
 	if len(parts) == 3 {
 		return
@@ -753,27 +758,38 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation, session uint64)
 	}
 }
 func (c *Client) onPortalMessage(_ mqtt.Client, msg mqtt.Message) {
+	c.applyPortalMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
+}
+func (c *Client) bindPortalCallback(session uint64) mqtt.MessageHandler {
+	return func(_ mqtt.Client, msg mqtt.Message) {
+		c.applyPortalMessage(msg, c.pushGenerationNow(), session)
+	}
+}
+func (c *Client) applyPortalMessage(msg mqtt.Message, generation, session uint64) {
 	portal := strings.TrimSpace(string(msg.Payload()))
 	var quoted string
 	if json.Unmarshal(msg.Payload(), &quoted) == nil {
 		portal = quoted
 	}
 	previous := c.PortalID()
-	if previous != "" || !c.acceptPortal(portal) {
+	if previous != "" || !c.acceptPortal(portal, generation, session) {
 		return
 	}
-	go c.refreshPortal(portal)
+	go c.refreshPortal(portal, session)
 }
-func (c *Client) refreshPortal(portal string) {
-	if c.client == nil || !c.client.IsConnectionOpen() {
+func (c *Client) refreshPortal(portal string, session uint64) {
+	if c.mqttSession.Load() != session || c.client == nil || !c.client.IsConnectionOpen() {
 		return
 	}
 	c.subscribeMu.Lock()
 	defer c.subscribeMu.Unlock()
+	if c.mqttSession.Load() != session {
+		return
+	}
 	c.keepaliveMu.Lock()
 	c.keepaliveNeedsRefresh = true
 	c.keepaliveMu.Unlock()
-	if err := c.subscribeNativeTopics(portal); err != nil {
+	if err := c.subscribeNativeTopics(portal, session); err != nil {
 		log.Printf("Cerbo subscribe: %v", err)
 		return
 	}
@@ -788,9 +804,9 @@ func nativeFilters(portal string) []string {
 	out = append(out, fmt.Sprintf("N/%s/+/Alarms/#", portal), fmt.Sprintf("N/%s/heartbeat", portal), fmt.Sprintf("N/%s/keepalive", portal))
 	return out
 }
-func (c *Client) subscribeNativeTopics(portal string) error {
+func (c *Client) subscribeNativeTopics(portal string, session uint64) error {
 	for _, filter := range nativeFilters(portal) {
-		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(c.mqttSession.Load(), true)); token.Wait() && token.Error() != nil {
+		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(session, true)); token.Wait() && token.Error() != nil {
 			return fmt.Errorf("subscribe %s: %w", filter, token.Error())
 		}
 	}

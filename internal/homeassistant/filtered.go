@@ -75,6 +75,22 @@ func attrFloat(doc EntityState, key string) (float64, bool) {
 	return 0, false
 }
 
+// numberBounds keeps displayed controls and action authorization on the same
+// finite range, rejecting malformed explicit bounds rather than defaulting them.
+func numberBounds(doc EntityState) (float64, float64, bool) {
+	minimum, minValid := attrFloat(doc, "min")
+	maximum, maxValid := attrFloat(doc, "max")
+	_, hasMin := doc.Attributes["min"]
+	_, hasMax := doc.Attributes["max"]
+	if (hasMin && !minValid) || (hasMax && !maxValid) {
+		return 0, 0, false
+	}
+	if minimum == 0 && maximum == 0 {
+		maximum = 100
+	}
+	return minimum, maximum, minimum <= maximum
+}
+
 // BuildFilteredDisplays maps fetched entity docs to the shared vue-lib
 // HaFilteredData contract ({sensors[], numbers[], covers[],
 // media_players[], scenes[], weather}) as a JSON-ready map. Missing docs
@@ -125,12 +141,11 @@ func BuildFilteredDisplays(docs map[string]*EntityState, cfg *FilteredEntityConf
 		if !ok || doc.State == "unavailable" || doc.State == "unknown" {
 			continue
 		}
-		minv, _ := attrFloat(*doc, "min")
-		maxv, _ := attrFloat(*doc, "max")
-		step, _ := attrFloat(*doc, "step")
-		if maxv == 0 && minv == 0 {
-			maxv = 100
+		minv, maxv, valid := numberBounds(*doc)
+		if !valid {
+			continue
 		}
+		step, _ := attrFloat(*doc, "step")
 		if step == 0 {
 			step = 1
 		}

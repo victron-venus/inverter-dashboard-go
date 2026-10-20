@@ -420,17 +420,7 @@ func (c *Client) FetchStatesOnce() (Overlay, error) {
 			if doc == nil {
 				continue
 			}
-			minimum, minValid := attrFloat(*doc, "min")
-			maximum, maxValid := attrFloat(*doc, "max")
-			_, hasMin := doc.Attributes["min"]
-			_, hasMax := doc.Attributes["max"]
-			if (hasMin && !minValid) || (hasMax && !maxValid) {
-				continue
-			}
-			if minimum == 0 && maximum == 0 {
-				maximum = 100
-			}
-			if !math.IsNaN(minimum) && !math.IsInf(minimum, 0) && !math.IsNaN(maximum) && !math.IsInf(maximum, 0) && minimum <= maximum {
+			if minimum, maximum, valid := numberBounds(*doc); valid {
 				ranges[id] = [2]float64{minimum, maximum}
 			}
 		}

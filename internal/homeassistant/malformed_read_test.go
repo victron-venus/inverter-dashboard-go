@@ -11,6 +11,17 @@ import (
 	"github.com/victron-venus/inverter-dashboard-go/internal/config"
 )
 
+func assertEntityReadHealth(t *testing.T, c *Client, valid bool) {
+	t.Helper()
+	o, err := c.FetchStatesOnce()
+	if err != nil || o.HADirectConnected != valid || c.ControlsAvailable() != valid {
+		t.Fatalf("health=%v controls=%v error=%v want=%v", o.HADirectConnected, c.ControlsAvailable(), err, valid)
+	}
+	if valid && o.AdditionalFields["home_lamp"] != true {
+		t.Fatal("valid observation did not recover after malformed response")
+	}
+}
+
 func TestMalformedEntityReadDoesNotRenewHealth(t *testing.T) {
 	for _, bad := range []string{"null", "[]", "{}", `{"state":null}`, `{"state":1}`, `{"state":[]}`, `{"state":"on","attributes":[]}`} {
 		t.Run(bad, func(t *testing.T) {
@@ -27,13 +38,7 @@ func TestMalformedEntityReadDoesNotRenewHealth(t *testing.T) {
 				if valid {
 					body = `{"state":"on"}`
 				}
-				o, err := c.FetchStatesOnce()
-				if err != nil || o.HADirectConnected != valid || c.ControlsAvailable() != valid {
-					t.Fatalf("health=%v controls=%v error=%v want=%v", o.HADirectConnected, c.ControlsAvailable(), err, valid)
-				}
-				if valid && o.AdditionalFields["home_lamp"] != true {
-					t.Fatal("valid observation did not recover after malformed response")
-				}
+				assertEntityReadHealth(t, c, valid)
 			}
 		})
 	}
@@ -101,7 +106,7 @@ func TestNonFiniteFilteredAttributesRemainSerializable(t *testing.T) {
 }
 
 func TestInvalidNumberBoundsDoNotAuthorizeActions(t *testing.T) {
-	for _, limits := range []string{`"min":"NaN","max":100`, `"min":0,"max":"Inf"`} {
+	for _, limits := range []string{`"min":"NaN","max":100`, `"min":0,"max":"Inf"`, `"min":null,"max":100`, `"min":10,"max":1`} {
 		c := NewClient(&config.HomeAssistantConfig{
 			URL: "http://ha.test", Token: "fixture", DirectControls: true,
 			FilteredEntities: &config.FilteredEntityConfig{Numbers: []string{"number.limit"}},
@@ -113,14 +118,54 @@ func TestInvalidNumberBoundsDoNotAuthorizeActions(t *testing.T) {
 			body := `{"state":"5","attributes":{` + limits + `}}`
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
 		})}
-		if _, err := c.FetchStatesOnce(); err != nil {
+		result, err := c.FetchStatesOnce()
+		if err != nil {
 			t.Fatal(err)
+		}
+		displays := result.AdditionalFields["ha_filtered"].(map[string]interface{})
+		if len(displays["numbers"].([]interface{})) != 0 {
+			t.Fatal("invalid explicit limits still displayed a number control")
 		}
 		if len(c.numberRanges) != 0 {
 			t.Fatal("invalid explicit limits acquired default control range")
 		}
 		if err := c.PerformAction("number_set", "number.limit", map[string]interface{}{"value": 5.0}); err == nil {
 			t.Fatal("invalid explicit bounds authorized a number action")
+		}
+	}
+}
+
+func TestValidNumberBoundsMatchDisplayAndAuthorization(t *testing.T) {
+	for _, tc := range []struct {
+		attributes string
+		minimum    float64
+		maximum    float64
+	}{
+		{`{}`, 0, 100},
+		{`{"min":0,"max":0}`, 0, 100},
+		{`{"min":"-10","max":"20"}`, -10, 20},
+	} {
+		c := NewClient(&config.HomeAssistantConfig{
+			URL: "http://ha.test", Token: "fixture", DirectControls: true,
+			FilteredEntities: &config.FilteredEntityConfig{Numbers: []string{"number.limit"}},
+		})
+		c.httpClient = &http.Client{Transport: ownershipTransport(func(*http.Request) (*http.Response, error) {
+			body := `{"state":"5","attributes":` + tc.attributes + `}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}
+		result, err := c.FetchStatesOnce()
+		if err != nil {
+			t.Fatal(err)
+		}
+		displays := result.AdditionalFields["ha_filtered"].(map[string]interface{})
+		numbers := displays["numbers"].([]interface{})
+		if len(numbers) != 1 {
+			t.Fatalf("valid bounds did not display a number: %s", tc.attributes)
+		}
+		number := numbers[0].(map[string]interface{})
+		if number["min"] != tc.minimum || number["max"] != tc.maximum ||
+			c.numberRanges["number.limit"] != [2]float64{tc.minimum, tc.maximum} {
+			t.Fatalf("display and action bounds differ for %s", tc.attributes)
 		}
 	}
 }

@@ -40,6 +40,34 @@ func newRecoveryClient(t *testing.T, handler http.Handler, apply func(*state.Sta
 	return client, connections
 }
 
+func stalledConnectionHandler(partialBody, initialFailure bool, wrongProtocol *atomic.Bool) http.HandlerFunc {
+	var firstConnectionRequests atomic.Int32
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor != 2 {
+			wrongProtocol.Store(true)
+		}
+		id := r.Context().Value(recoveryConnectionKey{}).(int32)
+		if id == 1 && (initialFailure || firstConnectionRequests.Add(1) > 1) {
+			// This flow remains unusable, while any new connection works.
+			// A request timeout alone must not count as recovery.
+			if partialBody {
+				_, _ = io.WriteString(w, `{"meta":`)
+				w.(http.Flusher).Flush()
+			}
+			<-r.Context().Done()
+			return
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}
+}
+
+func signalRecoveryEvent(event chan<- struct{}) {
+	select {
+	case event <- struct{}{}:
+	default:
+	}
+}
+
 func TestPollRecoversOnNewHTTP2ConnectionAfterTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
@@ -51,37 +79,15 @@ func TestPollRecoversOnNewHTTP2ConnectionAfterTimeout(t *testing.T) {
 		{name: "initial poll", initialFailure: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var firstConnectionRequests atomic.Int32
 			var wrongProtocol atomic.Bool
 			applied := make(chan struct{}, 1)
 			disconnected := make(chan struct{}, 1)
-			client, connections := newRecoveryClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.ProtoMajor != 2 {
-					wrongProtocol.Store(true)
-				}
-				id := r.Context().Value(recoveryConnectionKey{}).(int32)
-				if id == 1 && (tc.initialFailure || firstConnectionRequests.Add(1) > 1) {
-					// This flow remains unusable, while any new connection works.
-					// A request timeout alone must not count as recovery.
-					if tc.partialBody {
-						_, _ = io.WriteString(w, `{"meta":`)
-						w.(http.Flusher).Flush()
-					}
-					<-r.Context().Done()
-					return
-				}
-				_, _ = io.WriteString(w, `{}`)
-			}), func(*state.State) {
-				select {
-				case applied <- struct{}{}:
-				default:
-				}
+			handler := stalledConnectionHandler(tc.partialBody, tc.initialFailure, &wrongProtocol)
+			client, connections := newRecoveryClient(t, handler, func(*state.State) {
+				signalRecoveryEvent(applied)
 			}, func(connected bool) {
 				if !connected {
-					select {
-					case disconnected <- struct{}{}:
-					default:
-					}
+					signalRecoveryEvent(disconnected)
 				}
 			})
 			client.Start()
@@ -124,24 +130,28 @@ func awaitRecoveryEvent(t *testing.T, event <-chan struct{}, name string) {
 	}
 }
 
+func applicationErrorHandler(fault string) http.HandlerFunc {
+	var requests atomic.Int32
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) != 2 {
+			_, _ = io.WriteString(w, `{}`)
+			return
+		}
+		switch fault {
+		case "unauthorized":
+			w.WriteHeader(http.StatusUnauthorized)
+		case "unavailable":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			_, _ = io.WriteString(w, `not JSON`)
+		}
+	}
+}
+
 func TestPollApplicationErrorsKeepHTTP2Connection(t *testing.T) {
 	for _, fault := range []string{"unauthorized", "unavailable", "invalid JSON"} {
 		t.Run(fault, func(t *testing.T) {
-			var requests atomic.Int32
-			client, connections := newRecoveryClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				if requests.Add(1) == 2 {
-					switch fault {
-					case "unauthorized":
-						w.WriteHeader(http.StatusUnauthorized)
-					case "unavailable":
-						w.WriteHeader(http.StatusServiceUnavailable)
-					default:
-						_, _ = io.WriteString(w, `not JSON`)
-					}
-					return
-				}
-				_, _ = io.WriteString(w, `{}`)
-			}), nil, nil)
+			client, connections := newRecoveryClient(t, applicationErrorHandler(fault), nil, nil)
 			client.pollOnce()
 			if !client.IsConnected() {
 				t.Fatal("initial poll failed")
@@ -155,6 +165,18 @@ func TestPollApplicationErrorsKeepHTTP2Connection(t *testing.T) {
 				t.Fatalf("application error should preserve the working connection: connected=%v connections=%d", client.IsConnected(), connections.Load())
 			}
 		})
+	}
+}
+
+func assertRecoveryCommandCompleted(t *testing.T, result <-chan error) {
+	t.Helper()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("active command failed: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("command did not complete")
 	}
 }
 
@@ -208,14 +230,7 @@ func TestPollRecoveryDoesNotInterruptOrReplayCommand(t *testing.T) {
 	default:
 	}
 	close(finishCommand)
-	select {
-	case err := <-result:
-		if err != nil {
-			t.Fatalf("active command failed: %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("command did not complete")
-	}
+	assertRecoveryCommandCompleted(t, result)
 	if commands.Load() != 1 {
 		t.Fatalf("command was replayed %d times", commands.Load())
 	}

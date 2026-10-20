@@ -14,11 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests. Keep the configured delay between recovery attempts.
 - Wait for an in-progress gateway override callback before retiring its source.
   Preserve the original MQTT subscription session through controller and native
-  notification decoding, and fence state updates against source retirement.
+  notification decoding, portal discovery and deferred subscriptions, and fence
+  state updates against source retirement.
 - Reject malformed Home Assistant state responses and recover on the next valid
   poll. Keep nonfinite readings out of JSON, reject invalid numeric control
-  bounds and constrain appliance durations to valid nonnegative, representable
-  values.
+  bounds consistently in displayed sliders and command authorization, and
+  constrain appliance durations to valid nonnegative, representable values.
 
 ### Changed
 
