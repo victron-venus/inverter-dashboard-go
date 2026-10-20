@@ -40,6 +40,8 @@ Read the exact occurrence time/timezone. Reconnects preserve the original source
 
 Web Push deliberately suppresses startup/reconnect history and expired events. An old on-screen alarm is not evidence that a new push should be emitted. Check server push availability, browser HTTPS support, permission, per-browser category preferences and OS notification settings. Windows servers do not currently support the private persistent push store.
 
+Inspect `admissionDiagnostics` in `/api/notifications/status` for failed observation-processing calls. A `queue_full` record can remain after the queue recovers; compare its timestamp and count over time. See [admission diagnostics](web-push.md#admission-diagnostics) for the fields and their limits.
+
 For an explicitly requested test, distinguish three outcomes: API 202 means queued; a sender log with provider 2xx means provider acceptance; a visible OS notification is separate evidence. Inspect only bounded delivery fields (kind, attempt, status, fixed error category); do not expose endpoints, keys, payloads or raw provider bodies. Test limits are one per endpoint per minute and ten per minute globally. Repeated test clicks are not a substitute for diagnosing the first attempt.
 
 Store-lock, permissions or corruption errors require preserving the private store and inspecting ownership/single-writer deployment. Deleting it changes the push identity and can invalidate subscriptions. See [Web Push](web-push.md) for supported provider hosts and network restrictions.
