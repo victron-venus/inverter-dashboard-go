@@ -233,7 +233,7 @@ func TestRetiredNestedPlatformCallbackKeepsOriginalGeneration(t *testing.T) {
 	captured := c.pushGenerationNow()
 	c.resetPush("mqtt", true)
 	service.Reset("mqtt", true, time.Now().Add(-20*time.Second))
-	c.applyPlatformNotification(waterMsg("N/test/platform/0/Notifications/0/Description", "retired"), captured)
+	c.applyPlatformNotification(waterMsg("N/test/platform/0/Notifications/0/Description", "retired"), captured, c.mqttSession.Load())
 	if len(c.GetState().Notifications) != 0 || count() != 0 {
 		t.Fatal("retired nested callback relabelled as current")
 	}

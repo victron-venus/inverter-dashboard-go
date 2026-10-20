@@ -130,7 +130,7 @@ func TestMalformedModeRevokesOnlyMatchingWaterAuthority(t *testing.T) {
 			for _, topic := range []string{"N/foreign/pump/3/Mode", "N/p1/pump/9/Mode", "N/p1/pump/3/State"} {
 				c.onCerboLiveMessage(nil, &fakeMessage{topic: topic, payload: []byte(`{not-json`)})
 			}
-			c.applyCerboMessage(&fakeMessage{topic: "N/p1/pump/3/Mode", payload: []byte(payload)}, c.pushGenerationNow()+1)
+			c.applyCerboMessage(&fakeMessage{topic: "N/p1/pump/3/Mode", payload: []byte(payload)}, c.pushGenerationNow()+1, c.mqttSession.Load())
 			if !c.CanControlWaterDevice("pump") {
 				t.Fatal("unrelated or retired source invalidated selected Mode")
 			}

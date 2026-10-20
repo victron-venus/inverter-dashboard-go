@@ -21,9 +21,9 @@ const maxNotifications = 100
 // MqttNotification shape) and appends them to the shared state so clients
 // receive them on the next broadcast.
 func (c *Client) onNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyNotificationMessage(msg, c.pushGenerationNow())
+	c.applyNotificationMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyNotificationMessage(msg mqtt.Message, generation uint64) {
+func (c *Client) applyNotificationMessage(msg mqtt.Message, generation, session uint64) {
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -46,6 +46,13 @@ func (c *Client) applyNotificationMessage(msg mqtt.Message, generation uint64) {
 		raw.Level = "info"
 	}
 
+	// Decode can overlap a reconnect or source switch. Fence the state mutation,
+	// not only push delivery, just like native platform notification callbacks.
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		return
+	}
 	c.stateMu.Lock()
 	st := c.state
 	st.Notifications = append(st.Notifications, state.Notification{
@@ -282,128 +289,165 @@ func (ps *platformSlotState) toNotification() (state.Notification, bool) {
 // onPlatformNotificationMessage handles
 // N/<portal>/platform/<inst>/Notifications/<slot>/<Field>.
 func (c *Client) onPlatformNotificationMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyPlatformNotification(msg, c.pushGenerationNow())
+	c.applyPlatformNotification(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyPlatformNotification(msg mqtt.Message, generation uint64) {
-	session := c.mqttSession.Load()
-	if generation != c.pushGenerationNow() {
-		return
-	}
+
+type platformNotificationUpdate struct {
+	inst, slot uint32
+	field      string
+	value      interface{}
+	deleted    bool
+}
+
+func decodePlatformNotification(msg mqtt.Message) (platformNotificationUpdate, bool) {
 	parts := strings.Split(msg.Topic(), "/")
 	// N / portal / platform / inst / Notifications / slot / Field
 	if len(parts) < 7 || parts[2] != "platform" || parts[4] != "Notifications" {
-		return
+		return platformNotificationUpdate{}, false
 	}
 	inst64, err1 := strconv.ParseUint(parts[3], 10, 32)
 	slot64, err2 := strconv.ParseUint(parts[5], 10, 32)
 	if err1 != nil || err2 != nil {
-		return
+		return platformNotificationUpdate{}, false
 	}
 	field := parts[6]
+	raw := msg.Payload()
 	var payload struct {
 		Value interface{} `json:"value"`
 	}
-	if len(msg.Payload()) > 0 {
+	if len(raw) > 0 {
 		var err error
 		if field == "DateTime" {
 			// Preserve the original number until its exact integrality check.
 			// json.Valid retains Unmarshal's rejection of trailing JSON values.
-			if !json.Valid(msg.Payload()) {
-				return
+			if !json.Valid(raw) {
+				return platformNotificationUpdate{}, false
 			}
-			decoder := json.NewDecoder(bytes.NewReader(msg.Payload()))
+			decoder := json.NewDecoder(bytes.NewReader(raw))
 			decoder.UseNumber()
 			err = decoder.Decode(&payload)
 		} else {
-			err = json.Unmarshal(msg.Payload(), &payload)
+			err = json.Unmarshal(raw, &payload)
 		}
 		if err != nil {
-			return
+			return platformNotificationUpdate{}, false
 		}
 	}
 
-	c.gatewayMu.RLock()
-	defer c.gatewayMu.RUnlock()
-	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+	return platformNotificationUpdate{inst: uint32(inst64), slot: uint32(slot64), field: field, value: payload.Value, deleted: len(raw) == 0}, true
+}
+
+func (ps *platformSlotState) clearField(field string) {
+	switch field {
+	case "Description":
+		ps.description = ""
+	case "DeviceName":
+		ps.deviceName = ""
+	case "Service":
+		ps.service = ""
+	case "DateTime":
+		ps.dateTime = ""
+	case "Type":
+		ps.hasType = false
+		ps.pushTypeKnown = false
+	case "Acknowledged":
+		ps.acknowledged = false
+	case "Active":
+		ps.active = nil
+	}
+}
+
+func (ps *platformSlotState) setType(value interface{}) {
+	ps.pushTypeKnown = false
+	if n, ok := toFloat(value); ok {
+		strict, known := number(value)
+		ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
+		ps.notifType = int64(n)
+		ps.hasType = true
+	}
+}
+
+func platformBool(value interface{}) (bool, bool) {
+	if n, ok := toFloat(value); ok {
+		return n != 0, true
+	}
+	b, ok := value.(bool)
+	return b, ok
+}
+
+func (ps *platformSlotState) updateField(field string, value interface{}) {
+	if value == nil {
+		ps.clearField(field)
 		return
 	}
-	key := fmt.Sprintf("%d-%d", inst64, slot64)
+	switch field {
+	case "Description":
+		if str, ok := value.(string); ok {
+			ps.description = strings.TrimSpace(str)
+		}
+	case "DeviceName":
+		if str, ok := value.(string); ok {
+			ps.deviceName = strings.TrimSpace(str)
+		}
+	case "Service":
+		if str, ok := value.(string); ok {
+			ps.service = strings.TrimSpace(str)
+		}
+	case "DateTime":
+		ps.dateTime = state.NotificationTime(value)
+	case "Type":
+		ps.setType(value)
+	case "Acknowledged":
+		if b, ok := platformBool(value); ok {
+			ps.acknowledged = b
+		}
+	case "Active":
+		if b, ok := platformBool(value); ok {
+			ps.active = &b
+		}
+	}
+}
+
+func (c *Client) updatePlatformSlots(update platformNotificationUpdate) []*platformSlotState {
+	key := fmt.Sprintf("%d-%d", update.inst, update.slot)
 	c.platformMu.Lock()
+	defer c.platformMu.Unlock()
 	c.platformNotifsSeen = true
 	if c.platformSlots == nil {
 		c.platformSlots = make(map[string]*platformSlotState)
 	}
 	ps, ok := c.platformSlots[key]
 	if !ok {
-		ps = &platformSlotState{inst: uint32(inst64), slot: uint32(slot64)}
+		ps = &platformSlotState{inst: update.inst, slot: update.slot}
 		c.platformSlots[key] = ps
 	}
-	if len(msg.Payload()) == 0 {
+	if update.deleted {
 		delete(c.platformSlots, key)
-	} else if payload.Value == nil {
-		switch field {
-		case "Description":
-			ps.description = ""
-		case "DeviceName":
-			ps.deviceName = ""
-		case "Service":
-			ps.service = ""
-		case "DateTime":
-			ps.dateTime = ""
-		case "Type":
-			ps.hasType = false
-			ps.pushTypeKnown = false
-		case "Acknowledged":
-			ps.acknowledged = false
-		case "Active":
-			ps.active = nil
-		}
-	}
-	switch field {
-	case "Description":
-		if str, ok := payload.Value.(string); ok {
-			ps.description = strings.TrimSpace(str)
-		}
-	case "DeviceName":
-		if str, ok := payload.Value.(string); ok {
-			ps.deviceName = strings.TrimSpace(str)
-		}
-	case "Service":
-		if str, ok := payload.Value.(string); ok {
-			ps.service = strings.TrimSpace(str)
-		}
-	case "DateTime":
-		ps.dateTime = state.NotificationTime(payload.Value)
-	case "Type":
-		ps.pushTypeKnown = false
-		if n, ok := toFloat(payload.Value); ok {
-			strict, known := number(payload.Value)
-			ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
-			ps.notifType = int64(n)
-			ps.hasType = true
-		}
-	case "Acknowledged":
-		if n, ok := toFloat(payload.Value); ok {
-			ps.acknowledged = n != 0
-		} else if b, ok := payload.Value.(bool); ok {
-			ps.acknowledged = b
-		}
-	case "Active":
-		if n, ok := toFloat(payload.Value); ok {
-			v := n != 0
-			ps.active = &v
-		} else if b, ok := payload.Value.(bool); ok {
-			ps.active = &b
-		}
+	} else {
+		ps.updateField(update.field, update.value)
 	}
 	snapshot := make([]*platformSlotState, 0, len(c.platformSlots))
 	for _, v := range c.platformSlots {
 		cp := *v
-
 		snapshot = append(snapshot, &cp)
 	}
-	c.platformMu.Unlock()
+	return snapshot
+}
 
+func (c *Client) applyPlatformNotification(msg mqtt.Message, generation, session uint64) {
+	if generation != c.pushGenerationNow() {
+		return
+	}
+	update, ok := decodePlatformNotification(msg)
+	if !ok {
+		return
+	}
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		return
+	}
+	snapshot := c.updatePlatformSlots(update)
 	// Rebuild banners: keep inverter-control pushes; replace all victron-* with platform slots.
 	c.stateMu.Lock()
 	st := c.state

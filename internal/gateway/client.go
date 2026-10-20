@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -42,6 +44,11 @@ type Client struct {
 	started     bool
 	stopped     bool
 	mapOptions  MapOptions
+
+	commandApplyMu sync.Mutex
+	// Only the poll loop uses this flag. HTTP/2 may finish cancelling a
+	// timed-out stream after Do returns, so also drain before the next poll.
+	drainIdleBeforePoll bool
 }
 
 // NewClient builds an IGW HTTPS client. apply receives mapped dashboard state.
@@ -115,7 +122,7 @@ func (c *Client) Start() {
 	go c.pollLoop()
 }
 
-// Stop cancels the active poll and waits for all poll callbacks to return.
+// Stop cancels active requests and waits for state callbacks to return.
 // Callbacks must not call Stop synchronously. Once Stop returns, switching
 // telemetry sources cannot be overwritten by a late gateway snapshot.
 func (c *Client) Stop() {
@@ -129,6 +136,8 @@ func (c *Client) Stop() {
 	}
 	c.lifecycleMu.Unlock()
 	<-c.done
+	c.commandApplyMu.Lock()
+	defer c.commandApplyMu.Unlock()
 	c.http.CloseIdleConnections()
 }
 
@@ -141,6 +150,11 @@ func (c *Client) pollLoop() {
 	c.pollOnce()
 
 	for {
+		if c.drainIdleBeforePoll {
+			// A slow failed request can leave an already-expired tick. Give
+			// stream cancellation the normal poll interval before draining.
+			ticker.Reset(c.cfg.PollInterval)
+		}
 		select {
 		case <-c.ctx.Done():
 			log.Printf("[gateway] poller stopped")
@@ -155,11 +169,23 @@ func (c *Client) pollOnce() {
 	if c.ctx.Err() != nil {
 		return
 	}
+	if c.drainIdleBeforePoll {
+		c.http.CloseIdleConnections()
+		c.drainIdleBeforePoll = false
+	}
 	snap, err := c.FetchSnapshot(c.ctx)
 	if c.ctx.Err() != nil {
 		return
 	}
 	if err != nil {
+		var networkError net.Error
+		if errors.As(err, &networkError) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			// Retire reusable connections after a failed read-only poll. The
+			// next scheduled poll may then dial again after a network move.
+			// Active requests, including commands, are not interrupted/replayed.
+			c.drainIdleBeforePoll = true
+			c.http.CloseIdleConnections()
+		}
 		was := c.connected.Swap(false)
 		log.Printf("[gateway] poll failed: %v", err)
 		if was {
@@ -238,19 +264,8 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 	if err := c.ctx.Err(); err != nil {
 		return err
 	}
-	if name == "set_ess_mode" || name == "setpoint_override" || name == "electricity_tariff" || name == "toggle" || name == "dry_run" || name == "ess_mode" || name == "water_mode" {
-		snap, fetchErr := c.FetchSnapshot(ctx)
-		if fetchErr != nil {
-			return fetchErr
-		}
-		st := SnapshotToState(snap, c.mapOptions)
-		ready := c.commandReady(st, name, body)
-		if !snap.Capabilities[name] || !ready {
-			return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
-		}
-		if err := c.ctx.Err(); err != nil {
-			return err
-		}
+	if err := c.validateCommandSnapshot(ctx, name, body); err != nil {
+		return err
 	}
 	payload, err := state.EncodeControllerCommand(body)
 	if err != nil {
@@ -282,6 +297,26 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 		return err
 	}
 	return ctx.Err()
+}
+
+// validateCommandSnapshot keeps command capability and freshness checks on the
+// same deadline as publication and acknowledgement.
+func (c *Client) validateCommandSnapshot(ctx context.Context, name string, body any) error {
+	switch name {
+	case "set_ess_mode", "setpoint_override", "electricity_tariff", "toggle", "dry_run", "ess_mode", "water_mode":
+	default:
+		return nil
+	}
+	snap, err := c.FetchSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	st := SnapshotToState(snap, c.mapOptions)
+	ready := c.commandReady(st, name, body)
+	if !snap.Capabilities[name] || !ready {
+		return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
+	}
+	return c.ctx.Err()
 }
 
 func truncate(s string, n int) string {
@@ -322,10 +357,7 @@ func (c *Client) awaitOverride(ctx context.Context, body any) error {
 			return err
 		}
 		if confirmed {
-			if c.apply != nil {
-				c.apply(st)
-			}
-			return nil
+			return c.applyOverride(ctx, st)
 		}
 		select {
 		case <-ctx.Done():
@@ -333,6 +365,23 @@ func (c *Client) awaitOverride(ctx context.Context, body any) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// An acknowledgement can arrive outside the poll goroutine. Join its state
+// callback during Stop so a retired gateway cannot overwrite the new source.
+func (c *Client) applyOverride(ctx context.Context, st *state.State) error {
+	c.commandApplyMu.Lock()
+	defer c.commandApplyMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
+	if c.apply != nil {
+		c.apply(st)
+	}
+	return nil
 }
 
 func (c *Client) commandReady(st *state.State, name string, body any) bool {

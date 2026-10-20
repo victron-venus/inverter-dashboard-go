@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.15] - 2026-10-20
+
+### Fixed
+
+- Recover gateway polling after transport failures, including interrupted
+  HTTP/2 response bodies, without replaying commands or interrupting active
+  requests. Keep the configured delay between recovery attempts.
+- Wait for an in-progress gateway override callback before retiring its source.
+  Preserve the original MQTT subscription session through controller and native
+  notification decoding, portal discovery and deferred subscriptions, and fence
+  state updates against source retirement.
+- Reject malformed Home Assistant state responses and recover on the next valid
+  poll. Keep nonfinite readings out of JSON, reject invalid numeric control
+  bounds consistently in displayed sliders and command authorization, and
+  constrain appliance durations to valid nonnegative, representable values.
+
+### Changed
+
+- Import the verified official Vue 2.2.11-beta.1 interface without rebuilding.
+  Its WebSocket recovery no longer lets successful HTTP fallback polling hide a
+  silent command connection. Keep the existing reconnect interval and command
+  gates; no commands are replayed.
+- Align the local lint hook with the Go 1.27-compatible golangci-lint 2.14 used by
+  CI, retaining its standard checks. Use the reviewed Go 1.27.2 Alpine container
+  base and current pinned CI workflows.
+
+### Upgrade
+
+Preserve local configuration, credentials, notification storage and persistent
+volumes when upgrading. No configuration or data migration is required. Retain
+the previous immutable image or package for rollback, and verify fresh telemetry
+and configured Home controls before accepting the deployment.
+
+### Security
+
+Delayed callbacks from retired sources cannot renew notification state or
+control eligibility. Malformed and nonfinite HA responses do not grant control
+permission. Authentication, TLS verification and command deadlines remain
+required. The local scan found no affected symbols or imported packages;
+GO-2026-5932 is a module-only finding in unused deprecated OpenPGP packages.
+No scanner exclusion is added. The synthetic regression tests do not establish
+physical-device acceptance or delivery of operating-system notifications.
+
 ## [1.9.14] - 2026-10-18
 
 ### Fixed

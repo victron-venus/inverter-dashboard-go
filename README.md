@@ -10,9 +10,9 @@ A Go server for a Victron installation, with the shared Vue dashboard embedded i
 
 This is a Go application: Node.js and npm are not required to run it. The browser UI is maintained in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue); the Python server is [inverter-dashboard](https://github.com/victron-venus/inverter-dashboard).
 
-[![Shared Vue interface v2.2.9 bundled by the Go dashboard, shown with synthetic demonstration data](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
+[![Historical Vue v2.2.9 interface illustration with synthetic demonstration data](docs/images/app-hero.png)](docs/images/vue-demo.jpg)
 
-*Shared Vue interface v2.2.9 bundled by the Go dashboard, shown with synthetic demonstration data. Click for the original screenshot.*
+*Historical Vue v2.2.9 interface illustration with synthetic demonstration data. Click for the original screenshot.*
 
 [Artwork source and regeneration](docs/images/README.md).
 
@@ -36,7 +36,8 @@ Feature availability is not a promise that every Desktop function or every firmw
 
 For a packaged installation, choose an explicit version and platform from [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), verify its published checksums and provenance, and follow the release notes. Beta/nightly/RC artifacts are previews. The committed base version is in [VERSION](VERSION); a package can have a longer candidate version.
 
-To build from source, use the Go toolchain required by [go.mod](go.mod) (currently Go 1.26.9):
+To build from source, use the toolchain selected by [go.mod](go.mod): Go 1.27.2,
+with the Go 1.26.9 module baseline preserved.
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git
@@ -61,6 +62,9 @@ For containers, read [the container and persistence instructions](docs/operation
 ## Configure your installation
 
 Start with [config.yaml.example](config.yaml.example) and the [configuration reference](docs/configuration.md).
+
+See [connection recovery and invalid source data](docs/runtime-recovery.md) for
+reconnect behavior, delayed notification fencing and Home Assistant validation.
 
 - **MQTT:** set `mqtt.host` and `cerbo.portal_id`. An explicit portal bootstraps a quiet broker; passive discovery needs incoming native traffic. Native keepalive and configured water-mode refresh run every 20 seconds.
 - **IGW:** configure an HTTPS URL and credentials. An empty YAML `mqtt.host` with IGW enabled selects gateway-only operation. With both configured, MQTT is preferred and IGW provides failover; recovery probes run approximately every 60 seconds.
@@ -90,7 +94,7 @@ Web Push uses startup/reconnect priming, persistent deduplication and bounded de
 
 ## UI versions and languages
 
-The embedded UI is the official **Vue v2.2.9** artifact (package `2.2.9`, source `f86943ebc764688c32bc4389f2276bc12682a90e`). [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes. The files are byte-identical to the accepted RC `v2.2.9-rc.2` (build run `39039690585`). Interface text, dates, times, retained application errors and theme labels support English, Russian, Ukrainian, German, French and Dutch; provider-supplied messages retain their original text. See [language support](docs/development.md#shared-ui-and-translations).
+The embedded UI is the official **Vue v2.2.11-beta.1** artifact (package `2.2.11-beta.1`, source `01eae482124cd958dd110e362769ba5817d44b6e`). [Its receipt](internal/html/vue-ui-source.json) records the exact artifact provenance and file hashes. The beta was imported without rebuilding from verified official publication bytes (build run `39405183480`); it is a preview, not a stable or RC acceptance claim. Interface text, dates, times, retained application errors and theme labels support English, Russian, Ukrainian, German, French and Dutch; provider-supplied messages retain their original text. See [language support](docs/development.md#shared-ui-and-translations).
 
 ## Help and development
 

@@ -646,8 +646,13 @@ func validPortal(portal string) bool {
 	}
 	return true
 }
-func (c *Client) acceptPortal(portal string) bool {
+func (c *Client) acceptPortal(portal string, generation, session uint64) bool {
 	if !validPortal(portal) {
+		return false
+	}
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
 		return false
 	}
 	c.stateMu.Lock()
@@ -659,10 +664,9 @@ func (c *Client) acceptPortal(portal string) bool {
 	return true
 }
 func (c *Client) onCerboLiveMessage(_ mqtt.Client, msg mqtt.Message) {
-	c.applyCerboMessage(msg, c.pushGenerationNow())
+	c.applyCerboMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
 }
-func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
-	session := c.mqttSession.Load()
+func (c *Client) applyCerboMessage(msg mqtt.Message, generation, session uint64) {
 	if generation != c.pushGenerationNow() {
 		return
 	}
@@ -670,48 +674,66 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 	if len(parts) < 3 || parts[0] != "N" {
 		return
 	}
-	value, valid := parseCerboPayload(msg.Payload())
-	previous := c.PortalID()
-	// A malformed Mode for the selected portal must still revoke its previous
-	// command receipt below. It cannot discover a portal or renew telemetry.
-	selectedMode := previous != "" && parts[1] == previous && len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode"
-	if !valid && len(msg.Payload()) != 0 && !selectedMode {
+	previous, valid := c.validateCerboMessagePayload(parts, msg.Payload())
+	if !valid {
 		return
 	}
-	if previous == "" {
-		if !valid || value == nil {
-			return
-		}
-		if _, ok := value.(bool); ok {
-			return
-		}
-		if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
-			return
-		}
-	}
-	if !c.acceptPortal(parts[1]) {
+	if !c.acceptPortal(parts[1], generation, session) {
 		return
 	}
 	if previous == "" {
 		log.Printf("Discovered Cerbo portal %s from native MQTT", parts[1])
-		go c.refreshPortal(parts[1])
+		go c.refreshPortal(parts[1], session)
 	}
 	if len(parts) == 3 {
 		return
 	} // heartbeat/keepalive discovery has no measurement leaf.
 	if parts[2] == "platform" && strings.Contains(msg.Topic(), "/Notifications/") {
-		c.applyPlatformNotification(msg, generation)
+		c.applyPlatformNotification(msg, generation, session)
 		return
 	}
 	if strings.Contains(msg.Topic(), "/Alarms/") {
-		c.gatewayMu.RLock()
-		defer c.gatewayMu.RUnlock()
-		if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
-			return
-		}
-		c.onAlarmMessage(nil, msg)
+		c.applyCerboAlarm(msg, generation, session)
 		return
 	}
+	c.applyCerboDeviceMessage(msg, parts, generation, session)
+}
+
+// validateCerboMessagePayload allows selected-mode tombstones to revoke command
+// receipts, but requires a real value before discovering an unknown portal.
+func (c *Client) validateCerboMessagePayload(parts []string, payload []byte) (string, bool) {
+	value, valid := parseCerboPayload(payload)
+	previous := c.PortalID()
+	selectedMode := previous != "" && parts[1] == previous && len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode"
+	if !valid && len(payload) != 0 && !selectedMode {
+		return previous, false
+	}
+	if previous != "" {
+		return previous, true
+	}
+	if !valid || value == nil {
+		return previous, false
+	}
+	switch value := value.(type) {
+	case bool:
+		return previous, false
+	case string:
+		return previous, strings.TrimSpace(value) != ""
+	default:
+		return previous, true
+	}
+}
+
+func (c *Client) applyCerboAlarm(msg mqtt.Message, generation, session uint64) {
+	c.gatewayMu.RLock()
+	defer c.gatewayMu.RUnlock()
+	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
+		return
+	}
+	c.onAlarmMessage(nil, msg)
+}
+
+func (c *Client) applyCerboDeviceMessage(msg mqtt.Message, parts []string, generation, session uint64) {
 	c.gatewayMu.RLock()
 	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
 		c.gatewayMu.RUnlock()
@@ -719,19 +741,7 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 	}
 	c.stateMu.Lock()
 	changed := c.handleCerboDevice(msg.Topic(), msg.Payload())
-	if len(parts) == 5 && parts[2] == "pump" && parts[4] == "Mode" {
-		for key, instance := range map[string]int{"pump_mode": c.pumpInstance, "water_valve_mode": c.valveInstance} {
-			if parts[3] == strconv.Itoa(instance) {
-				if c.waterModeObserved == nil {
-					c.waterModeObserved = map[string]time.Time{}
-				}
-				delete(c.waterModeObserved, key)
-				if changed && !msg.Retained() && c.state.TelemetryAvailable[key] {
-					c.waterModeObserved[key] = time.Now()
-				}
-			}
-		}
-	}
+	c.updateWaterModeObservation(parts, changed, msg.Retained())
 	changedPath := strings.Join(parts[2:], "/")
 	if len(msg.Payload()) == 0 && len(parts) == 4 {
 		changedPath += "/Connected"
@@ -753,28 +763,59 @@ func (c *Client) applyCerboMessage(msg mqtt.Message, generation uint64) {
 		c.triggerHandler()
 	}
 }
+
+// updateWaterModeObservation requires stateMu and the active source guard.
+func (c *Client) updateWaterModeObservation(parts []string, changed, retained bool) {
+	if len(parts) != 5 || parts[2] != "pump" || parts[4] != "Mode" {
+		return
+	}
+	for key, instance := range map[string]int{"pump_mode": c.pumpInstance, "water_valve_mode": c.valveInstance} {
+		if parts[3] != strconv.Itoa(instance) {
+			continue
+		}
+		if c.waterModeObserved == nil {
+			c.waterModeObserved = map[string]time.Time{}
+		}
+		delete(c.waterModeObserved, key)
+		if changed && !retained && c.state.TelemetryAvailable[key] {
+			c.waterModeObserved[key] = time.Now()
+		}
+	}
+}
+
 func (c *Client) onPortalMessage(_ mqtt.Client, msg mqtt.Message) {
+	c.applyPortalMessage(msg, c.pushGenerationNow(), c.mqttSession.Load())
+}
+func (c *Client) bindPortalCallback(session uint64) mqtt.MessageHandler {
+	return func(_ mqtt.Client, msg mqtt.Message) {
+		c.applyPortalMessage(msg, c.pushGenerationNow(), session)
+	}
+}
+func (c *Client) applyPortalMessage(msg mqtt.Message, generation, session uint64) {
 	portal := strings.TrimSpace(string(msg.Payload()))
 	var quoted string
 	if json.Unmarshal(msg.Payload(), &quoted) == nil {
 		portal = quoted
 	}
 	previous := c.PortalID()
-	if previous != "" || !c.acceptPortal(portal) {
+	if previous != "" || !c.acceptPortal(portal, generation, session) {
 		return
 	}
-	go c.refreshPortal(portal)
+	go c.refreshPortal(portal, session)
 }
-func (c *Client) refreshPortal(portal string) {
-	if c.client == nil || !c.client.IsConnectionOpen() {
+func (c *Client) refreshPortal(portal string, session uint64) {
+	if c.mqttSession.Load() != session || c.client == nil || !c.client.IsConnectionOpen() {
 		return
 	}
 	c.subscribeMu.Lock()
 	defer c.subscribeMu.Unlock()
+	if c.mqttSession.Load() != session {
+		return
+	}
 	c.keepaliveMu.Lock()
 	c.keepaliveNeedsRefresh = true
 	c.keepaliveMu.Unlock()
-	if err := c.subscribeNativeTopics(portal); err != nil {
+	if err := c.subscribeNativeTopics(portal, session); err != nil {
 		log.Printf("Cerbo subscribe: %v", err)
 		return
 	}
@@ -789,9 +830,9 @@ func nativeFilters(portal string) []string {
 	out = append(out, fmt.Sprintf("N/%s/+/Alarms/#", portal), fmt.Sprintf("N/%s/heartbeat", portal), fmt.Sprintf("N/%s/keepalive", portal))
 	return out
 }
-func (c *Client) subscribeNativeTopics(portal string) error {
+func (c *Client) subscribeNativeTopics(portal string, session uint64) error {
 	for _, filter := range nativeFilters(portal) {
-		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(c.mqttSession.Load(), true)); token.Wait() && token.Error() != nil {
+		if token := c.client.Subscribe(filter, 0, c.bindPushCallback(session, true)); token.Wait() && token.Error() != nil {
 			return fmt.Errorf("subscribe %s: %w", filter, token.Error())
 		}
 	}
