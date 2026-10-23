@@ -23,12 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Allow the release API status to catch up for up to five minutes while preserving
+  exact run identity, attempt and required-check validation.
 - Import the verified official Vue 2.2.11-beta.1 interface without rebuilding.
   Its WebSocket recovery no longer lets successful HTTP fallback polling hide a
   silent command connection. Keep the existing reconnect interval and command
   gates; no commands are replayed.
 - Align the local lint hook with the Go 1.27-compatible golangci-lint 2.14 used by
-  CI, retaining its standard checks. Use the reviewed Go 1.27.2 Alpine container
+  CI, retaining its standard checks. Use the reviewed Go 1.27.3 Alpine container
   base and current pinned CI workflows.
 
 ### Upgrade
@@ -39,6 +41,9 @@ the previous immutable image or package for rollback, and verify fresh telemetry
 and configured Home controls before accepting the deployment.
 
 ### Security
+
+Go 1.27.3 fixes GO-2026-6809 in the certificate-verification path used by the
+self-update client; the supported Go 1.26 line now starts at 1.26.10.
 
 Delayed callbacks from retired sources cannot renew notification state or
 control eligibility. Malformed and nonfinite HA responses do not grant control
