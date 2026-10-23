@@ -4,7 +4,7 @@
 
 ## Build the server, not an npm wrapper
 
-Use Go 1.27.2, selected by [go.mod](../go.mod), with the Go 1.26.9 module baseline preserved. From the repository root:
+Use Go 1.27.3, selected by [go.mod](../go.mod), with the Go 1.26.10 module baseline preserved. From the repository root:
 
 ```sh
 go mod download

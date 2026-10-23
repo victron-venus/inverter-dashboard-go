@@ -23,7 +23,7 @@ jobs:
     name: CI
     uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@5194a48f3eb54d80e315133b17ff0fd217ed4327 # main
     with:
-      go-version: '1.27.2'
+      go-version: '1.27.3'
       # v1 cannot decode Go 1.27 export data; use the toolkit's pinned v2 toolchain.
       golangci-lint-major: '2'
       # working-directory: '.'  # default

@@ -29,7 +29,7 @@ Dit is geen garantie voor volledige gelijkheid met Desktop of ondersteuning van 
 
 Kies een specifieke versie voor uw platform bij [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases). Controleer de gepubliceerde controlesommen en herkomstgegevens. Beta-, nightly- en RC-versies zijn voorvertoningen. De basisversie van de broncode staat in [VERSION](VERSION).
 
-Voor het bouwen wordt Go 1.27.2 gebruikt, zoals geselecteerd in [go.mod](go.mod); de modulebasis blijft Go 1.26.9:
+Voor het bouwen wordt Go 1.27.3 gebruikt, zoals geselecteerd in [go.mod](go.mod); de modulebasis blijft Go 1.26.10:
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git

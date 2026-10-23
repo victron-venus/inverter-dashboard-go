@@ -29,7 +29,7 @@ Cela ne garantit pas une équivalence totale avec Desktop ni la prise en charge 
 
 Choisissez une version précise pour votre plateforme dans [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), puis vérifiez les sommes de contrôle et les preuves de provenance publiées. Les versions beta, nightly et RC sont des préversions. La version de base du code figure dans [VERSION](VERSION).
 
-La compilation utilise Go 1.27.2, sélectionné dans [go.mod](go.mod) ; la version de base du module reste Go 1.26.9 :
+La compilation utilise Go 1.27.3, sélectionné dans [go.mod](go.mod) ; la version de base du module reste Go 1.26.10 :
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git

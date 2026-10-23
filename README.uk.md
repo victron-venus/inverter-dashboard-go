@@ -29,7 +29,7 @@
 
 Виберіть конкретну версію й платформу в [Releases](https://github.com/victron-venus/inverter-dashboard-go/releases), перевірте опубліковані контрольні суми та походження файлів. Beta/nightly/RC — попередні версії. Базову версію містить [VERSION](VERSION).
 
-Для збирання використовується Go 1.27.2, вибраний у [go.mod](go.mod); базова версія модуля залишається Go 1.26.9:
+Для збирання використовується Go 1.27.3, вибраний у [go.mod](go.mod); базова версія модуля залишається Go 1.26.10:
 
 ```sh
 git clone https://github.com/victron-venus/inverter-dashboard-go.git
