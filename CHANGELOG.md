@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Complete the browser test fixture's WebSocket close handshake, preserving valid
+  client close metadata, and exercise close/reconnect across a real browser reload.
+  Allow up to 30 seconds for hosted browser navigation while retaining the separate
+  10-second application readiness checks and the full compatibility matrix.
 - Allow the release API status to catch up for up to five minutes while preserving
   exact run identity, attempt and required-check validation.
 - Import the verified official Vue 2.2.11-beta.1 interface without rebuilding.
