@@ -39,4 +39,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: 'trivy-results.sarif'
+          # Keep the existing main-branch baseline when called by the PR gate.
+          # Without a category, upload-sarif uses the top-level caller's path.
+          category: .github/workflows/release-pipeline.yml:trivy-scan
     timeout-minutes: 30
