@@ -21,7 +21,7 @@ jobs:
       browser-extended: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.channel == '' || github.event.inputs.channel == 'rc')) }}
   ci:
     name: CI
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@2fead769a8be42256408bd1a8166b6efa2ffa3b8 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@cd07a77d4a069dd14fff57d07e47dafbda082ab6 # main
     with:
       go-version: '1.27.3'
       # v1 cannot decode Go 1.27 export data; use the toolkit's pinned v2 toolchain.
