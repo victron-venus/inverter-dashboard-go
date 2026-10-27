@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refresh the pinned Debian Bookworm runtime image used by the dashboard container.
 - Preserve the dashboard API, gateway polling behavior and existing configuration.
 
+### Upgrade
+
+Update through the existing package or container procedure. Preserve gateway endpoints, credentials, notification storage and persistent volumes, and retain the previous immutable image for rollback. No API, configuration or data migration is required; verify fresh telemetry and configured controls on the intended deployment.
+
+### Security
+
+Retain existing command authorization and transport verification. Refreshing the runtime image does not grant additional access or establish physical-device acceptance; the normal security and deployment checks remain required.
+
 ## [1.9.15] - 2026-10-20
 
 ### Fixed
