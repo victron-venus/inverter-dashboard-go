@@ -8,7 +8,7 @@ permissions:
 jobs:
   browser-compatibility:
     name: Embedded frontend browser acceptance
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/typescript-ci.yml@94b1116449af128810b86f4c0c723602be17b372 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/typescript-ci.yml@e9d505643bc562d6f725a4d3183d9c67ac7e536b # main
     permissions:
       contents: read
     with:
@@ -21,7 +21,7 @@ jobs:
       browser-extended: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.channel == '' || github.event.inputs.channel == 'rc')) }}
   ci:
     name: CI
-    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@cd07a77d4a069dd14fff57d07e47dafbda082ab6 # main
+    uses: victron-venus/venus-os-ci-toolkit/.github/workflows/go-ci.yml@e9d505643bc562d6f725a4d3183d9c67ac7e536b # main
     with:
       go-version: '1.27.3'
       # v1 cannot decode Go 1.27 export data; use the toolkit's pinned v2 toolchain.
@@ -43,7 +43,7 @@ jobs:
     # locally instead of workflow_call.
     steps:
       - name: Harden the runner
-        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
 
