@@ -22,6 +22,13 @@ continues to reference them; the latter is mounted at `/app/config.yaml`.
 Optional Kubernetes references allow a pod to start without these Secrets; they
 do not prove that gateway or HA authentication is configured correctly.
 
+Before exposing the dashboard, supply `DASHBOARD_SECRET` through a private Secret
+environment reference, serve it over HTTPS and restrict ingress to intended
+users. An unset secret disables the application's shared-secret authentication,
+including for command and notification APIs. The gateway bearer token protects
+the gateway connection; it does not authenticate dashboard clients. See
+[authentication](../../docs/configuration.md#http-authentication-and-storage).
+
 Select a verified release image before applying. Follow
 [release operations](../../docs/release-workflow.md) to import the published,
 checksum-verified OCI archive without rebuilding it. Replace `newTag: latest` in
@@ -48,6 +55,13 @@ If Web Push is enabled, set `WEB_PUSH_DATA_DIR` to a separate private directory,
 such as `/var/lib/inverter-dashboard/notifications`, with mode 0700 and files
 mode 0600. Preserve both across image updates; the push store contains the VAPID
 identity, subscriptions and pending delivery state.
+
+Provision the mounted settings and push paths for the container's effective
+runtime UID/GID; the image runs as the non-root `app` user. The settings parent
+must be writable, and the 0700 push directory and its 0600 files must be owned
+by that runtime user. A root-owned 0700 directory remains inaccessible even on
+a writable volume. Verify ownership against the selected image and deployment
+security context before starting the pod.
 
 Use one replica and the `Recreate` strategy when sharing this store. An emptyDir
 or the container writable layer does not preserve it during replacement. Keep
@@ -96,6 +110,16 @@ kubectl --context "$KUBE_CONTEXT" kustomize "$DEPLOY_DIR"
 kubectl --context "$KUBE_CONTEXT" apply -k "$DEPLOY_DIR"
 kubectl --context "$KUBE_CONTEXT" -n inverter-dashboard-go rollout status deployment/inverter-dashboard-go
 kubectl --context "$KUBE_CONTEXT" -n inverter-dashboard-go get pods,ingress -o wide
+```
+
+Secret values injected into the environment and the `/app/config.yaml` `subPath`
+mount do not refresh in an existing pod. After changing either Secret, if an
+image or pod-template update has not already replaced the pod, restart it
+explicitly and wait for readiness:
+
+```bash
+kubectl --context "$KUBE_CONTEXT" -n inverter-dashboard-go rollout restart deployment/inverter-dashboard-go
+kubectl --context "$KUBE_CONTEXT" -n inverter-dashboard-go rollout status deployment/inverter-dashboard-go
 ```
 
 Rendering may contain secrets if the private overlay generates them: inspect it

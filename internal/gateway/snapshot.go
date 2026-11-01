@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
@@ -44,9 +43,9 @@ func decodeLeaves(raw map[string]json.RawMessage) leafMap {
 			continue
 		}
 		decoder := json.NewDecoder(bytes.NewReader(v))
-		parts := strings.Split(k, "/")
 		_, _, _, platformLeaf := state.ParsePlatformNotificationKey(k)
-		if platformLeaf || (len(parts) == 3 && parts[1] == "Alarms") {
+		_, _, alarmLeaf := nativeAlarmPath(k)
+		if platformLeaf || alarmLeaf {
 			// Native enums, flags and dates require exact numeric text. Keep
 			// ordinary telemetry in the float64 form expected by its mappers.
 			decoder.UseNumber()

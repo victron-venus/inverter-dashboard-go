@@ -94,3 +94,34 @@ func TestPlatformNotificationIDsRetainUint32Range(t *testing.T) {
 		}
 	}
 }
+
+func TestNestedWireAlarmsPreserveIdentityNameAndExactLevel(t *testing.T) {
+	var snapshot Snapshot
+	payload := `{"vebus":{
+        "276/Alarms/L1/Overload":2,
+        "276/Alarms/L2/Overload":1.00000000000000001,
+        "276/Alarms/L3/Overload":1,
+        "276/Alarms//Overload":2,
+        "276/Alarms/L1/":2
+    }}`
+	if err := json.Unmarshal([]byte(payload), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	got := SnapshotToState(&snapshot, MapOptions{}).Notifications
+	if len(got) != 2 {
+		t.Fatalf("nested alarms missing or malformed values accepted: %+v", got)
+	}
+	expected := map[string]string{
+		"victron-vebus/276/Alarms/L1/Overload": "Overload: Alarm",
+		"victron-vebus/276/Alarms/L3/Overload": "Overload: Warning",
+	}
+	for _, notification := range got {
+		if notification.Title != "Vebus 276" || expected[notification.ID] != notification.Body {
+			t.Errorf("nested alarm identity or display changed: %+v", notification)
+		}
+		delete(expected, notification.ID)
+	}
+	if len(expected) != 0 {
+		t.Fatalf("nested alarms were merged or omitted: %v", expected)
+	}
+}

@@ -200,11 +200,25 @@ func prettyServiceName(service string) string {
 	return strings.ToUpper(service[:1]) + service[1:]
 }
 
+// nativeAlarmPath preserves nested DBus paths such as Alarms/L1/Overload.
+// Mapping and exact-number decoding must accept the same alarm leaves.
+func nativeAlarmPath(key string) (instance, name string, valid bool) {
+	parts := strings.Split(key, "/")
+	if len(parts) < 3 || parts[1] != "Alarms" {
+		return "", "", false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return "", "", false
+		}
+	}
+	return parts[0], parts[len(parts)-1], true
+}
+
 func mapAlarmLeaves(service string, m leafMap, out *[]state.Notification) {
 	for k, raw := range m {
-		// "<inst>/Alarms/<Name>"
-		parts := strings.Split(k, "/")
-		if len(parts) != 3 || parts[0] == "" || parts[1] != "Alarms" || parts[2] == "" {
+		inst, name, valid := nativeAlarmPath(k)
+		if !valid {
 			continue
 		}
 		v, ok := state.NativeNotificationLevel(raw)
@@ -217,12 +231,7 @@ func mapAlarmLeaves(service string, m leafMap, out *[]state.Notification) {
 			level = "alarm"
 			stateTxt = "Alarm"
 		}
-		inst := parts[0]
-		name := parts[2]
-		svc := service
-		if inst != "" {
-			svc = service + "_" + inst
-		}
+		svc := service + "_" + inst
 		*out = append(*out, state.Notification{
 			ID:     "victron-" + service + "/" + k,
 			Level:  level,
