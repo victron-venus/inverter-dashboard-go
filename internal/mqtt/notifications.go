@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -39,10 +38,21 @@ func (c *Client) applyNotificationMessage(msg mqtt.Message, generation, session 
 		log.Printf("Bad notification payload: %v", err)
 		return
 	}
+	raw.ID, raw.Title = strings.TrimSpace(raw.ID), strings.TrimSpace(raw.Title)
+	if raw.ID == "" && raw.Title == "" {
+		return
+	}
+	if raw.ID == "" {
+		raw.ID = raw.Title
+	}
+	if raw.Title == "" {
+		raw.Title = raw.ID
+	}
 	if raw.Source == "" {
 		raw.Source = "inverter-control"
 	}
-	if raw.Level == "" {
+	raw.Level = strings.ToLower(strings.TrimSpace(raw.Level))
+	if raw.Level != "info" && raw.Level != "warning" && raw.Level != "alarm" {
 		raw.Level = "info"
 	}
 
@@ -55,7 +65,7 @@ func (c *Client) applyNotificationMessage(msg mqtt.Message, generation, session 
 	}
 	c.stateMu.Lock()
 	st := c.state
-	st.Notifications = append(st.Notifications, state.Notification{
+	st.Notifications = upsertNotification(st.Notifications, state.Notification{
 		ID:     raw.ID,
 		Level:  raw.Level,
 		Title:  raw.Title,
@@ -63,12 +73,24 @@ func (c *Client) applyNotificationMessage(msg mqtt.Message, generation, session 
 		Source: raw.Source,
 		Ts:     raw.Ts,
 	})
-	if len(st.Notifications) > maxNotifications {
-		st.Notifications = st.Notifications[len(st.Notifications)-maxNotifications:]
-	}
 	c.stateMu.Unlock()
 	c.notificationPush(generation, msg.Retained())
 	c.triggerHandler()
+}
+
+// A banner is current state for an event ID, not a log of replayed packets.
+func upsertNotification(notifications []state.Notification, notification state.Notification) []state.Notification {
+	kept := notifications[:0]
+	for _, existing := range notifications {
+		if existing.ID != notification.ID {
+			kept = append(kept, existing)
+		}
+	}
+	kept = append(kept, notification)
+	if len(kept) > maxNotifications {
+		kept = kept[len(kept)-maxNotifications:]
+	}
+	return kept
 }
 
 // onAlarmMessage tracks a Victron alarm topic
@@ -78,28 +100,15 @@ func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
 
 	c.platformMu.Lock()
-	platformSeen := c.platformNotifsSeen
-	c.platformMu.Unlock()
-	if platformSeen {
+	defer c.platformMu.Unlock()
+	if c.platformNotifsSeen {
 		// Desktop: once platform Notifications appear, suppress raw Alarms banners.
 		return
 	}
 
-	var payload struct {
-		Value interface{} `json:"value"`
-	}
-	if len(msg.Payload()) > 0 {
-		if err := json.Unmarshal(msg.Payload(), &payload); err != nil {
-			return
-		}
-	}
-	value := 0 // Null or removed alarm paths clear their previous banner.
-	if payload.Value != nil {
-		num, ok := toFloat(payload.Value)
-		if !ok {
-			return
-		}
-		value = int(num)
+	value, valid := decodeAlarmValue(msg.Payload())
+	if !valid {
+		return
 	}
 
 	if _, changed := c.setAlarmValue(topic, value); !changed {
@@ -127,16 +136,13 @@ func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 			level = "alarm"
 			stateTxt = "Alarm"
 		}
-		st.Notifications = append(st.Notifications, state.Notification{
+		st.Notifications = upsertNotification(st.Notifications, state.Notification{
 			ID:     id,
 			Level:  level,
 			Title:  prettyServiceName(service),
 			Body:   fmt.Sprintf("%s: %s", prettyAlarmName(name), stateTxt),
 			Source: "victron",
 		})
-		if len(st.Notifications) > maxNotifications {
-			st.Notifications = st.Notifications[len(st.Notifications)-maxNotifications:]
-		}
 	} else {
 		kept := st.Notifications[:0]
 		for _, n := range st.Notifications {
@@ -148,6 +154,30 @@ func (c *Client) onAlarmMessage(client mqtt.Client, msg mqtt.Message) {
 	}
 	c.stateMu.Unlock()
 	c.triggerHandler()
+}
+
+func decodeAlarmValue(raw []byte) (int, bool) {
+	if len(raw) == 0 {
+		return 0, true // A retained-message tombstone clears the alarm.
+	}
+	var payload map[string]json.RawMessage
+	if json.Unmarshal(raw, &payload) != nil {
+		return 0, false
+	}
+	value, present := payload["value"]
+	if !present {
+		return 0, false
+	}
+	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		return 0, true
+	}
+	var level any
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	if decoder.Decode(&level) != nil {
+		return 0, false
+	}
+	return state.NativeNotificationLevel(level)
 }
 
 // setAlarmValue records the latest alarm value for a topic and reports
@@ -296,45 +326,42 @@ type platformNotificationUpdate struct {
 	inst, slot uint32
 	field      string
 	value      interface{}
-	deleted    bool
 }
 
 func decodePlatformNotification(msg mqtt.Message) (platformNotificationUpdate, bool) {
 	parts := strings.Split(msg.Topic(), "/")
 	// N / portal / platform / inst / Notifications / slot / Field
-	if len(parts) < 7 || parts[2] != "platform" || parts[4] != "Notifications" {
+	if len(parts) != 7 || parts[0] != "N" || !validPortal(parts[1]) || parts[2] != "platform" || parts[4] != "Notifications" {
 		return platformNotificationUpdate{}, false
 	}
-	inst64, err1 := strconv.ParseUint(parts[3], 10, 32)
-	slot64, err2 := strconv.ParseUint(parts[5], 10, 32)
-	if err1 != nil || err2 != nil {
+	inst, slot, field, valid := state.ParsePlatformNotificationKey(strings.Join(parts[3:], "/"))
+	if !valid {
 		return platformNotificationUpdate{}, false
 	}
-	field := parts[6]
 	raw := msg.Payload()
-	var payload struct {
-		Value interface{} `json:"value"`
-	}
+	var value interface{}
 	if len(raw) > 0 {
-		var err error
-		if field == "DateTime" {
-			// Preserve the original number until its exact integrality check.
-			// json.Valid retains Unmarshal's rejection of trailing JSON values.
-			if !json.Valid(raw) {
-				return platformNotificationUpdate{}, false
-			}
-			decoder := json.NewDecoder(bytes.NewReader(raw))
-			decoder.UseNumber()
-			err = decoder.Decode(&payload)
-		} else {
-			err = json.Unmarshal(raw, &payload)
+		var payload map[string]json.RawMessage
+		if json.Unmarshal(raw, &payload) != nil {
+			return platformNotificationUpdate{}, false
 		}
-		if err != nil {
+		fieldValue, present := payload["value"]
+		if !present {
+			return platformNotificationUpdate{}, false
+		}
+		// Validate native dates, enums and flags before float64 can round a
+		// malformed fraction into a valid timestamp, severity or acknowledgment.
+		decoder := json.NewDecoder(bytes.NewReader(fieldValue))
+		decoder.UseNumber()
+		if decoder.Decode(&value) != nil {
 			return platformNotificationUpdate{}, false
 		}
 	}
 
-	return platformNotificationUpdate{inst: uint32(inst64), slot: uint32(slot64), field: field, value: payload.Value, deleted: len(raw) == 0}, true
+	if !state.ValidPlatformNotificationValue(field, value) {
+		return platformNotificationUpdate{}, false
+	}
+	return platformNotificationUpdate{inst: inst, slot: slot, field: field, value: value}, true
 }
 
 func (ps *platformSlotState) clearField(field string) {
@@ -359,20 +386,12 @@ func (ps *platformSlotState) clearField(field string) {
 
 func (ps *platformSlotState) setType(value interface{}) {
 	ps.pushTypeKnown = false
-	if n, ok := toFloat(value); ok {
-		strict, known := number(value)
-		ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
-		ps.notifType = int64(n)
+	if level, ok := state.NativeNotificationLevel(value); ok {
+		_, text := value.(string)
+		ps.pushTypeKnown = !text
+		ps.notifType = int64(level)
 		ps.hasType = true
 	}
-}
-
-func platformBool(value interface{}) (bool, bool) {
-	if n, ok := toFloat(value); ok {
-		return n != 0, true
-	}
-	b, ok := value.(bool)
-	return b, ok
 }
 
 func (ps *platformSlotState) updateField(field string, value interface{}) {
@@ -398,20 +417,19 @@ func (ps *platformSlotState) updateField(field string, value interface{}) {
 	case "Type":
 		ps.setType(value)
 	case "Acknowledged":
-		if b, ok := platformBool(value); ok {
+		if b, ok := state.NativeNotificationBool(value); ok {
 			ps.acknowledged = b
 		}
 	case "Active":
-		if b, ok := platformBool(value); ok {
+		if b, ok := state.NativeNotificationBool(value); ok {
 			ps.active = &b
 		}
 	}
 }
 
+// updatePlatformSlots requires platformMu through the subsequent state commit.
 func (c *Client) updatePlatformSlots(update platformNotificationUpdate) []*platformSlotState {
 	key := fmt.Sprintf("%d-%d", update.inst, update.slot)
-	c.platformMu.Lock()
-	defer c.platformMu.Unlock()
 	c.platformNotifsSeen = true
 	if c.platformSlots == nil {
 		c.platformSlots = make(map[string]*platformSlotState)
@@ -421,11 +439,8 @@ func (c *Client) updatePlatformSlots(update platformNotificationUpdate) []*platf
 		ps = &platformSlotState{inst: update.inst, slot: update.slot}
 		c.platformSlots[key] = ps
 	}
-	if update.deleted {
-		delete(c.platformSlots, key)
-	} else {
-		ps.updateField(update.field, update.value)
-	}
+	// Empty retained payloads delete this leaf, never unrelated slot metadata.
+	ps.updateField(update.field, update.value)
 	snapshot := make([]*platformSlotState, 0, len(c.platformSlots))
 	for _, v := range c.platformSlots {
 		cp := *v
@@ -447,6 +462,8 @@ func (c *Client) applyPlatformNotification(msg mqtt.Message, generation, session
 	if c.gatewayMode || generation != c.pushGenerationNow() || session != c.mqttSession.Load() {
 		return
 	}
+	c.platformMu.Lock()
+	defer c.platformMu.Unlock()
 	snapshot := c.updatePlatformSlots(update)
 	// Rebuild banners: keep inverter-control pushes; replace all victron-* with platform slots.
 	c.stateMu.Lock()
@@ -469,4 +486,28 @@ func (c *Client) applyPlatformNotification(msg mqtt.Message, generation, session
 	c.stateMu.Unlock()
 	c.notificationPush(generation, msg.Retained())
 	c.triggerHandler()
+}
+
+// resetNativeNotifications runs while gatewayMu excludes source callbacks.
+// A recovery probe resets its own caches without clearing the active IGW view.
+func (c *Client) resetNativeNotifications(clearBanners bool) {
+	c.platformMu.Lock()
+	defer c.platformMu.Unlock()
+	c.platformSlots = nil
+	c.platformNotifsSeen = false
+	c.alarmsMu.Lock()
+	c.alarmValues = nil
+	c.alarmsMu.Unlock()
+	if !clearBanners {
+		return
+	}
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	kept := c.state.Notifications[:0]
+	for _, notification := range c.state.Notifications {
+		if notification.Source != "victron" && !strings.HasPrefix(notification.ID, "victron-") {
+			kept = append(kept, notification)
+		}
+	}
+	c.state.Notifications = kept
 }

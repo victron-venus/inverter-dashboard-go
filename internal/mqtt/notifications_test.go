@@ -204,8 +204,8 @@ func TestVictronAlarmTransitions(t *testing.T) {
 		t.Fatalf("duplicate emitted on same value")
 	}
 
-	send("1") // transition to warning appends
-	if n := c.state.Notifications; len(n) != 2 || n[1].Level != "warning" {
+	send("1") // The same alarm ID has one banner showing its current severity.
+	if n := c.state.Notifications; len(n) != 1 || n[0].Level != "warning" {
 		t.Fatalf("warning transition missing: %+v", c.state.Notifications)
 	}
 

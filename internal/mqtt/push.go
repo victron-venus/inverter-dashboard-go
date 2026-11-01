@@ -172,7 +172,9 @@ func (c *Client) advanceMQTTSession() uint64 {
 	// Retirement must not pass them while they are waiting for stateMu.
 	c.gatewayMu.Lock()
 	defer c.gatewayMu.Unlock()
-	return c.mqttSession.Add(1)
+	session := c.mqttSession.Add(1)
+	c.resetNativeNotifications(!c.gatewayMode)
+	return session
 }
 
 func (c *Client) resetMQTTPush(connected bool) {

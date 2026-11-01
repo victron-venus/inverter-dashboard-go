@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.9.16] - 2026-10-27
 
+### Fixed
+
+- Replace repeated notification IDs and raw alarm severity transitions in place
+  instead of accumulating duplicate banners.
+- Validate native notification fields and alarm levels before changing source
+  authority, keeping malformed messages from hiding valid fallback alarms.
+- Preserve exact notification numbers and reject null or oversized gateway
+  snapshots instead of treating rounded or truncated data as valid state.
+- Retire previous-session notification fields on reconnect and source changes
+  so current banners cannot inherit old timestamps or acknowledgement state.
+- Exclude placeholder Secrets from the public Kubernetes deployment base and
+  document private configuration and immutable image upgrades.
+
 ### Changed
 
 - Refresh the pinned Debian Bookworm runtime image used by the dashboard container.

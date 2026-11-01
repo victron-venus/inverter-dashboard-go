@@ -3,8 +3,10 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/victron-venus/inverter-dashboard-go/internal/state"
+	"fmt"
 	"strings"
+
+	"github.com/victron-venus/inverter-dashboard-go/internal/state"
 )
 
 // Snapshot is the curated Cerbo leaf map returned by GET /v1/snapshot.
@@ -38,30 +40,22 @@ func decodeLeaves(raw map[string]json.RawMessage) leafMap {
 			out[k] = nil
 			continue
 		}
+		if !json.Valid(v) {
+			continue
+		}
+		decoder := json.NewDecoder(bytes.NewReader(v))
+		parts := strings.Split(k, "/")
+		_, _, _, platformLeaf := state.ParsePlatformNotificationKey(k)
+		if platformLeaf || (len(parts) == 3 && parts[1] == "Alarms") {
+			// Native enums, flags and dates require exact numeric text. Keep
+			// ordinary telemetry in the float64 form expected by its mappers.
+			decoder.UseNumber()
+		}
 		var val any
-		if err := json.Unmarshal(v, &val); err != nil {
+		if err := decoder.Decode(&val); err != nil {
 			continue
 		}
 		out[k] = val
-	}
-	return out
-}
-
-func decodePlatformLeaves(raw map[string]json.RawMessage) leafMap {
-	out := decodeLeaves(raw)
-	for key, value := range raw {
-		parts := strings.Split(key, "/")
-		if len(parts) < 4 || parts[1] != "Notifications" || parts[3] != "DateTime" || !json.Valid(value) {
-			continue
-		}
-		// Only event time needs exact numeric text. Keep all other leaves in
-		// the float64 representation expected by the existing telemetry maps.
-		decoder := json.NewDecoder(bytes.NewReader(value))
-		decoder.UseNumber()
-		var exact any
-		if err := decoder.Decode(&exact); err == nil {
-			out[key] = exact
-		}
 	}
 	return out
 }
@@ -79,7 +73,7 @@ func (s *Snapshot) decoded() snapshotLeaves {
 		EV:           decodeLeaves(s.EV),
 		EVCharger:    decodeLeaves(s.EVCharger),
 		ACLoad:       decodeLeaves(s.ACLoad),
-		Platform:     decodePlatformLeaves(s.Platform),
+		Platform:     decodeLeaves(s.Platform),
 		Settings:     decodeLeaves(s.Settings),
 	}
 }
@@ -100,6 +94,9 @@ func (s *Snapshot) UnmarshalJSON(data []byte) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
+	}
+	if fields == nil {
+		return fmt.Errorf("snapshot must be a JSON object")
 	}
 	_, decoded.InverterPresent = fields["inverter"]
 	if decoded.InverterPresent {
