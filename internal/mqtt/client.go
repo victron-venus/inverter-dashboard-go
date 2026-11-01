@@ -162,6 +162,7 @@ func (c *Client) EnableGatewayMode() {
 	c.gatewayMu.Lock()
 	c.gatewayMode = true
 	c.resetPush("gateway", false)
+	c.resetNativeNotifications(true)
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
 	c.nativeLastSeen = time.Time{}
@@ -176,6 +177,7 @@ func (c *Client) DisableGatewayMode() {
 	c.gatewayMu.Lock()
 	c.gatewayMode = false
 	c.resetPush("mqtt", c.client != nil && c.client.IsConnectionOpen())
+	c.resetNativeNotifications(true)
 	c.gatewayConnected = false
 	c.gatewayMu.Unlock()
 	c.stateMu.Lock()
@@ -486,22 +488,6 @@ func (c *Client) onEVMessage(_ mqtt.Client, msg mqtt.Message)    { c.onCerboLive
 func (c *Client) onPvInverterMessage(_ mqtt.Client, msg mqtt.Message) {
 	if strings.Contains(msg.Topic(), "/pvinverter/") {
 		c.onCerboLiveMessage(nil, msg)
-	}
-}
-
-func toFloat(v interface{}) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case int:
-		return float64(n), true
-	case bool:
-		if n {
-			return 1, true
-		}
-		return 0, true
-	default:
-		return 0, false
 	}
 }
 

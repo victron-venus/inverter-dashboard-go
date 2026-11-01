@@ -45,33 +45,10 @@ func (o MapOptions) withDefaults() MapOptions {
 	return o
 }
 
-func num(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case string:
-		f, err := strconv.ParseFloat(n, 64)
-		return f, err == nil
-	case bool:
-		if n {
-			return 1, true
-		}
-		return 0, true
-	default:
-		return 0, false
-	}
-}
-
 // platformSlot holds one Venus GUIv2 Notifications/<slot> field set.
 type platformSlot struct {
-	inst          int
-	slot          int
+	inst          uint32
+	slot          uint32
 	description   string
 	deviceName    string
 	service       string
@@ -87,17 +64,11 @@ func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
 	byKey := map[string]*platformSlot{}
 	for k, raw := range m {
 		// k: "<inst>/Notifications/<slot>/<Field>"
-		parts := strings.Split(k, "/")
-		if len(parts) < 4 || parts[1] != "Notifications" {
+		inst, slot, field, valid := state.ParsePlatformNotificationKey(k)
+		if !valid || !state.ValidPlatformNotificationValue(field, raw) {
 			continue
 		}
 		seen = true
-		inst, err1 := strconv.Atoi(parts[0])
-		slot, err2 := strconv.Atoi(parts[2])
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		field := parts[3]
 		key := fmt.Sprintf("%d-%d", inst, slot)
 		ps, ok := byKey[key]
 		if !ok {
@@ -120,23 +91,18 @@ func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
 		case "DateTime":
 			ps.dateTime = state.NotificationTime(raw)
 		case "Type":
-			if n, ok := num(raw); ok {
-				strict, known := raw.(float64)
-				ps.pushTypeKnown = known && (strict == 0 || strict == 1 || strict == 2)
-				ps.notifType = int64(n)
+			if level, ok := state.NativeNotificationLevel(raw); ok {
+				_, text := raw.(string)
+				ps.pushTypeKnown = !text
+				ps.notifType = int64(level)
 				ps.hasType = true
 			}
 		case "Acknowledged":
-			if n, ok := num(raw); ok {
-				ps.acknowledged = n != 0
-			} else if b, ok := raw.(bool); ok {
+			if b, ok := state.NativeNotificationBool(raw); ok {
 				ps.acknowledged = b
 			}
 		case "Active":
-			if n, ok := num(raw); ok {
-				v := n != 0
-				ps.active = &v
-			} else if b, ok := raw.(bool); ok {
+			if b, ok := state.NativeNotificationBool(raw); ok {
 				ps.active = &b
 			}
 		}
@@ -234,19 +200,29 @@ func prettyServiceName(service string) string {
 	return strings.ToUpper(service[:1]) + service[1:]
 }
 
+// nativeAlarmPath preserves nested DBus paths such as Alarms/L1/Overload.
+// Mapping and exact-number decoding must accept the same alarm leaves.
+func nativeAlarmPath(key string) (instance, name string, valid bool) {
+	parts := strings.Split(key, "/")
+	if len(parts) < 3 || parts[1] != "Alarms" {
+		return "", "", false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return "", "", false
+		}
+	}
+	return parts[0], parts[len(parts)-1], true
+}
+
 func mapAlarmLeaves(service string, m leafMap, out *[]state.Notification) {
 	for k, raw := range m {
-		// "<inst>/Alarms/<Name>"
-		parts := strings.Split(k, "/")
-		if len(parts) < 3 || parts[1] != "Alarms" {
+		inst, name, valid := nativeAlarmPath(k)
+		if !valid {
 			continue
 		}
-		n, ok := num(raw)
-		if !ok {
-			continue
-		}
-		v := int(n)
-		if v != 1 && v != 2 {
+		v, ok := state.NativeNotificationLevel(raw)
+		if !ok || (v != 1 && v != 2) {
 			continue
 		}
 		level := "warning"
@@ -255,12 +231,7 @@ func mapAlarmLeaves(service string, m leafMap, out *[]state.Notification) {
 			level = "alarm"
 			stateTxt = "Alarm"
 		}
-		inst := parts[0]
-		name := parts[2]
-		svc := service
-		if inst != "" {
-			svc = service + "_" + inst
-		}
+		svc := service + "_" + inst
 		*out = append(*out, state.Notification{
 			ID:     "victron-" + service + "/" + k,
 			Level:  level,

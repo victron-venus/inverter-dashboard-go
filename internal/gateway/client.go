@@ -232,9 +232,13 @@ func (c *Client) FetchSnapshot(ctx context.Context) (*Snapshot, error) {
 		return nil, err
 	}
 	defer func() { _ = res.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
+	const maxSnapshotBytes = 8 << 20
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxSnapshotBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxSnapshotBytes {
+		return nil, fmt.Errorf("snapshot exceeds %d bytes", maxSnapshotBytes)
 	}
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("snapshot HTTP %d: %s", res.StatusCode, truncate(string(body), 200))
