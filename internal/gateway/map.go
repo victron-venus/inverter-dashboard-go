@@ -47,8 +47,8 @@ func (o MapOptions) withDefaults() MapOptions {
 
 // platformSlot holds one Venus GUIv2 Notifications/<slot> field set.
 type platformSlot struct {
-	inst          int
-	slot          int
+	inst          uint32
+	slot          uint32
 	description   string
 	deviceName    string
 	service       string
@@ -64,12 +64,11 @@ func parsePlatformSlots(m leafMap) (slots []platformSlot, seen bool) {
 	byKey := map[string]*platformSlot{}
 	for k, raw := range m {
 		// k: "<inst>/Notifications/<slot>/<Field>"
-		instance, slotID, field, valid := state.ParsePlatformNotificationKey(k)
+		inst, slot, field, valid := state.ParsePlatformNotificationKey(k)
 		if !valid || !state.ValidPlatformNotificationValue(field, raw) {
 			continue
 		}
 		seen = true
-		inst, slot := int(instance), int(slotID)
 		key := fmt.Sprintf("%d-%d", inst, slot)
 		ps, ok := byKey[key]
 		if !ok {

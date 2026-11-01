@@ -71,3 +71,26 @@ func TestWireAcknowledgementPreservesExactValue(t *testing.T) {
 		t.Fatalf("fractional wire flag acknowledged banner: %+v", got.Notifications)
 	}
 }
+
+func TestPlatformNotificationIDsRetainUint32Range(t *testing.T) {
+	got := mapNotifications(snapshotLeaves{Platform: leafMap{
+		"4294967295/Notifications/0/Description":  "Maximum instance",
+		"2147483648/Notifications/20/Description": "High instance, last slot",
+		"0/Notifications/20/Description":          "Zero instance",
+		"2147483648/Notifications/0/Description":  "High instance, first slot",
+	}})
+	want := []string{
+		"victron-platform-0-20",
+		"victron-platform-2147483648-0",
+		"victron-platform-2147483648-20",
+		"victron-platform-4294967295-0",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("valid uint32 instances were dropped: %+v", got)
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Errorf("notification %d ID = %q, want %q", i, got[i].ID, id)
+		}
+	}
+}
