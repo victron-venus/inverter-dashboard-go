@@ -21,7 +21,33 @@ class BrowserReleasePolicyTests(unittest.TestCase):
         required = {(row["os"], row["engine"]) for row in matrix if row["tier"] == "required"}
         self.assertEqual(required, {("ubuntu-latest", "chromium"), ("ubuntu-latest", "firefox"),
                                    ("ubuntu-latest", "webkit"), ("windows-2022", "chromium"),
-                                   ("macos-15", "webkit")})
+                                   ("macos-15-intel", "webkit")})
+
+    def test_intel_browser_routing_preserves_generations_and_native_targets(self):
+        matrix = json.loads((ROOT / ".github/browser-compatibility.json").read_text())
+        mac = [row for row in matrix if row["os"].startswith("macos-")]
+        self.assertEqual(len(mac), 11)
+        self.assertEqual({row["os"] for row in mac}, {"macos-15-intel"})
+        self.assertTrue(all(row["id"].startswith("macos-15-intel-") for row in mac))
+        bundled = [row for row in mac if not row.get("channel")]
+        generations = {row["playwright"] for row in matrix if not row.get("channel")}
+        self.assertEqual(len(generations), 3)
+        self.assertEqual({(row["engine"], row["playwright"]) for row in bundled},
+                         {(engine, version) for engine in ("chromium", "firefox", "webkit")
+                          for version in generations})
+        self.assertEqual({row["channel"] for row in mac if row.get("channel")},
+                         {"chrome", "msedge"})
+        for row in mac:
+            lock = json.loads((ROOT / row["toolchain"] / "package-lock.json").read_text())
+            self.assertEqual(lock["packages"]["node_modules/playwright-core"]["version"],
+                             row["playwright"])
+        # Browser routing must not remove either separately built Darwin artifact.
+        targets = workflow("release-build.yml")["jobs"]["binaries"]["strategy"]["matrix"]["include"]
+        self.assertEqual({(row["goarch"], row["name"]) for row in targets if row["goos"] == "darwin"},
+                         {("arm64", "macos-silicon"), ("amd64", "macos-intel")})
+        policy = json.loads((ROOT / ".release-policy.json").read_text())
+        self.assertTrue({"release-inputs-macos-silicon.json", "release-inputs-macos-intel.json"}
+                        <= set(policy["versioning"]["required_build_receipts"]))
 
     def test_browser_route_remains_required_and_channel_selection_is_explicit(self):
         browser = workflow("ci.yml")["jobs"]["browser-compatibility"]
