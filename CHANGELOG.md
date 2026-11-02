@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.18] - Unreleased
+
+### Security
+
+- Update `golang.org/x/net` to 0.62.0 and its required compatible Go module dependencies, removing the affected HTML parser and renderer versions described in GO-2026-6860 and GO-2026-6866 from the dependency graph.
+- Preserve the existing TLS, dependency, package and multi-browser release checks.
+
+### Upgrade
+
+Use the existing package or container upgrade procedure and preserve local configuration and persistent volumes. No API or stored-data migration is required. Automated tests do not establish physical-device acceptance.
+
 ## [1.9.17] - Unreleased
 
 ### Changed
