@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.17] - Unreleased
+
+### Changed
+
+- Refresh the immutable Go build image and Debian Bookworm runtime image used by the dashboard container.
+- Prepare a separate patch release while preserving the dashboard API, gateway polling behavior and configuration.
+
+### Upgrade
+
+Use the existing package or container upgrade procedure and preserve local
+configuration and persistent volumes. No data migration is required. Verify
+fresh telemetry and configured controls on the intended deployment separately
+from the automated software checks.
+
+### Security
+
+Container bases remain pinned by digest. Existing dependency, image and browser
+checks remain required; this maintenance release does not claim a new
+application vulnerability fix or physical-device acceptance.
+
 ## [1.9.16] - 2026-10-27
 
 ### Fixed
