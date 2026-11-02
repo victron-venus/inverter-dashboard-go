@@ -59,6 +59,21 @@ Do not weaken checks or regenerate unrelated dependencies to make documentation 
 
 [Fuzzing guidance](fuzzing.md) distinguishes ordinary seed replay from the release-candidate mutation workflow. [Browser acceptance](../.github/workflows) is governed by its existing workflows; do not create a competing release or acceptance pipeline for a documentation edit.
 
+The 11 macOS browser profiles explicitly use the standard `macos-15-intel`
+runner. They exercise the committed embedded SPA on macOS 15 with all three
+locked Playwright generations and the Chrome/Edge channels. This routes browser
+checks away from the repeatedly unavailable Apple Silicon runner pool; it does
+not guarantee immediate runner capacity. The shared workflow verifies an x64
+runner and retains the complete 35-profile RC inventory and five required beta
+profiles. No browser version, test, or release evidence check is skipped.
+
+Browser checks do not execute the Go server or qualify its native architecture.
+The separate release build still cross-compiles both Darwin arm64 and amd64
+binaries on Linux and requires both build receipts. Changing browser routing
+requires a fresh source-qualified beta and RC; failed attempts or receipts from
+the previous routing cannot qualify the new source. See GitHub's
+[standard hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
 ## Shared UI and translations
 
 Edit Vue/TypeScript, styles and UI translations in [inverter-dashboard-vue](https://github.com/victron-venus/inverter-dashboard-vue), under that repository's tests and lockfile. This Go repository does not independently build the shared frontend during normal operation.
