@@ -1,1 +1,2 @@
+# Regenerate with uv pip compile scripts/requirements-security-tools.in --generate-hashes --universal --python-version=3.11 --output-file=scripts/requirements-security-tools.txt
 bandit==1.9.4
