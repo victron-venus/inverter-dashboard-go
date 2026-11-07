@@ -63,7 +63,8 @@
       "release-inputs-linux-arm64.json",
       "release-inputs-macos-intel.json",
       "release-inputs-macos-silicon.json",
-      "release-inputs-raspberry-pi3.json"
+      "release-inputs-raspberry-pi3.json",
+      "release-inputs-browser-qualification.json"
     ]
   },
   "single_entry_ci": true,

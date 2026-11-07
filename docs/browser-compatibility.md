@@ -65,3 +65,33 @@ binds the package projection and source. RC `promote-bytes` packages already
 carry the stable version; a stable tag may retain that same RC manifest only
 for the matching base and source. Provenance records both requested and original
 tags. Historical releases without a frozen version plan are rejected.
+
+## Packaged and native qualification layers
+
+The release candidate path supplies the producing job's exact portable frontend
+artifact and verifies its source, run, attempt, artifact ID, archive digest and
+frontend inventory before running the browser scenarios. Retain the corresponding
+package/runtime evidence as well: frontend matrix success alone does not qualify
+an entire packaged backend. The product-owned scenario manifest prevents an empty
+or shortened scenario set from counting as full acceptance.
+
+The browser matrix continues to block Service Workers to isolate its UI scenarios.
+A separate `scripts/pwa_acceptance.cjs` HTTPS lane enables the actual candidate
+worker and persistent IndexedDB. Permission decisions and PushManager registration
+are explicit browser-test/provider fixtures; that lane does not claim native
+consent or operating-system delivery. The worker has no offline asset cache.
+
+A hosted macOS `scripts/native_acceptance_smoke.cjs` lane uses installed Safari
+through safaridriver and records its actual runtime identity. It is partial native
+smoke. Full native Safari/iOS/Android acceptance separately requires observed
+software keyboard/touch where relevant, installed PWA lifecycle, real permission
+and subscription transitions, background/resume, original alarm event time,
+closed-tab OS display and safe notification click. A native simulator/emulator may
+satisfy those scenarios when its actual capabilities and observations are recorded;
+Playwright device emulation cannot.
+
+See [native acceptance tools, evidence schema and operator stable preflight](native-browser-acceptance.md).
+The strict verifier binds each observation to the exact candidate and fails closed
+on missing targets or unsupported/skipped scenarios. Its reviewed evidence must be
+checked before protected stable approval; it does not silently reconfigure the
+shared release engine or GitHub environment protections.
