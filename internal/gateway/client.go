@@ -306,8 +306,13 @@ func (c *Client) PostCommand(ctx context.Context, name string, body any) error {
 // validateCommandSnapshot keeps command capability and freshness checks on the
 // same deadline as publication and acknowledgement.
 func (c *Client) validateCommandSnapshot(ctx context.Context, name string, body any) error {
+	requiresCapability := true
 	switch name {
-	case "set_ess_mode", "setpoint_override", "electricity_tariff", "toggle", "dry_run", "ess_mode", "water_mode":
+	case "toggle", "dry_run", "ess_mode":
+		// Baseline gateway commands use current controller availability; the
+		// gateway advertises capability flags only for optional features.
+		requiresCapability = false
+	case "set_ess_mode", "setpoint_override", "electricity_tariff", "water_mode":
 	default:
 		return nil
 	}
@@ -317,7 +322,7 @@ func (c *Client) validateCommandSnapshot(ctx context.Context, name string, body 
 	}
 	st := SnapshotToState(snap, c.mapOptions)
 	ready := c.commandReady(st, name, body)
-	if !snap.Capabilities[name] || !ready {
+	if requiresCapability && !snap.Capabilities[name] || !ready {
 		return fmt.Errorf("wait for live supported ESS telemetry with dry run disabled")
 	}
 	return c.ctx.Err()
