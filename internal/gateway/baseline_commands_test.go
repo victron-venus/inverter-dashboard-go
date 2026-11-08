@@ -233,9 +233,10 @@ func TestOptionalGatewayFeaturesStillRequireTheirCapability(t *testing.T) {
 func testOptionalBaselineCapability(t *testing.T, tc baselineCommandCase, availability string) {
 	t.Helper()
 	capabilities := baselineCapabilities()
-	if availability == "absent" {
+	switch availability {
+	case "absent":
 		delete(capabilities, tc.name)
-	} else if availability == "false" {
+	case "false":
 		capabilities[tc.name] = false
 	}
 	// Keep all controller/native readiness fields identical to the
