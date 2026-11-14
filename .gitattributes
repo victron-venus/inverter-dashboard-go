@@ -1,3 +1,6 @@
 # Published frontend files are verified by SHA-256; preserve their exact bytes.
 /internal/html/vue-ui/** -text
 /internal/html/vue-ui-source.json -text
+
+# Browser evidence binds the scenario contract's original SHA-256.
+/scripts/browser-scenarios.json -text
