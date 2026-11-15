@@ -433,3 +433,98 @@ test('one absolute work deadline expires before owned cleanup, without renewing 
   assert.throws(() => remainingWork(deadline), /deadline/)
   await assert.rejects(withinWorkDeadline(async () => 'late success', deadline), /deadline/)
 })
+
+/** Cancellation must prevent late source effects independently of clock granularity. */
+const identity = Object.freeze({ journalEpoch: 5, eventEpoch: 1794105313 })
+const deferred = () => {
+  let resolve
+  const promise = new Promise(done => { resolve = done })
+  return { promise, resolve }
+}
+const drain = () => new Promise(resolve => setImmediate(resolve))
+
+function controlledDeadline(t) {
+  const originalDateNow = Date.now
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
+  t.mock.method(Date, 'now', () => 1000)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const clear = t.mock.method(globalThis, 'clearTimeout')
+  t.after(() => {
+    // Reset tracked methods before timers so no saved mock leaks into the next case.
+    t.mock.reset()
+    t.mock.timers.reset()
+    assert.equal(Date.now, originalDateNow)
+    assert.equal(globalThis.setTimeout, originalSetTimeout)
+    assert.equal(globalThis.clearTimeout, originalClearTimeout)
+  })
+  return {
+    wait: waitForSeedEvent,
+    clear,
+    expire() { t.mock.timers.tick(30) },
+  }
+}
+
+test('settled deadline stops a late fixture before an epoch read while the wall clock remains unchanged', async t => {
+  const { wait, expire } = controlledDeadline(t)
+  const fixture = deferred()
+  const started = deferred()
+  let epochReads = 0
+  const result = wait(async () => { epochReads++; return identity.eventEpoch },
+    () => { started.resolve(); return fixture.promise }, identity, 1030)
+  await started.promise
+  expire()
+  await assert.rejects(result, /work deadline exceeded/)
+  fixture.resolve(identity)
+  await drain()
+  assert.equal(epochReads, 0)
+})
+
+test('settled deadline prevents a late in-flight epoch result from starting verification or publishing success', async t => {
+  const { wait, expire } = controlledDeadline(t)
+  const epoch = deferred()
+  const started = deferred()
+  let fixtureReads = 0
+  const result = wait(() => { started.resolve(); return epoch.promise },
+    async () => { fixtureReads++; return identity }, identity, 1030)
+  await started.promise
+  expire()
+  await assert.rejects(result, /work deadline exceeded/)
+  epoch.resolve(identity.eventEpoch)
+  await drain()
+  assert.equal(fixtureReads, 1)
+})
+
+test('legitimate completed seed consumption returns its value and clears its deadline timer', async t => {
+  const { wait, clear } = controlledDeadline(t)
+  let fixtureReads = 0
+  let epochReads = 0
+  const value = await wait(async () => { epochReads++; return identity.eventEpoch },
+    async () => { fixtureReads++; return identity }, identity, 1030)
+  assert.equal(value, identity.eventEpoch)
+  assert.equal(epochReads, 1)
+  assert.equal(fixtureReads, 2)
+  assert.equal(clear.mock.callCount(), 1)
+  // Advancing the mock timer after success cannot resurrect cancelled work.
+  t.mock.timers.tick(30)
+  await drain()
+  assert.equal(fixtureReads, 2)
+})
+
+test('one cancelled seed consumption does not cancel an overlapping successful call', async t => {
+  const { wait, clear, expire } = controlledDeadline(t)
+  const fixture = deferred()
+  const started = deferred()
+  let cancelledEpochReads = 0
+  const cancelled = wait(async () => { cancelledEpochReads++; return identity.eventEpoch },
+    () => { started.resolve(); return fixture.promise }, identity, 1030)
+  await started.promise
+  assert.equal(await wait(async () => identity.eventEpoch, async () => identity,
+    identity, 1030), identity.eventEpoch)
+  assert.equal(clear.mock.callCount(), 1)
+  expire()
+  await assert.rejects(cancelled, /work deadline exceeded/)
+  fixture.resolve(identity)
+  await drain()
+  assert.equal(cancelledEpochReads, 0)
+})
