@@ -433,3 +433,103 @@ test('one absolute work deadline expires before owned cleanup, without renewing 
   assert.throws(() => remainingWork(deadline), /deadline/)
   await assert.rejects(withinWorkDeadline(async () => 'late success', deadline), /deadline/)
 })
+
+/** Cancellation must prevent late source effects independently of clock granularity. */
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
+const identity = Object.freeze({ journalEpoch: 5, eventEpoch: 1794105313 })
+const deferred = () => {
+  let resolve
+  const promise = new Promise(done => { resolve = done })
+  return { promise, resolve }
+}
+const drain = () => new Promise(resolve => setImmediate(resolve))
+
+function controlledDeadline() {
+  const timers = []
+  const module = { exports: {} }
+  const source = fs.readFileSync(path.join(__dirname, 'packaged_browser_contract.cjs'), 'utf8')
+  const context = vm.createContext({
+    require, module, exports: module.exports,
+    Date: { now: () => 1000 },
+    setTimeout(callback, milliseconds) {
+      const timer = { callback, milliseconds, active: true }
+      timers.push(timer)
+      return timer
+    },
+    clearTimeout(timer) { if (timer) timer.active = false },
+  })
+  vm.runInContext(source, context, { filename: 'packaged_browser_contract.cjs' })
+  function expire(index = 0) {
+    const timer = timers[index]
+    assert(timer?.active, 'A pending work-deadline timer is required')
+    assert.equal(timer.milliseconds, 30)
+    timer.active = false
+    timer.callback()
+  }
+  return { wait: module.exports.waitForSeedEvent, timers, expire }
+}
+
+test('settled deadline stops a late fixture before an epoch read while the wall clock remains unchanged', async () => {
+  const { wait, expire } = controlledDeadline()
+  const fixture = deferred()
+  const started = deferred()
+  let epochReads = 0
+  const result = wait(async () => { epochReads++; return identity.eventEpoch },
+    () => { started.resolve(); return fixture.promise }, identity, 1030)
+  await started.promise
+  expire()
+  await assert.rejects(result, /work deadline exceeded/)
+  fixture.resolve(identity)
+  await drain()
+  assert.equal(epochReads, 0)
+})
+
+test('settled deadline prevents a late in-flight epoch result from starting verification or publishing success', async () => {
+  const { wait, expire } = controlledDeadline()
+  const epoch = deferred()
+  const started = deferred()
+  let fixtureReads = 0
+  const result = wait(() => { started.resolve(); return epoch.promise },
+    async () => { fixtureReads++; return identity }, identity, 1030)
+  await started.promise
+  expire()
+  await assert.rejects(result, /work deadline exceeded/)
+  epoch.resolve(identity.eventEpoch)
+  await drain()
+  assert.equal(fixtureReads, 1)
+})
+
+test('legitimate completed seed consumption returns its value and clears its deadline timer', async () => {
+  const { wait, timers } = controlledDeadline()
+  let fixtureReads = 0
+  let epochReads = 0
+  const value = await wait(async () => { epochReads++; return identity.eventEpoch },
+    async () => { fixtureReads++; return identity }, identity, 1030)
+  assert.equal(value, identity.eventEpoch)
+  assert.equal(epochReads, 1)
+  assert.equal(fixtureReads, 2)
+  assert.equal(timers.length, 1)
+  assert.equal(timers[0].active, false)
+  await drain()
+  assert.equal(fixtureReads, 2)
+})
+
+test('one cancelled seed consumption does not cancel an overlapping successful call', async () => {
+  const { wait, timers, expire } = controlledDeadline()
+  const fixture = deferred()
+  const started = deferred()
+  let cancelledEpochReads = 0
+  const cancelled = wait(async () => { cancelledEpochReads++; return identity.eventEpoch },
+    () => { started.resolve(); return fixture.promise }, identity, 1030)
+  await started.promise
+  assert.equal(await wait(async () => identity.eventEpoch, async () => identity,
+    identity, 1030), identity.eventEpoch)
+  assert.equal(timers[1].active, false)
+  expire(0)
+  await assert.rejects(cancelled, /work deadline exceeded/)
+  fixture.resolve(identity)
+  await drain()
+  assert.equal(cancelledEpochReads, 0)
+})

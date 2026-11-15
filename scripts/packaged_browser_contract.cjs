@@ -30,23 +30,34 @@ function assertSeedIdentity(status, identity) {
 
 async function waitForSeedEvent(readEpoch, readFixture, identity, workDeadline) {
   const deadline = Math.min(Date.now() + 25000, workDeadline)
+  let active = true
+  function requireActiveWork() {
+    assert(active, 'Total packaged browser work deadline exceeded')
+    return remainingWork(deadline)
+  }
   async function poll() {
-    remainingWork(deadline)
+    requireActiveWork()
     const status = await readFixture()
-    remainingWork(deadline)
+    requireActiveWork()
     assertSeedIdentity(status, identity)
     const observed = await readEpoch()
-    remainingWork(deadline)
+    requireActiveWork()
     if (observed === identity.eventEpoch) {
       assertSeedIdentity(await readFixture(), identity)
-      remainingWork(deadline)
+      requireActiveWork()
       return observed
     }
     // Serial reads observe propagation; no reseed or new identity is accepted.
-    await delay(Math.min(150, remainingWork(deadline)))
+    await delay(Math.min(150, requireActiveWork()))
     return poll()
   }
-  return withinWorkDeadline(poll, deadline)
+  try {
+    return await withinWorkDeadline(poll, deadline)
+  } finally {
+    // A timer can settle before the coarser wall clock advances. Late reads
+    // must observe cancellation even while their previous await is pending.
+    active = false
+  }
 }
 
 function expectedCommandJournal(transport, controller, home) {
