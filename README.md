@@ -101,7 +101,7 @@ The embedded UI is the official **Vue v2.2.11-beta.1** artifact (package `2.2.11
 - [Configuration](docs/configuration.md) · [Operation, controls and storage](docs/operations.md)
 - [Troubleshooting](docs/troubleshooting.md) · [Web Push](docs/web-push.md)
 - [Developer guide](docs/development.md) · [Contribution policy](CONTRIBUTING.md) · [Verification checklist](README-CHECKLIST.md)
-- [Repository wiki source](docs/wiki/Home.md) · [Legacy npm wrapper notes](README-NPM.md)
+- [Repository wiki source](docs/wiki/Home.md) · [Docs index](docs/README.md) · [Legacy npm wrapper notes](README-NPM.md)
 - [RC-only fuzzing](docs/fuzzing.md) · [Changelog](CHANGELOG.md) · [License](LICENSE)
 
 
