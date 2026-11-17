@@ -1,6 +1,6 @@
 # Native browser, installed PWA and notification acceptance
 
-[Browser compatibility](browser-compatibility.md) · [Notification behavior](notifications.md)
+[Browser compatibility](browser-compatibility.md) · [Notification behavior](wiki/Notifications.md)
 
 The desktop browser-engine matrix, the isolated PWA regression lane, native Safari smoke, and native installed-app acceptance are different evidence sets. A green Playwright WebKit run is not a Safari run. A provider response or a Service Worker API success is not an observed operating-system notification.
 
