@@ -427,9 +427,29 @@ def validate_release_channels(policy, workflows):
     if (
         caller.get("uses") != LOCAL_WORKFLOW_PREFIX + name
         or caller.get("needs") != "prepare"
-        or caller.get("with") != {"channel": "${{ needs.prepare.outputs.channel }}"}
+        or caller.get("with") not in (
+            {"channel": "${{ needs.prepare.outputs.channel }}"},
+            {
+                "channel": "${{ needs.prepare.outputs.channel || "
+                "(github.event_name == 'push' && 'beta' || "
+                "github.event_name == 'schedule' && 'nightly' || inputs.channel) }}"
+            },
+        )
     ):
         raise ValueError("Release validation must consume the prepared channel")
+
+
+def validate_automatic_push_admission(policy, workflows):
+    """Keep this release-only exception explicit and reject regeneration drift."""
+    selected = policy.get("change_scope", {}).get("automatic_release_test_paths")
+    for name, workflow in workflows.items():
+        scoped = workflow.get("jobs", {}).get("prepare", {})
+        present = any(step.get("name") == "Retain test-only push admission" for step in scoped.get("steps", []))
+        if present and (name != RELEASE_PIPELINE or selected is None):
+            raise ValueError("Unconfigured automatic push admission")
+    if selected is not None:
+        from release_push_scope import validate_workflow  # pylint: disable=import-outside-toplevel
+        validate_workflow(policy, workflows.get(RELEASE_PIPELINE, {}))
 
 
 def validate(directory: Path, *, actions_only=False) -> None:
@@ -449,6 +469,7 @@ def validate(directory: Path, *, actions_only=False) -> None:
     validate_generator_pins(directory, workflows)
     if actions_only:
         return
+    validate_automatic_push_admission(policy, workflows)
     visited = validate_graph(workflows, policy["validation_workflows"])
     for filename, workflow in workflows.items():
         if (

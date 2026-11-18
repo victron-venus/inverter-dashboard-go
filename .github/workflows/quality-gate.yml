@@ -37,9 +37,10 @@ jobs:
       - id: scope
         name: Classify documentation and build inputs
         env:
-          DOCUMENTATION_PATHS: '["GOVERNANCE.md", "README-CHECKLIST.md", "README-NPM.md", "README.de.md", "README.fr.md", "README.nl.md", "README.ru.md", "README.uk.md"]'
-          REQUIRED_PATHS: "[\"CHANGELOG.md\"]"
-          FORCE_FULL: "${{ inputs.force-full && 'true' || 'false' }}"
+          DOCUMENTATION_PATHS: '["GOVERNANCE.md", "README-CHECKLIST.md", "README-NPM.md", "README.de.md", "README.fr.md",
+            "README.nl.md", "README.ru.md", "README.uk.md"]'
+          REQUIRED_PATHS: '["CHANGELOG.md"]'
+          FORCE_FULL: ${{ inputs.force-full && 'true' || 'false' }}
         run: |
           args=()
           if [[ "$FORCE_FULL" == true ]]; then args+=(--force); fi
