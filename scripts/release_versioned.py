@@ -293,6 +293,8 @@ def _read_verified_rc(
             if item["name"] == rc.MANIFEST:
                 continue
             payload = directory / (cast(str, item["name"]) if retained else "payload")
+            # The shared supervisor resolves gh and bounds post-status cleanup.
+            # Its ProcessCleanupError stays fatal; retrying could mask live work.
             identity = rc.download_asset(
                 gh, item["id"], payload,
                 expected=cast(rc.AssetIdentity, {
@@ -584,6 +586,36 @@ def _read_scheduled_manifest_before_snapshot(
     return raw, manifest_asset_id, manifest_size
 
 
+def _validate_scheduled_reuse_run(
+    gh: rc.GitHub,
+    info: dict[str, object],
+    snapshot: dict[str, object],
+    plan: dict[str, object],
+    source_run_id: int,
+    attempt: int,
+) -> None:
+    """Bind retained bytes to the exact completed source run and successful gates."""
+    source_run = cast(dict[str, object], gh.api(f"actions/runs/{source_run_id}"))
+    rc.validate_validation_run(
+        gh, source_run, cast(dict[str, object], snapshot["data"]), cast(str, plan["channel"])
+    )
+    rc.require(source_run.get("id") == source_run_id, "Qualified run ID mismatch")
+    rc.validate_run(
+        gh, source_run, info, cast(str, plan["source_sha"]), attempt,
+        completed=True, gate=False,
+    )
+    jobs = gh.pages(f"actions/runs/{source_run_id}/attempts/{attempt}/jobs", "jobs")
+    for names in (("Release gate",), ("CI gate", "checks / CI gate")):
+        gates = [job for job in jobs if job.get("name") in names]
+        rc.require(
+            len(gates) == 1
+            and gates[0].get("status") == "completed"
+            and gates[0].get("conclusion") == "success"
+            and gates[0].get("head_sha") == cast(str, plan["source_sha"]),
+            "Qualified run has no successful CI and Release gates",
+        )
+
+
 # Keep all evidence comparisons together at this read-only reuse boundary.
 # pylint: disable-next=too-many-locals,too-many-arguments,too-many-positional-arguments
 def verify_scheduled_reuse(
@@ -627,6 +659,10 @@ def verify_scheduled_reuse(
         rc.require(candidate["version_plan"] == plan and candidate["source_policy"] == snapshot
                    and candidate["run_id"] == source_run_id,
                    "Compact stable differs from its qualified RC plan")
+        _validate_scheduled_reuse_run(
+            gh, info, snapshot, plan, source_run_id,
+            rc.positive(candidate.get("run_attempt"), "qualified run attempt"),
+        )
         return
     rc.require(
         isinstance(manifest, dict)
@@ -665,29 +701,8 @@ def verify_scheduled_reuse(
         ),
         "Qualified asset metadata mismatch",
     )
-    source_run = cast(dict[str, object], gh.api(f"actions/runs/{source_run_id}"))
-    rc.validate_validation_run(gh, source_run, cast(dict[str, object], snapshot["data"]), cast(str, plan["channel"]))
-    rc.require(source_run.get("id") == source_run_id, "Qualified run ID mismatch")
     attempt = rc.positive(manifest.get("run_attempt"), "qualified run attempt")
-    rc.validate_run(
-        gh,
-        source_run,
-        info,
-        cast(str, plan["source_sha"]),
-        attempt,
-        completed=True,
-        gate=False,
-    )
-    jobs = gh.pages(f"actions/runs/{source_run_id}/attempts/{attempt}/jobs", "jobs")
-    for names in (("Release gate",), ("CI gate", "checks / CI gate")):
-        gates = [job for job in jobs if job.get("name") in names]
-        rc.require(
-            len(gates) == 1
-            and gates[0].get("status") == "completed"
-            and gates[0].get("conclusion") == "success"
-            and gates[0].get("head_sha") == cast(str, plan["source_sha"]),
-            "Qualified run has no successful CI and Release gates",
-        )
+    _validate_scheduled_reuse_run(gh, info, snapshot, plan, source_run_id, attempt)
     rc.verify_evidence(gh, manifest, raw)
     undigested_payloads = [
         (name, entry) for name, entry in declarations.items()
@@ -705,6 +720,9 @@ def verify_scheduled_reuse(
                 )
                 rc.require(downloaded_identity == {key: entry[key] for key in ("size", "sha256")},
                            "Undigested qualified payload differs from its manifest")
+    # Evidence and payload reads can take long enough for a new workflow attempt
+    # to start. Recheck regardless of asset digest metadata before accepting reuse.
+    _validate_scheduled_reuse_run(gh, info, snapshot, plan, source_run_id, attempt)
     current = published_plan_snapshot(
         gh, tag, cast(str, plan["source_sha"]), tag != f"v{plan['base_version']}"
     )
@@ -1121,12 +1139,23 @@ def publish_versioned(args: argparse.Namespace) -> dict[str, object]:
                 confirm_automatic_source()
 
         def confirm_final_publisher_attempt() -> None:
-            # The final boundary shares a short deadline with the tag GET, so
-            # keep this to one exact attempt read without aggregate/jobs calls.
+            # The final boundary shares a short deadline with the tag GET.
+            # Recheck the exact attempt, default branch identity and captured
+            # source ref after the final tag read and before public PATCH. Do
+            # not add aggregate/jobs reads at this boundary.
             current = gh.api(
                 f"actions/runs/{run['id']}/attempts/{run['run_attempt']}"
             )
             rc.require_active_attempt(current, run)
+            if automatic:
+                rc.require(
+                    rc.repository_info(gh)["default_branch"] == info["default_branch"],
+                    "Automatic publication default branch changed; draft left unpublished",
+                )
+                rc.require(
+                    gh.api(source_path) == source_ref[1],
+                    "Automatic publication default source changed; draft left unpublished",
+                )
 
         # Execution admission may be minutes old after downloads and signatures.
         # Recheck immediately before the first persistent ledger mutation.

@@ -56,7 +56,7 @@
         "value": "package"
       }
     ],
-    "toolkit_revision": "25921c3b2677f7de2de683636d252a7a5145e496",
+    "toolkit_revision": "743fa3aef03ce25bb98d21e442477c1d60b08176",
     "required_build_receipts": [
       "release-inputs-container.json",
       "release-inputs-linux-amd64.json",
@@ -69,9 +69,9 @@
   },
   "single_entry_ci": true,
   "release_notes": "CHANGELOG.md",
-  "toolkit_revision": "5e413f80a4353d328b4529eae57992ac3987e2dd",
+  "toolkit_revision": "743fa3aef03ce25bb98d21e442477c1d60b08176",
   "fuzzing": {
-    "toolkit_ref": "644806e26446879b677f69a2f9eff58850e8c11a"
+    "toolkit_ref": "743fa3aef03ce25bb98d21e442477c1d60b08176"
   },
   "change_scope": {
     "documentation_paths": [

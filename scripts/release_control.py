@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import suppress
 import contextvars
 import hashlib
 import io
@@ -36,16 +37,22 @@ import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO, NamedTuple, TypedDict, cast
+from typing import BinaryIO, NamedTuple, NoReturn, TypedDict, cast
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 if __package__:
     from .async_process import (
-        ProcessOutputLimit, ProcessResult, ProcessTimeout, resolve_executable, run_process,
+        CLEANUP_TIMEOUT_SECONDS, ProcessCleanupError, ProcessOutputLimit, ProcessResult, ProcessTimeout,
+        _decode_supervisor_status, _kill_owned_process, _launch_supervised_process,
+        _process_has_exited, _require_nonreaping_wait_support,
+        resolve_executable, run_process,
     )
 else:
     from async_process import (
-        ProcessOutputLimit, ProcessResult, ProcessTimeout, resolve_executable, run_process,
+        CLEANUP_TIMEOUT_SECONDS, ProcessCleanupError, ProcessOutputLimit, ProcessResult, ProcessTimeout,
+        _decode_supervisor_status, _kill_owned_process, _launch_supervised_process,
+        _process_has_exited, _require_nonreaping_wait_support,
+        resolve_executable, run_process,
     )
 
 WORKFLOW = ".github/workflows/release-pipeline.yml"
@@ -128,6 +135,7 @@ SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,199}\Z")
 REPO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 ASSET_CHUNK_SIZE = 1024 * 1024
+ASSET_HTTP_HEADER_LIMIT = 64 * 1024
 ASSET_DOWNLOAD_TIMEOUT = 900
 ASSET_UPLOAD_TIMEOUT = 900
 API_READ_TIMEOUT = 30
@@ -474,6 +482,13 @@ def _send_asset_stream_event(
             continue
 
 
+def _close_asset_supervisor_control(launch) -> None:
+    if launch.control_fd >= 0:
+        with suppress(OSError):
+            os.close(launch.control_fd)
+        launch.control_fd = -1
+
+
 def _read_asset_pipe(
     pipe: BinaryIO, kind: str, events: queue.Queue[AssetStreamEvent],
     stopped: threading.Event,
@@ -490,101 +505,293 @@ def _read_asset_pipe(
         _send_asset_stream_event(events, stopped, kind, error)
 
 
+def _accept_asset_status(
+    chunk: bytes,
+    status_buffer: bytearray,
+    target_returncode: int | None,
+    launch,
+) -> int | None:
+    if target_returncode is not None:
+        raise GitHubError("Asset supervisor sent duplicate status")
+    status_buffer.extend(chunk)
+    if len(status_buffer) > 9:
+        raise GitHubError("Asset supervisor sent an oversized status frame")
+    if len(status_buffer) < 9:
+        return None
+    status, status_value = _decode_supervisor_status(bytes(status_buffer))
+    status_buffer.clear()
+    if status == "error":
+        raise OSError(status_value, "Asset helper could not be started")
+    launch.group_signal_attempted = True
+    group_error = _kill_owned_process(launch.process)
+    if group_error is not None:
+        launch.group_signal_error = group_error
+        _close_asset_supervisor_control(launch)
+        raise ProcessCleanupError(
+            "Asset supervisor process-group termination failed"
+        ) from group_error
+    launch.group_signaled = True
+    _close_asset_supervisor_control(launch)
+    return status_value
+
+
+def _handle_asset_stream_event(
+    kind: str,
+    value: bytes | BaseException | None,
+    ended: set[str],
+    output: _AssetWriter,
+    stderr: bytearray,
+    status_buffer: bytearray,
+    target_returncode: int | None,
+    launch,
+) -> int | None:
+    if value is None:
+        if kind == "status" and (target_returncode is None or status_buffer):
+            raise GitHubError("Asset supervisor exited without a complete status frame")
+        ended.add(kind)
+    elif isinstance(value, BaseException):
+        raise value
+    elif kind == "status":
+        return _accept_asset_status(value, status_buffer, target_returncode, launch)
+    elif kind == "stdout":
+        output.write(value)
+    else:
+        stderr.extend(value[:max(0, 65536 - len(stderr))])
+    return target_returncode
+
+
 def _drain_asset_stream(
     events: queue.Queue[AssetStreamEvent], output: _AssetWriter,
-    command: list[str], deadline: float,
-) -> bytes:
-    """Consume both pipes until EOF, bounding diagnostics and the shared deadline."""
+    command: list[str], deadline: float, launch,
+) -> tuple[bytes, int]:
+    """Drain target status and inherited pipes, then kill the live supervisor."""
     ended: set[str] = set()
     stderr = bytearray()
-    while len(ended) != 2:
+    target_returncode: int | None = None
+    status_buffer = bytearray()
+    cleanup_deadline: float | None = None
+    while len(ended) != 3:
         output.check()
-        remaining = deadline - time.monotonic()
+        active_deadline = deadline
+        if cleanup_deadline is not None:
+            active_deadline = min(active_deadline, cleanup_deadline)
+        remaining = active_deadline - time.monotonic()
         if remaining <= 0:
+            if cleanup_deadline is not None and cleanup_deadline <= deadline:
+                raise ProcessCleanupError(
+                    "Asset supervisor inherited pipes did not reach EOF before cleanup deadline"
+                )
             raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
         try:
             kind, value = events.get(timeout=min(0.2, remaining))
         except queue.Empty:
             continue
-        if value is None:
-            ended.add(kind)
-        elif isinstance(value, BaseException):
-            raise value
-        elif kind == "stdout":
-            output.write(value)
-        else:
-            stderr.extend(value[:max(0, 65536 - len(stderr))])
-    return bytes(stderr)
+        previous_returncode = target_returncode
+        target_returncode = _handle_asset_stream_event(
+            kind, value, ended, output, stderr, status_buffer,
+            target_returncode, launch,
+        )
+        if previous_returncode is None and target_returncode is not None:
+            cleanup_deadline = time.monotonic() + CLEANUP_TIMEOUT_SECONDS
+    if target_returncode is None:
+        raise GitHubError("Asset supervisor did not confirm target completion")
+    return bytes(stderr), target_returncode
 
 
 def _wait_for_asset_process(
     process: subprocess.Popen[bytes], output: _AssetWriter,
     command: list[str], deadline: float,
 ) -> int:
-    """Wait for the drained child while enforcing the same deadline and disk floor."""
+    """Observe the drained child without reaping until its deadline decision is made."""
     while True:
         output.check()
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
-        try:
-            returncode = process.wait(timeout=min(0.2, remaining))
-            if time.monotonic() > deadline:
-                raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
-            return returncode
-        except subprocess.TimeoutExpired:
+        if _process_has_exited(process):
+            # Decide whether this completion met the shared deadline before
+            # wait() releases the PID that is also the isolated process-group ID.
+            output.check()
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
+            try:
+                return process.wait(timeout=CLEANUP_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired as error:
+                raise GitHubError(
+                    "Asset transfer process could not be reaped within five seconds"
+                ) from error
+        time.sleep(min(0.05, remaining))
+
+
+def _terminate_asset_process_group(
+    process: subprocess.Popen[bytes],
+) -> OSError | None:
+    """Kill the owned group, falling back only to a still-live unreaped leader."""
+    leader_exited = _process_has_exited(process)
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        # WNOWAIT retained the leader; an absent group needs no fallback signal.
+        return None
+    except OSError as error:
+        # A leader-only fallback cannot guarantee that descendants have stopped.
+        # Keep the original failure and bounded reap even when WNOWAIT says the
+        # leader exited; its PID must not be reused for a direct signal.
+        if not leader_exited and not _process_has_exited(process):
+            try:
+                process.kill()
+            except ProcessLookupError:
+                # The owned leader exited after the non-reaping observation.
+                pass
+            except OSError:
+                # Reap below, then report that group termination failed.
+                pass
+        return error
+    return None
+
+
+def _raise_asset_group_failure(error: OSError, message: str) -> NoReturn:
+    """Raise after bounded reap when group signaling was not confirmed."""
+    raise GitHubError(message) from error
+
+
+def _asset_group_signal_error(launch, complete: bool) -> OSError | None:
+    """Attempt group cleanup once, retaining any failure from status handling."""
+    if complete:
+        return None
+    if getattr(launch, "group_signal_attempted", False):
+        return getattr(launch, "group_signal_error", None)
+    launch.group_signal_attempted = True
+    return _terminate_asset_process_group(launch.process)
+
+
+def _reap_asset_supervisor(
+    process: subprocess.Popen[bytes], complete: bool, group_error: OSError | None,
+) -> None:
+    """Boundedly reap the wrapper and preserve any unconfirmed group signal."""
+    try:
+        process_status = process.wait(timeout=CLEANUP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        if group_error is not None:
+            _raise_asset_group_failure(
+                group_error,
+                "Asset supervisor termination failed and leader could not be reaped",
+            )
+        raise GitHubError("Asset transfer process could not be reaped within five seconds") from error
+    if complete and process_status != -signal.SIGKILL:
+        raise GitHubError("Asset supervisor did not exit from confirmed process-group cleanup")
+    if group_error is not None:
+        _raise_asset_group_failure(
+            group_error,
+            "Asset supervisor process-group termination failed; descendants may still be running",
+        )
+
+
+def _close_asset_streams(launch, threads: list[threading.Thread]) -> None:
+    """Close control and capture descriptors after bounded wrapper cleanup."""
+    _close_asset_supervisor_control(launch)
+    for thread in threads:
+        if thread.ident is not None:
+            thread.join(timeout=1)
+    launch.process.stdout.close()
+    launch.process.stderr.close()
+    launch.status_stream.close()
+
+
+def _finish_asset_stream(launch, threads: list[threading.Thread], complete: bool) -> None:
+    """Signal once, reap within the cleanup bound, and always close owned pipes."""
+    try:
+        group_error = _asset_group_signal_error(launch, complete)
+        _reap_asset_supervisor(launch.process, complete, group_error)
+    finally:
+        _close_asset_streams(launch, threads)
+
+
+def _start_asset_stream_readers(launch, events, stopped) -> list[threading.Thread]:
+    """Create one bounded reader per captured target and supervisor stream."""
+    process = launch.process
+    return [threading.Thread(target=_read_asset_pipe,
+                             args=(pipe, kind, events, stopped), daemon=True)
+            for pipe, kind in [
+                (process.stdout, "stdout"), (process.stderr, "stderr"),
+                (launch.status_stream, "status"),
+            ]]
+
+
+class _AssetHTTPStream:
+    """Frame gh --include output without charging headers or error bodies to the asset."""
+
+    def __init__(self, output: _AssetWriter):
+        self.output = output
+        self.header = bytearray()
+        self.status: int | None = None
+
+    def check(self, size: int = 0) -> None:
+        """Keep the underlying disk and exact-size guards active during framing."""
+        self.output.check(size)
+
+    def write(self, chunk: bytes) -> int:
+        """Parse one bounded header block, then forward only a successful response body."""
+        if self.status is not None:
+            if 200 <= self.status < 300:
+                self.output.write(chunk)
+            return len(chunk)
+        self.header.extend(chunk)
+        separator = re.search(HTTP_HEADER_SEPARATOR, self.header)
+        if separator is None:
+            if len(self.header) > ASSET_HTTP_HEADER_LIMIT:
+                raise GitHubError("GitHub asset response headers exceed the bounded limit")
+            return len(chunk)
+        if separator.start() > ASSET_HTTP_HEADER_LIMIT:
+            raise GitHubError("GitHub asset response headers exceed the bounded limit")
+        status, body = _github_http_head(bytes(self.header))
+        self.status = status
+        self.header.clear()
+        if 200 <= status < 300 and body:
+            self.output.write(body)
+        return len(chunk)
+
+    def result_headers(self) -> bytes:
+        """Return a bounded status-only HTTP frame for normal response handling."""
+        if self.status is None:
+            return b""
+        return f"HTTP/2 {self.status}\r\n\r\n".encode("ascii")
 
 
 def _stream_asset(command: list[str], output: _AssetWriter, *,
-                  deadline: float | None = None) -> subprocess.CompletedProcess[bytes]:
+                  deadline: float | None = None,
+                  frame_http: bool = False) -> subprocess.CompletedProcess[bytes]:
     """Pump bounded chunks portably, including silent/stderr-heavy transfers."""
     if deadline is None:
         deadline = time.monotonic() + ASSET_DOWNLOAD_TIMEOUT
     output.check()
     if time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
-    process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
-    )  # nosec B603
-    require(process.stdout is not None and process.stderr is not None, "Missing transfer pipes")
+    _require_nonreaping_wait_support()
+    launch = _launch_supervised_process(tuple(command), env=None, cwd=None, input_enabled=False)
+    process = launch.process
+    require(process.stdout is not None and process.stderr is not None,
+            "Missing supervised transfer pipes")
     events: queue.Queue[AssetStreamEvent] = queue.Queue(maxsize=2)
     stopped = threading.Event()
+    threads = _start_asset_stream_readers(launch, events, stopped)
+    framed_output = _AssetHTTPStream(output) if frame_http else None
+    sink = framed_output if framed_output is not None else output
     complete = False
-    threads = [threading.Thread(target=_read_asset_pipe,
-                                args=(pipe, kind, events, stopped), daemon=True)
-               for pipe, kind in [(process.stdout, "stdout"), (process.stderr, "stderr")]]
     try:
         for thread in threads:
             thread.start()
-        stderr = _drain_asset_stream(events, output, command, deadline)
-        returncode = _wait_for_asset_process(process, output, command, deadline)
+        stderr, returncode = _drain_asset_stream(
+            events, sink, command, deadline, launch,
+        )
         complete = True
-        return subprocess.CompletedProcess(command, returncode, b"", stderr)
+        if framed_output is not None and returncode == 0 and framed_output.status is None:
+            raise GitHubError(HTTP_HEADERS_MISSING)
+        stdout = framed_output.result_headers() if framed_output is not None else b""
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
     finally:
         stopped.set()
-        # gh may leave helpers alive with inherited pipes. On any incomplete
-        # transfer, terminate the isolated process group before waiting for the
-        # leader or closing pipes, so descendants cannot outlive the deadline.
-        if not complete:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-        try:
-            if process.poll() is None:
-                process.kill()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired as error:
-                raise GitHubError("Asset transfer process could not be reaped within five seconds") from error
-        finally:
-            for thread in threads:
-                if thread.ident is not None:
-                    thread.join(timeout=1)
-            process.stdout.close()
-            process.stderr.close()
+        _finish_asset_stream(launch, threads, complete)
 
 def json_bytes(value: object) -> bytes:
     """Encode deterministic UTF-8 JSON for manifests and request bodies."""
@@ -948,7 +1155,8 @@ class GitHub:
         )
 
     @classmethod
-    def _transient_asset_failure(cls, result: ProcessResult) -> bool:
+    def _transient_asset_failure(cls, result: ProcessResult,
+                                 http_status: int | None = None) -> bool:
         """Allow only complete, non-denial diagnostics from a failed asset GET."""
         stderr = result.stderr or b""
         # At the capture limit, a later denial may have been discarded.
@@ -959,6 +1167,8 @@ class GitHub:
                              rb"client\.timeout exceeded", stderr.lower())
                 or re.search(rb"\bhttp(?:/[0-9.]+)?[ /:]+4\d\d(?:\D|$)", stderr.lower())):
             return False
+        if http_status in {500, 502, 503, 504}:
+            return True
         return cls._transient_read_failure(result) or bool(re.fullmatch(
             rb"(?:gh: )?unexpected end of JSON input", stderr.strip()
         ))
@@ -1126,7 +1336,8 @@ class GitHub:
         endpoint = f"{self.base}/{path}"
         # Developer/CI toolchain selected by the invoking operator via PATH.
         command = [
-            "gh", "api", "--hostname", GITHUB_HOSTNAME, "--method", "GET",
+            resolve_executable("gh"), "api", "--hostname", GITHUB_HOSTNAME, "--include",
+            "--method", "GET",
             "-H", "Accept: application/octet-stream", "--", endpoint,
         ]
         deadline = time.monotonic() + ASSET_DOWNLOAD_TIMEOUT
@@ -1134,12 +1345,14 @@ class GitHub:
             for attempt in range(API_READ_ATTEMPTS):
                 if time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
-                result = _stream_asset(command, output, deadline=deadline)
+                result = _stream_asset(command, output, deadline=deadline, frame_http=True)
                 if time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(command, ASSET_DOWNLOAD_TIMEOUT)
+                http = github_http_response(result.stdout) if result.stdout else None
+                status = http[0] if http is not None else None
                 if (attempt == API_READ_ATTEMPTS - 1
-                        or not self._transient_asset_failure(result)):
-                    self.response(result, f"GET {endpoint}")
+                        or not self._transient_asset_failure(result, status)):
+                    self.response(result, f"GET {endpoint}", http)
                     return
                 delay = random.uniform(1, 2 ** (attempt + 1))  # nosec B311
                 if delay >= deadline - time.monotonic():
@@ -2867,11 +3080,13 @@ def _publish_prepared(
             "Tag moved before publication; draft left unpublished",
         )
 
-    # Run full publisher/provenance validation before the final tag lookup; it
-    # can require aggregate and paginated jobs reads. The final boundary then
-    # permits only the tag GET and one exact publisher-attempt GET, sharing a
-    # short deadline. GitHub has no conditional PATCH binding either identity,
-    # so these sequential reads still cannot make the public flip atomic.
+    # Run full publisher/provenance validation before the final shared 12-second
+    # read deadline; it can require aggregate and paginated jobs reads. Within
+    # that deadline, recheck the tag, run the optional final confirmation
+    # callback, then recheck the tag again immediately before the public PATCH.
+    # The callback may GET the exact publisher attempt, default branch and
+    # source ref, during which the tag could move. GitHub has no conditional
+    # PATCH that binds those observations, so the checks and flip are not atomic.
     if confirm_publish is not None:
         confirm_publish()
     deadline = time.monotonic() + FINAL_PUBLICATION_READ_TIMEOUT
@@ -2880,6 +3095,7 @@ def _publish_prepared(
         confirm_tag()
         if confirm_final_publish is not None:
             confirm_final_publish()
+            confirm_tag()
         require(time.monotonic() < deadline,
                 "Final publication checks exceeded deadline; draft left unpublished")
     finally:
