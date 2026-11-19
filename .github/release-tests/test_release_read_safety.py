@@ -3,17 +3,18 @@
 import gc
 import importlib.util
 import os
+import sys
 
-# Only constructs completed-process and timeout fixtures; execution is mocked.
-import subprocess  # nosec B404
 import unittest
 import weakref
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
 SPEC = importlib.util.spec_from_file_location(
-    "release_control_backport", Path(__file__).resolve().parents[2] / "scripts/release_control.py"
+    "release_control_backport", ROOT / "scripts/release_control.py"
 )
 rc = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(rc)
@@ -23,9 +24,9 @@ SHA = "a" * 40
 
 def http_response(status=0, stdout=b"{}", error_format="gh: API failed (HTTP {status})"):
     """Return a complete gh --include fixture independent of retry support."""
-    return subprocess.CompletedProcess(
-        [],
-        bool(status),
+    return rc.ProcessResult(
+        (),
+        int(bool(status)),
         f"HTTP/2.0 {status or 200} Test\nContent-Type: application/json\r\n\r\n".encode() + stdout,
         error_format.format(status=status).encode() if status else b"",
     )
@@ -40,7 +41,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
 
     @staticmethod
     def failed(stderr=b"unexpected EOF", stdout=b"", code=1):
-        return subprocess.CompletedProcess([], code, stdout, stderr)
+        return rc.ProcessResult((), code, stdout, stderr)
 
     def test_retry_releases_failed_response_before_waiting_or_recapturing(self):
         def check_case(path, status, framed):
@@ -62,7 +63,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
                 return failed
 
             with (
-                patch.object(rc.subprocess, "run", side_effect=capture) as run,
+                patch.object(rc, "run_process", side_effect=capture) as run,
                 patch.object(rc.time, "sleep", side_effect=assert_released) as sleep,
             ):
                 self.assertEqual(self.gh.binary(path), b"COMPLETE")
@@ -92,8 +93,8 @@ class WholeReadRecoveryTests(unittest.TestCase):
             with (
                 self.subTest(message=message),
                 patch.object(
-                    rc.subprocess,
-                    "run",
+                    rc,
+                    "run_process",
                     side_effect=[self.failed(message), http_response(stdout=b'{"id":7}')],
                 ) as run,
                 patch.object(rc.time, "sleep"),
@@ -109,7 +110,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
             with (
                 self.subTest(path=path),
                 patch.object(
-                    rc.subprocess, "run", side_effect=[partial, http_response(stdout=payload)]
+                    rc, "run_process", side_effect=[partial, http_response(stdout=payload)]
                 ) as run,
                 patch.object(rc.time, "sleep"),
             ):
@@ -129,7 +130,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
         ):
             with (
                 self.subTest(expected_calls=expected_calls),
-                patch.object(rc.subprocess, "run", side_effect=replies) as run,
+                patch.object(rc, "run_process", side_effect=replies) as run,
                 patch.object(rc.time, "sleep"),
             ):
                 self.assertEqual(self.gh.binary("releases/assets/7"), b"")
@@ -138,9 +139,9 @@ class WholeReadRecoveryTests(unittest.TestCase):
     def test_repeated_asset_timeouts_are_bounded(self):
         with (
             patch.object(
-                rc.subprocess,
-                "run",
-                side_effect=subprocess.TimeoutExpired(["gh"], 120, output=b"partial"),
+                rc,
+                "run_process",
+                side_effect=rc.ProcessTimeout(120, b"partial", b""),
             ) as run,
             patch.object(rc.time, "sleep") as sleep,
             self.assertRaises(rc.GitHubError),
@@ -155,8 +156,8 @@ class WholeReadRecoveryTests(unittest.TestCase):
             with (
                 self.subTest(status=status),
                 patch.object(
-                    rc.subprocess,
-                    "run",
+                    rc,
+                    "run_process",
                     side_effect=[http_response(status), http_response(stdout=b"good")],
                 ) as run,
                 patch.object(rc.time, "sleep"),
@@ -166,7 +167,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
         for status in (400, 401, 403, 404, 409, 422, 429, 501):
             with (
                 self.subTest(status=status),
-                patch.object(rc.subprocess, "run", return_value=http_response(status)) as run,
+                patch.object(rc, "run_process", return_value=http_response(status)) as run,
             ):
                 with self.assertRaises(rc.GitHubError):
                     self.gh.binary("releases/assets/7")
@@ -205,11 +206,11 @@ class WholeReadRecoveryTests(unittest.TestCase):
         ):
             for result in (
                 self.failed(message),
-                subprocess.TimeoutExpired(["gh"], 30, stderr=message),
+                rc.ProcessTimeout(30, b"", message),
             ):
                 with (
                     self.subTest(message=message, result=type(result).__name__),
-                    patch.object(rc.subprocess, "run", side_effect=[result]) as run,
+                    patch.object(rc, "run_process", side_effect=[result]) as run,
                 ):
                     with self.assertRaises(rc.GitHubError):
                         self.gh.api("releases")
@@ -218,7 +219,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
             result = self.failed(stdout=f"HTTP/2.0 {status} Denied\r\n".encode())
             with (
                 self.subTest(status=status),
-                patch.object(rc.subprocess, "run", return_value=result) as run,
+                patch.object(rc, "run_process", return_value=result) as run,
             ):
                 with self.assertRaises(rc.GitHubError) as error:
                     self.gh.optional("releases/7")
@@ -229,13 +230,13 @@ class WholeReadRecoveryTests(unittest.TestCase):
         for result in (self.failed(code=0), http_response(stdout=b"{broken")):
             with (
                 self.subTest(result=result),
-                patch.object(rc.subprocess, "run", return_value=result) as run,
+                patch.object(rc, "run_process", return_value=result) as run,
             ):
                 with self.assertRaises(rc.ReleaseError):
                     self.gh.api("releases")
                 run.assert_called_once()
         malformed = http_response(stdout=b"[]\nHTTP/2.0 200 OK\r\n\r\n{broken")
-        with patch.object(rc.subprocess, "run", return_value=malformed) as run:
+        with patch.object(rc, "run_process", return_value=malformed) as run:
             with self.assertRaises(rc.GitHubError):
                 self.gh.pages("releases")
             run.assert_called_once()
@@ -248,7 +249,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
         ):
             with (
                 self.subTest(result=result),
-                patch.object(rc.subprocess, "run", return_value=result) as run,
+                patch.object(rc, "run_process", return_value=result) as run,
             ):
                 with self.assertRaises(rc.GitHubError):
                     self.gh.api("releases")
@@ -260,7 +261,7 @@ class WholeReadRecoveryTests(unittest.TestCase):
         )
         with (
             patch.object(
-                rc.subprocess, "run", side_effect=[partial, http_response(stdout=b'[{"id":2}]')]
+                rc, "run_process", side_effect=[partial, http_response(stdout=b'[{"id":2}]')]
             ) as run,
             patch.object(rc.time, "sleep"),
         ):
@@ -313,16 +314,18 @@ class CurrentAttemptFreshnessTests(unittest.TestCase):
         with (
             patch.dict(os.environ, {"RELEASE_REQUIRE_WORKFLOW_SCOPE": ""}),
             patch.object(
-                rc.subprocess, "run", return_value=http_response(0, rc.json_bytes(self.detail))
+                rc, "run_process", return_value=http_response(0, rc.json_bytes(self.detail))
             ) as command,
         ):
             gh = rc.GitHub(REPO)
             rc.require_current_attempt_jobs(gh, 123, SHA, 2, [self.job])
         command.assert_called_once()
+        argv = command.call_args.args[0]
+        self.assertTrue(Path(argv[0]).is_absolute())
+        self.assertEqual(Path(argv[0]).name, "gh")
         self.assertEqual(
-            command.call_args.args[0],
+            argv[1:],
             [
-                "gh",
                 "api",
                 "--hostname",
                 "github.com",
@@ -479,7 +482,7 @@ class AttemptRouteTests(unittest.TestCase):
         for path, method, body in cases:
             with (
                 self.subTest(path=path, method=method),
-                patch.object(rc.subprocess, "run") as command,
+                patch.object(rc, "run_process") as command,
             ):
                 with self.assertRaises(rc.ReleaseError):
                     gh.request(path, method, body)
