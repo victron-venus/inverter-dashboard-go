@@ -51,6 +51,15 @@ class BrowserReleasePolicyTests(unittest.TestCase):
 
     def test_browser_route_remains_required_and_channel_selection_is_explicit(self):
         browser = workflow("ci.yml")["jobs"]["browser-compatibility"]
+        policy = json.loads((ROOT / ".release-policy.json").read_text())
+        toolkit_revision = policy["versioning"]["toolkit_revision"]
+        toolkit_workflow = (
+            "victron-venus/venus-os-ci-toolkit/.github/workflows/typescript-ci.yml@"
+            + toolkit_revision
+        )
+        self.assertEqual(browser["uses"], toolkit_workflow)
+        release_browser = workflow("release-build.yml")["jobs"]["browser-release"]
+        self.assertEqual(release_browser["uses"], toolkit_workflow)
         self.assertEqual(browser["with"]["browser-extended"], "${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.channel == '' || github.event.inputs.channel == 'rc')) }}")
         self.assertEqual(browser["with"]["browser-release-channel"], "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.channel || '' }}")
         self.assertFalse(browser.get("continue-on-error", False))
