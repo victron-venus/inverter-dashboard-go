@@ -396,6 +396,108 @@ class AsyncProcessTests(unittest.TestCase):
             process.stdin, process.stdout, process.stderr,
         )))
 
+    def test_config_writer_times_out_when_caller_deadline_is_expired(self):
+        read_fd, write_fd = os.pipe()
+        try:
+            with patch.object(async_process.time, "monotonic", return_value=10.0):
+                with self.assertRaises(async_process.ProcessTimeout) as raised:
+                    async_process._write_supervisor_config(
+                        write_fd, (sys.executable, "-c", "pass"), {}, "/",
+                        deadline=9.0, timeout=0.25,
+                    )
+            self.assertEqual(raised.exception.timeout, 0.25)
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
+
+    def test_config_writer_keeps_five_second_handshake_cap(self):
+        read_fd, write_fd = os.pipe()
+        try:
+            with patch.object(async_process.time, "monotonic", side_effect=[0.0, 5.1]):
+                with self.assertRaises(async_process.ProcessCleanupError):
+                    async_process._write_supervisor_config(
+                        write_fd, (sys.executable, "-c", "pass"), {}, "/",
+                        deadline=10.0, timeout=10.0,
+                    )
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
+
+    def test_expired_launch_handshake_preserves_timeout_after_confirmed_cleanup(self):
+        class Stream:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdin = Stream()
+                self.stdout = Stream()
+                self.stderr = Stream()
+
+        process = FakeProcess()
+        timeout = 0.25
+        observed = {}
+
+        def expire_during_handshake(*_args, **kwargs):
+            observed.update(kwargs)
+            raise async_process.ProcessTimeout(timeout, b"", b"")
+
+        with (
+            patch.object(async_process.subprocess, "Popen", return_value=process),
+            patch.object(async_process, "_write_supervisor_config", side_effect=expire_during_handshake),
+            patch.object(async_process, "_reap_owned_process_after_error") as reap,
+            self.assertRaises(async_process.ProcessTimeout) as raised,
+        ):
+            async_process._launch_supervised_process(
+                (sys.executable, "-c", "pass"), env=None, cwd=None,
+                input_enabled=False, timeout=timeout,
+            )
+
+        self.assertEqual(observed["timeout"], timeout)
+        self.assertIsInstance(observed["deadline"], float)
+        self.assertEqual(raised.exception.timeout, timeout)
+        reap.assert_called_once_with(process, control_fd=-1)
+        self.assertTrue(all(stream.closed for stream in (
+            process.stdin, process.stdout, process.stderr,
+        )))
+
+    def test_expired_launch_handshake_cleanup_failure_remains_fatal(self):
+        class Stream:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        class FakeProcess:
+            def __init__(self):
+                self.stdin = Stream()
+                self.stdout = Stream()
+                self.stderr = Stream()
+
+        process = FakeProcess()
+        timeout_error = async_process.ProcessTimeout(0.25, b"", b"")
+        cleanup_error = async_process.ProcessCleanupError("wrapper could not be reaped")
+        with (
+            patch.object(async_process.subprocess, "Popen", return_value=process),
+            patch.object(async_process, "_write_supervisor_config", side_effect=timeout_error),
+            patch.object(
+                async_process, "_reap_owned_process_after_error", side_effect=cleanup_error,
+            ),
+            self.assertRaises(async_process.ProcessCleanupError) as raised,
+        ):
+            async_process._launch_supervised_process(
+                (sys.executable, "-c", "pass"), env=None, cwd=None,
+                input_enabled=False, timeout=0.25,
+            )
+
+        self.assertIs(raised.exception, cleanup_error)
+        self.assertIs(raised.exception.__cause__, timeout_error)
+        self.assertTrue(all(stream.closed for stream in (
+            process.stdin, process.stdout, process.stderr,
+        )))
+
     @unittest.skipUnless(os.name == "posix", "supervisor process groups are POSIX-specific")
     def test_repeated_quick_exit_boundary_preserves_target_status(self):
         for _ in range(12):

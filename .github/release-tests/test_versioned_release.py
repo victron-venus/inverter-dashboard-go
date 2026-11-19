@@ -1224,6 +1224,48 @@ class LifecycleTests(unittest.TestCase):  # pylint: disable=too-many-public-meth
             )
         self.assertEqual(result, "")
 
+    def test_scheduled_reuse_propagates_unconfirmed_process_cleanup(self):
+        """An unconfirmed child process must abort reuse rather than look unavailable."""
+        self.qualify_schedule_fixture()
+        self.build_schedule()
+        info = rc.repository_info(self.gh)
+        snapshot = rc.source_policy_snapshot(self.gh, SHA)
+        cleanup_error = rc.ProcessCleanupError("child cleanup was not confirmed")
+
+        with patch.object(
+            lifecycle, "verify_scheduled_reuse", side_effect=cleanup_error,
+        ):
+            with self.assertRaises(rc.ProcessCleanupError) as raised:
+                lifecycle.scheduled_reuse(
+                    self.gh, info, self.gh.runs[200], snapshot, "1.2.3"
+                )
+
+        self.assertIs(raised.exception, cleanup_error)
+
+    def test_automatic_test_push_propagates_unconfirmed_process_cleanup(self):
+        """Cleanup uncertainty is fatal even though ordinary proof gaps allow delivery."""
+        selected_policy = copy.deepcopy(self.policy)
+        selected_policy["change_scope"] = {
+            "automatic_release_test_paths": ["tests/release_fixture.py"]
+        }
+        snapshot = {"data": selected_policy}
+        info = {"default_branch": "main"}
+        run = {"head_sha": SHA}
+        cleanup_error = rc.ProcessCleanupError("child cleanup was not confirmed")
+        admission = {"test_only": True, "after": SHA, "before": "b" * 40}
+        release_push_scope = Mock(current_push=Mock(return_value=admission))
+
+        with (
+            patch.dict(os.environ, {"GITHUB_EVENT_NAME": "push"}),
+            patch.dict(sys.modules, {"release_push_scope": release_push_scope}),
+            patch.object(lifecycle, "scheduled_reuse", side_effect=cleanup_error),
+            self.assertRaises(rc.ProcessCleanupError) as raised,
+        ):
+            lifecycle.automatic_test_push(self.gh, info, run, snapshot, "1.2.3")
+
+        self.assertIs(raised.exception, cleanup_error)
+        self.assertFalse((self.root / ".release-push-admission.json").exists())
+
     def test_failed_current_gate_cannot_reuse_previous_rc(self):
         self.qualify_schedule_fixture()
         self.build_schedule()
