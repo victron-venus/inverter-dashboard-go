@@ -8,7 +8,7 @@ require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gin-gonic/gin v1.12.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/prometheus/client_golang v1.25.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
