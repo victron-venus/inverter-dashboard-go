@@ -71,7 +71,7 @@
   "release_notes": "CHANGELOG.md",
   "toolkit_revision": "743fa3aef03ce25bb98d21e442477c1d60b08176",
   "fuzzing": {
-    "toolkit_ref": "26a650884a170f410af54d11baef1a583aa47c8a"
+    "toolkit_ref": "0ef5d19a724a3910985fae1a6ec86cd7a5c92cf7"
   },
   "change_scope": {
     "documentation_paths": [
